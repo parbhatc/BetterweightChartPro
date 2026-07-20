@@ -1,0 +1,52 @@
+@import "./base.css";
+@import "./loading.css";
+@import "./toolbar.css";
+@import "./header/toolbar.css";
+@import "./header/layouts-dialog.css";
+@import "./symbol/search.css";
+@import "./timeframe.css";
+@import "./drawings/placement.css";
+@import "./drawings/toolbars/main.css";
+@import "./drawings/toolbars/favorite.css";
+@import "./drawings/toolbars/edit.css";
+@import "./drawings/settings/menu.css";
+@import "./drawings/settings/confirm.css";
+@import "./drawings/settings/dialog.css";
+@import "./chart.css";
+@import "./chart/emptyState.css";
+@import "./market/status.css";
+@import "./context/menu.css";
+@import "./settings.css";
+@import "./color/picker.css";
+@import "./timezone/clock.css";
+@import "./news/panel.css";
+@import "./news/markers.css";
+@import "./responsive.css";
+@import "./debug/hud.css";
+@import "./indicators/dialog.css";
+@import "./indicators/legend.css";
+@import "./indicators/studyPaneLegend.css";
+@import "./replay/toolbar.css";
+@import "./replay/dateDialog.css";
+@import "./chart/table.css";
+@import "./ui/bottomPane/panel.css";
+
+/* iOS Safari auto-zooms focused inputs below 16px — touch devices only. */
+@media (pointer: coarse) {
+  input:not(
+      :is(
+        [type="checkbox"],
+        [type="radio"],
+        [type="button"],
+        [type="submit"],
+        [type="reset"],
+        [type="hidden"],
+        [type="range"],
+        [type="color"]
+      )
+    ),
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
+}

@@ -1,0 +1,400 @@
+import { attachLabelsPrimitive } from "../primitives/labels.js";
+import { attachBoxesPrimitive } from "../primitives/boxes.js";
+import { attachLinesPrimitive } from "../primitives/lines.js";
+import {
+  clearOverlayInstanceCache,
+  overlayGeometryKey,
+  overlayRecomputeKey,
+} from "../overlayCache.js";
+import { logIndicatorLoad } from "./indicatorLoadLog.js";
+import { logOverlayIndexAudit } from "../../debug/chart/historyPrependDebug.js";
+import {
+  instanceUsesCompareSymbols,
+  instanceUsesHtfKeys,
+} from "../security/indicatorDataNeeds.js";
+
+/** @param {object} timeCtx */
+function overlayTimeCtxKey(timeCtx) {
+  const bars = timeCtx.mapBars;
+  return [
+    timeCtx.resolution ?? "",
+    bars?.length ?? 0,
+    bars?.[0]?.time ?? "",
+    bars?.at?.(-1)?.time ?? "",
+    timeCtx.lastRealChartTime ?? "",
+    timeCtx.barSec ?? "",
+    timeCtx.timeAdapter ? 1 : 0,
+  ].join("|");
+}
+
+/** @type {Record<string, typeof attachLabelsPrimitive | typeof attachBoxesPrimitive>} */
+const OVERLAY_PRIMITIVE_ATTACH = {
+  labels: attachLabelsPrimitive,
+  boxes: attachBoxesPrimitive,
+  lines: attachLinesPrimitive,
+};
+
+/**
+ * @param {object} deps
+ * @param {() => object[]} deps.getAllChartPanes
+ * @param {(pane: object) => { utcBars: object[], chartBars: object[] }} deps.getPaneBars
+ * @param {() => Map<string, import("../types.js").IndicatorInstance>} deps.getInstances
+ * @param {(pane: object) => object} [deps.getOverlayContext]
+ * @param {(paneIndex: number) => void} [deps.requestOverlayResync]
+ */
+export function createOverlaySync(deps) {
+  const { getPaneBars, getInstances, getOverlayContext, emit, getIndicatorClass } = deps;
+
+  /** @param {number} paneIndex */
+  function paneByIndex(paneIndex) {
+    return deps.getAllChartPanes().find((p) => p.index === paneIndex);
+  }
+
+  /** @param {import("../types.js").IndicatorInstance & { _overlayPrimitive?: { setLabels: (l: object[]) => void; setBoxes: (b: object[], c?: object, o?: object) => void; destroy: () => void } }} instance @param {object} timeCtx @param {{ geometryUnchanged?: boolean, skipRedraw?: boolean, cacheHit?: boolean, indicatorId?: string }} [opts] */
+  function applyOverlayBoxes(instance, overlayData, timeCtx, opts = {}) {
+    if (overlayData?.length) {
+      logOverlayIndexAudit(
+        paneByIndex(instance.paneIndex) ?? { index: instance.paneIndex },
+        opts.indicatorId ?? instance.defId ?? "overlay",
+        overlayData,
+        timeCtx,
+        { geometryUnchanged: opts.geometryUnchanged, cacheHit: opts.cacheHit },
+      );
+    }
+    if (typeof instance._overlayPrimitive?.setBoxes === "function") {
+      instance._overlayPrimitive.setBoxes(overlayData, timeCtx, opts);
+    } else {
+      instance._overlayPrimitive?.setLabels(overlayData);
+    }
+  }
+
+  /** @param {import("../types.js").IndicatorInstance} instance @param {typeof import("../BaseIndicator.js").BaseIndicator} Indicator @param {object} pane */
+  function flushPendingOverlayApply(instance, Indicator, pane) {
+    const pending = instance._pendingOverlayApply;
+    if (!pending || pane._historyRestorePending || pane._loadingHistory) return;
+    delete instance._pendingOverlayApply;
+    instance._overlayLastSyncToken = undefined;
+    applyOverlayBoxes(instance, pending.overlayData, pending.timeCtx, {
+      geometryUnchanged: pending.geometryUnchanged,
+      indicatorId: Indicator.id ?? instance.defId,
+    });
+    if (!pending.geometryUnchanged) {
+      instance._overlayAppliedGeomKey = overlayGeometryKey(pending.overlayData);
+      instance._overlayAppliedTimeCtxKey = overlayTimeCtxKey(pending.timeCtx);
+    } else {
+      instance._overlayAppliedTimeCtxKey = overlayTimeCtxKey(pending.timeCtx);
+    }
+  }
+
+  /** @param {import("../types.js").IndicatorInstance} instance @param {typeof import("../BaseIndicator.js").BaseIndicator} Indicator */
+  function syncOverlayPrimitive(instance, Indicator) {
+    const pane = paneByIndex(instance.paneIndex);
+    if (!pane?.series) return;
+
+    const indicatorName = Indicator.id ?? instance.defId;
+    const paneKey = `${pane.resolution}|${pane.symbol ?? ""}`;
+    if (instance._overlayPaneKey !== paneKey) {
+      instance._overlayPrimitive?.destroy?.();
+      instance._overlayPrimitive = null;
+      instance._overlayPaneKey = paneKey;
+      clearOverlayInstanceCache(instance);
+    }
+
+    if (
+      instance.hidden ||
+      !Indicator.overlayGraphicsVisible(instance, Indicator.overlayPrimitive ?? "")
+    ) {
+      instance._overlayPrimitive?.setLabels([]);
+      if (typeof instance._overlayPrimitive?.setBoxes === "function") {
+        instance._overlayPrimitive.setBoxes([]);
+      }
+      instance.lastPlots = { overlay: [] };
+      clearOverlayInstanceCache(instance);
+      return;
+    }
+
+    const { utcBars, chartBars } = getPaneBars(pane);
+    const chartHeadKey = `${chartBars[0]?.time ?? ""}|${chartBars.length}`;
+    if (instance._overlayChartHeadKey && instance._overlayChartHeadKey !== chartHeadKey) {
+      clearOverlayInstanceCache(instance);
+    }
+    instance._overlayChartHeadKey = chartHeadKey;
+
+    if (!utcBars.length || utcBars.length !== chartBars.length) {
+      instance._overlayPrimitive?.setLabels([]);
+      if (typeof instance._overlayPrimitive?.setBoxes === "function") {
+        instance._overlayPrimitive.setBoxes([]);
+      }
+      instance.lastPlots = { overlay: [] };
+      clearOverlayInstanceCache(instance);
+      return;
+    }
+
+    const overlayCtx = {
+      symbolInfo: pane.symbolInfo ?? null,
+      chartResolution: pane.resolution ?? null,
+      barSec: pane._chartView?.barSec ?? null,
+      primarySymbol: pane.symbol ?? null,
+      symbol: pane.symbol ?? null,
+      formingBar: utcBars.at(-1) ?? null,
+      utcBars,
+      ...(getOverlayContext?.(pane) ?? {}),
+    };
+
+    let recomputeKey = overlayRecomputeKey(instance, chartBars, Indicator);
+    if (typeof Indicator.overlayRecomputeExtra === "function") {
+      recomputeKey = `${recomputeKey}|${Indicator.overlayRecomputeExtra(instance, overlayCtx)}`;
+    }
+
+    const hookPending =
+      typeof Indicator.overlayPending === "function"
+        ? Indicator.overlayPending(instance, overlayCtx)
+        : undefined;
+    const prevPending = instance._initPending === true;
+    if (hookPending === true) {
+      instance._initPending = true;
+    } else if (hookPending === false) {
+      instance._initPending = false;
+    }
+
+    if (instance._initPending && instance._loadStartAt == null) {
+      instance._loadStartAt = performance.now();
+      logIndicatorLoad(indicatorName, "loading");
+    }
+
+    let overlayData;
+    const cacheHit =
+      !instance._initPending &&
+      instance._overlayRecomputeKey === recomputeKey &&
+      Array.isArray(instance._overlayBoxCache);
+    const refreshLiveOnCacheHit =
+      cacheHit &&
+      typeof Indicator.shouldRefreshOverlayOnCacheHit === "function" &&
+      Indicator.shouldRefreshOverlayOnCacheHit(instance, overlayCtx);
+    if (hookPending === true) {
+      // Serve the cached overlay only while it still matches the current data.
+      // After a data replacement (replay day jump) the pre-jump boxes are wrong-
+      // day levels — show nothing until the pending fetch lands and recomputes.
+      overlayData =
+        instance._overlayRecomputeKey === recomputeKey &&
+        Array.isArray(instance._overlayBoxCache) &&
+        instance._overlayBoxCache.length
+          ? instance._overlayBoxCache
+          : [];
+    } else if (cacheHit && !refreshLiveOnCacheHit) {
+      overlayData = instance._overlayBoxCache;
+    } else {
+      const throttleMs = Indicator.overlayRecomputeThrottleMs;
+      const now = performance.now();
+      if (
+        throttleMs != null &&
+        Array.isArray(instance._overlayBoxCache) &&
+        !instance._initPending &&
+        now - (instance._lastOverlayComputeAt ?? 0) < throttleMs
+      ) {
+        overlayData = instance._overlayBoxCache;
+        clearTimeout(instance._overlayThrottleTimer);
+        instance._overlayThrottleTimer = setTimeout(() => {
+          instance._overlayThrottleTimer = undefined;
+          deps.requestOverlayResync?.(instance.paneIndex);
+        }, throttleMs);
+      } else {
+        clearTimeout(instance._overlayThrottleTimer);
+        instance._overlayThrottleTimer = undefined;
+        overlayData = Indicator.computeOverlay?.(utcBars, chartBars, instance, overlayCtx) ?? [];
+        instance._lastOverlayComputeAt = performance.now();
+        if (!instance._initPending) {
+          instance._overlayRecomputeKey = recomputeKey;
+          instance._overlayBoxCache = overlayData;
+          instance._overlayGeomKey = overlayGeometryKey(overlayData);
+        }
+      }
+    }
+
+    if (prevPending && !instance._initPending) {
+      const ms =
+        instance._loadStartAt != null
+          ? Number((performance.now() - instance._loadStartAt).toFixed(1))
+          : undefined;
+      logIndicatorLoad(indicatorName, "loaded", { ms });
+      delete instance._loadStartAt;
+    }
+
+    if (prevPending !== instance._initPending) {
+      emit?.();
+    }
+
+    const geomKey = overlayGeometryKey(overlayData);
+    const attachFn = OVERLAY_PRIMITIVE_ATTACH[Indicator.overlayPrimitive];
+    if (!attachFn) return;
+
+    if (!instance._overlayPrimitive) {
+      instance._overlayPrimitive = attachFn({ series: pane.series });
+      if (!instance.series) instance.series = new Map();
+    }
+
+    const view = pane._chartView;
+    const timeCtx = {
+      resolution: pane.resolution ?? null,
+      mapBars: view?.mapBars ?? chartBars,
+      barSec: view?.barSec ?? null,
+      lastRealChartTime: chartBars.at(-1)?.time,
+      timeAdapter: view?.timeAdapter ?? pane.timeAdapter ?? null,
+    };
+    const timeCtxKey = overlayTimeCtxKey(timeCtx);
+
+    const syncToken = `${recomputeKey}|${geomKey}|${timeCtxKey}|${pane._historyRestorePending ? 1 : 0}`;
+    if (instance._overlayLastSyncToken === syncToken) {
+      return;
+    }
+    instance._overlayLastSyncToken = syncToken;
+
+    const geometryUnchanged =
+      !refreshLiveOnCacheHit &&
+      instance._overlayAppliedGeomKey === geomKey &&
+      instance._overlayAppliedGeomKey != null &&
+      instance._overlayAppliedTimeCtxKey === timeCtxKey;
+
+    if (geometryUnchanged) {
+      instance.lastPlots = { overlay: instance._overlayBoxCache ?? overlayData };
+      if (pane._historyRestorePending || pane._loadingHistory) {
+        instance._pendingOverlayApply = {
+          overlayData: instance._overlayBoxCache ?? overlayData,
+          timeCtx,
+          geometryUnchanged: true,
+        };
+        return;
+      }
+      applyOverlayBoxes(instance, instance._overlayBoxCache ?? overlayData, timeCtx, {
+        geometryUnchanged: true,
+        cacheHit: Boolean(cacheHit && !refreshLiveOnCacheHit),
+        indicatorId: indicatorName,
+      });
+      return;
+    }
+
+    instance._overlayBoxCache = overlayData;
+    instance._overlayGeomKey = geomKey;
+
+    if (pane._historyRestorePending || pane._loadingHistory) {
+      instance._pendingOverlayApply = { overlayData, timeCtx, geometryUnchanged: false };
+      instance.lastPlots = { overlay: overlayData };
+      return;
+    }
+
+    applyOverlayBoxes(instance, overlayData, timeCtx, {
+      cacheHit: Boolean(cacheHit && !refreshLiveOnCacheHit),
+      indicatorId: indicatorName,
+    });
+    instance._overlayAppliedGeomKey = geomKey;
+    instance._overlayAppliedTimeCtxKey = timeCtxKey;
+    instance.lastPlots = { overlay: overlayData };
+  }
+
+  /**
+   * Clear overlay recompute cache after HTF/compare data arrives or history prepend.
+   * @param {number} paneIndex
+   * @param {{ htfKeys?: Set<string>, compareSymbols?: Set<string> }} [filter] When set, only indicators that use those data keys are invalidated.
+   */
+  function invalidateOverlayCacheForPane(paneIndex, filter) {
+    const pane = paneByIndex(paneIndex);
+    if (!pane) return;
+    const { utcBars } = getPaneBars(pane);
+    const paneCtx = { ...pane, bars: utcBars };
+
+    for (const instance of getInstances().values()) {
+      if (instance.paneIndex !== paneIndex) continue;
+      const Indicator = getIndicatorClass(instance.defId);
+      if (!Indicator?.overlayPrimitive) continue;
+      if (filter) {
+        const usesHtf =
+          filter.htfKeys?.size &&
+          instanceUsesHtfKeys(instance, paneCtx, getIndicatorClass, filter.htfKeys);
+        const usesCompare =
+          filter.compareSymbols?.size &&
+          instanceUsesCompareSymbols(instance, paneCtx, getIndicatorClass, filter.compareSymbols);
+        if (!usesHtf && !usesCompare) continue;
+      }
+      clearOverlayInstanceCache(instance);
+      if (instance.lastPlots) instance.lastPlots.overlay = [];
+    }
+  }
+
+  /** @param {number} paneIndex Push fresh mapBars/timeAdapter after candle setData (history prepend). */
+  function syncOverlayTimeCtxForPane(paneIndex) {
+    const pane = paneByIndex(paneIndex);
+    if (!pane?.series || pane._historyRestorePending || pane._loadingHistory) return;
+    const { chartBars } = getPaneBars(pane);
+    if (!chartBars.length) return;
+
+    const view = pane._chartView;
+    const timeCtx = {
+      resolution: pane.resolution ?? null,
+      mapBars: view?.mapBars ?? chartBars,
+      barSec: view?.barSec ?? null,
+      lastRealChartTime: chartBars.at(-1)?.time,
+      timeAdapter: view?.timeAdapter ?? pane.timeAdapter ?? null,
+    };
+
+    for (const instance of getInstances().values()) {
+      if (instance.paneIndex !== paneIndex) continue;
+      const Indicator = deps.getIndicatorClass(instance.defId);
+      if (!Indicator?.overlayPrimitive || !instance._overlayPrimitive) continue;
+      if (instance.hidden) continue;
+      const overlayData = instance._overlayBoxCache ?? instance.lastPlots?.overlay ?? [];
+      if (!overlayData.length) continue;
+      applyOverlayBoxes(instance, overlayData, timeCtx, {
+        geometryUnchanged: true,
+        indicatorId: deps.getIndicatorClass(instance.defId)?.id ?? instance.defId,
+      });
+      delete instance._pendingOverlayApply;
+    }
+  }
+
+  /** @param {number} paneIndex */
+  function refreshOverlaysForPaneNow(paneIndex) {
+    const pane = paneByIndex(paneIndex);
+    if (pane?._historyRestorePending || pane?._loadingHistory) return;
+    const instances = getInstances();
+    for (const instance of instances.values()) {
+      if (instance.paneIndex !== paneIndex) continue;
+      const Indicator = deps.getIndicatorClass(instance.defId);
+      if (!Indicator?.overlayPrimitive) continue;
+      const visible = deps.isInstanceVisibleOnPane(instance, paneIndex);
+      if (!visible || instance.hidden) {
+        instance._overlayPrimitive?.setLabels([]);
+        if (typeof instance._overlayPrimitive?.setBoxes === "function") {
+          instance._overlayPrimitive.setBoxes([]);
+        }
+        clearOverlayInstanceCache(instance);
+        continue;
+      }
+      flushPendingOverlayApply(instance, Indicator, pane);
+      syncOverlayPrimitive(instance, Indicator);
+    }
+  }
+
+  /** @param {number} [paneIndex] */
+  function clearOverlaysForPane(paneIndex) {
+    for (const instance of getInstances().values()) {
+      if (paneIndex != null && instance.paneIndex !== paneIndex) continue;
+      instance._overlayPrimitive?.setLabels([]);
+      if (typeof instance._overlayPrimitive?.setBoxes === "function") {
+        instance._overlayPrimitive.setBoxes([]);
+      }
+      instance.lastPlots = { overlay: [] };
+      instance._overlayAppliedGeomKey = undefined;
+      instance._overlayPaneKey = undefined;
+      clearOverlayInstanceCache(instance);
+    }
+  }
+
+  return {
+    syncOverlayPrimitive,
+    flushPendingOverlayApply,
+    syncOverlayTimeCtxForPane,
+    invalidateOverlayCacheForPane,
+    refreshOverlaysForPaneNow,
+    clearOverlaysForPane,
+  };
+}

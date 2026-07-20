@@ -1,0 +1,117 @@
+.tv-floating-toolbar {
+  position: fixed;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.tv-floating-toolbar[hidden] {
+  display: none !important;
+}
+
+.tv-floating-toolbar__widget-wrapper {
+  display: flex;
+  align-items: stretch;
+  background: var(--tv-surface);
+  border: 1px solid var(--tv-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.tv-floating-toolbar.is-dragging .tv-floating-toolbar__widget-wrapper {
+  cursor: grabbing;
+  box-shadow: var(--shadow-xl);
+}
+
+.tv-floating-toolbar__drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.875rem;
+  flex-shrink: 0;
+  color: var(--tv-muted);
+  cursor: grab;
+  touch-action: none;
+  background: color-mix(in srgb, var(--tv-bg) 35%, var(--tv-surface));
+  border-right: 1px solid var(--tv-border-subtle);
+  transition: var(--transition-colors);
+}
+
+.tv-floating-toolbar__drag:hover {
+  color: var(--tv-text);
+}
+
+.tv-floating-toolbar__content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  min-height: 2.25rem;
+}
+
+.tv-floating-toolbar__widget {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-favorited-drawings-toolbar__widget {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.125rem;
+  height: 2.125rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--tv-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: var(--transition-colors), var(--transition-transform);
+}
+
+.tv-favorited-drawings-toolbar__widget:hover {
+  color: var(--tv-text);
+  background: var(--tv-surface-hover);
+  border-color: var(--tv-border-subtle);
+}
+
+.tv-favorited-drawings-toolbar__widget.is-active {
+  color: var(--tv-text);
+  background: var(--tv-surface-active);
+  border-color: var(--tv-border-strong);
+  box-shadow: none;
+}
+
+.tv-favorited-drawings-toolbar__widget .draw-tools__icon svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.draw-tools__fav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--tv-muted);
+  cursor: pointer;
+  padding: 0;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  touch-action: manipulation;
+  transition: var(--transition-colors);
+}
+
+.draw-tools__fav-btn:hover {
+  color: var(--tv-text);
+  background: var(--tv-surface-hover);
+}
+
+.draw-tools__fav-btn.is-fav {
+  color: var(--tv-favorite);
+}

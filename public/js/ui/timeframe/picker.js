@@ -1,0 +1,533 @@
+import {
+  isFavorite,
+  loadFavorites,
+  MAX_FAVORITES,
+  saveLastResolution,
+  toggleFavorite,
+} from "./favorites.js";
+import {
+  addCustomResolution,
+  isCustomResolution,
+  loadCustomResolutions,
+  removeCustomResolution,
+  saveCustomResolutions,
+} from "./custom.js";
+import { closeAllContextMenus, registerContextMenu } from "../context/registry.js";
+import { openCustomIntervalDialog } from "./customDialog.js";
+import {
+  CHART_RESOLUTION_IDS,
+  mergeWithCustomResolutions,
+  resolutionDef,
+  resolutionDisplayTitle,
+  resolutionShortLabel,
+} from "../../chart/resolutions.js";
+
+const GROUPS = [
+  { id: "ticks", title: "Ticks", match: (id) => /^\d+T$/i.test(id) },
+  { id: "seconds", title: "Seconds", match: (id) => /^\d+S$/i.test(id) },
+  {
+    id: "minutes",
+    title: "Minutes",
+    match: (id) => {
+      if (!/^\d+$/.test(id)) return false;
+      const n = Number(id);
+      return n < 60 || n % 60 !== 0;
+    },
+  },
+  {
+    id: "hours",
+    title: "Hours",
+    match: (id) => {
+      if (!/^\d+$/.test(id)) return false;
+      const n = Number(id);
+      return n >= 60 && n % 60 === 0;
+    },
+  },
+  { id: "days", title: "Days", match: (id) => ["D", "W", "M"].includes(id) },
+];
+
+const BUILTIN_IDS = new Set(CHART_RESOLUTION_IDS);
+
+const STAR_OUTLINE = `<svg viewBox="0 0 18 18" width="16" height="16" fill="none" aria-hidden="true"><path stroke="currentColor" d="M9 2.13l1.903 3.855.116.236.26.038 4.255.618-3.079 3.001-.188.184.044.259.727 4.237-3.805-2L9 12.434l-.233.122-3.805 2.001.727-4.237.044-.26-.188-.183-3.079-3.001 4.255-.618.26-.038.116-.236L9 2.13z"/></svg>`;
+const STAR_FILLED = `<svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M9 2.13l1.903 3.855.116.236.26.038 4.255.618-3.079 3.001-.188.184.044.259.727 4.237-3.805-2L9 12.434l-.233.122-3.805 2.001.727-4.237.044-.26-.188-.183-3.079-3.001 4.255-.618.26-.038.116-.236L9 2.13z"/></svg>`;
+const CHEVRON = `<svg viewBox="0 0 16 8" width="14" height="8" aria-hidden="true"><path fill="currentColor" d="M0 1.475l7.396 6.04.596.485.593-.49L16 1.39 14.807 0 7.393 6.122 8.58 6.12 1.186.08z"/></svg>`;
+const CLOSE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path stroke="currentColor" stroke-width="1.2" d="m1.5 1.5 15 15m0-15-15 15"/></svg>`;
+const PLUS = `<svg viewBox="0 0 28 28" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M13.9 14.1V22h1.2v-7.9H23v-1.2h-7.9V5h-1.2v7.9H6v1.2h7.9Z"/></svg>`;
+
+const MOBILE_PANEL_MQ = window.matchMedia("(max-width: 768px)");
+
+function isMobilePanel() {
+  return MOBILE_PANEL_MQ.matches;
+}
+
+/**
+ * @param {object} opts
+ * @param {HTMLElement} opts.root
+ * @param {Array<{ id: string, label: string }>} opts.resolutions
+ * @param {string} opts.initial
+ * @param {(resolution: string, label: string) => void} opts.onChange
+ * @param {(resolutions: Array<{ id: string, label: string, sec: number }>) => void} [opts.onResolutionsChange]
+ */
+export function mountTimeframePicker(opts) {
+  const { root, resolutions: initialResolutions, initial, onChange, onResolutionsChange } = opts;
+
+  let active = initial;
+  /** @type {Array<{ id: string, label: string, sec: number }>} */
+  let resolutions = mergeWithCustomResolutions(initialResolutions);
+  /** @type {Array<{ id: string, label: string, sec: number }>} */
+  let customResolutions = loadCustomResolutions();
+  let favorites = loadFavorites(resolutions);
+  let panelOpen = false;
+  /** @type {Record<string, boolean>} */
+  const expanded = Object.fromEntries(GROUPS.map((g) => [g.id, true]));
+
+  const labelOf = (id) => resolutions.find((r) => r.id === id)?.label ?? resolutionShortLabel(id);
+  const titleOf = (id) => resolutionDisplayTitle(id);
+
+  root.innerHTML = `<div class="tv-tf__bar">
+    <div class="tv-tf__favorites" role="group" aria-label="Favorite timeframes"></div>
+    <div class="tv-tf__overflow" hidden></div>
+    <div class="tv-tf__menu-wrap">
+      <button type="button" class="tv-tf__menu-btn" aria-haspopup="tree" aria-expanded="false" aria-controls="tf-interval-panel" title="All intervals">
+        <svg width="8" height="5" viewBox="0 0 8 5" aria-hidden="true"><path fill="currentColor" d="M1 .75 4 3.75 7 .75"/></svg>
+      </button>
+    </div>
+  </div>`;
+
+  const barEl = root.querySelector(".tv-tf__bar");
+  const favEl = root.querySelector(".tv-tf__favorites");
+  const overflowEl = root.querySelector(".tv-tf__overflow");
+  const menuWrap = root.querySelector(".tv-tf__menu-wrap");
+  const menuBtn = root.querySelector(".tv-tf__menu-btn");
+
+  const panel = document.createElement("div");
+  panel.className = "tv-tf__panel";
+  panel.id = "tf-interval-panel";
+  panel.hidden = true;
+  panel.setAttribute("role", "treegrid");
+  document.body.appendChild(panel);
+
+  if (!barEl || !favEl || !overflowEl || !menuBtn) throw new Error("Timeframe picker markup missing");
+
+  function syncResolutions() {
+    resolutions = mergeWithCustomResolutions(initialResolutions, customResolutions);
+    onResolutionsChange?.(resolutions);
+  }
+
+  function tfBtn(id, isActive) {
+    return `<button type="button" class="tv-tf__btn${isActive ? " is-active" : ""}" data-resolution="${id}" title="${titleOf(id)}">${labelOf(id)}</button>`;
+  }
+
+  /**
+   * @param {{ id: string }} r
+   * @param {boolean} removable
+   */
+  function intervalRow(r, removable) {
+    const fav = isFavorite(favorites, r.id);
+    const sel = r.id === active;
+    return `<div class="tv-tf__interval${sel ? " is-active" : ""}" data-resolution="${r.id}" role="row" aria-selected="${sel}">
+      <span class="tv-tf__interval-label" role="gridcell">${titleOf(r.id)}</span>
+      <div class="tv-tf__interval-actions">
+        ${removable ? `<button type="button" class="tv-tf__remove-btn" data-remove-custom data-resolution="${r.id}" aria-label="Remove custom interval" title="Remove">×</button>` : ""}
+        <button type="button" class="tv-tf__fav-btn${fav ? " is-fav" : ""}" data-fav-toggle data-resolution="${r.id}" aria-label="${fav ? "Remove from favorites" : "Add to favorites"}" title="${fav ? "Remove from favorites" : "Add to favorites"}">${fav ? STAR_FILLED : STAR_OUTLINE}</button>
+      </div>
+    </div>`;
+  }
+
+  function addCustomRowHtml() {
+    return `<button type="button" class="tv-tf__add-custom" data-open-custom role="row" aria-haspopup="dialog">
+      <span class="tv-tf__add-custom-icon">${PLUS}</span>
+      <span class="tv-tf__add-custom-label">Add custom interval…</span>
+    </button>
+    <div class="tv-tf__group-divider" role="separator"></div>`;
+  }
+
+  function restoreElementScroll(el, pos) {
+    if (!(el instanceof HTMLElement)) return;
+    el.scrollTop = pos;
+    requestAnimationFrame(() => {
+      el.scrollTop = pos;
+    });
+  }
+
+  function renderPanel() {
+    const scrollEl = panel.querySelector(".tv-tf__panel-scroll");
+    const scrollTop = scrollEl instanceof HTMLElement ? scrollEl.scrollTop : 0;
+
+    const parts = GROUPS.map((group) => {
+      const items = resolutions.filter((r) => group.match(r.id));
+      if (!items.length) return "";
+      const open = expanded[group.id];
+      return `<div class="tv-tf__group" data-group="${group.id}">
+        <button type="button" class="tv-tf__group-head" aria-expanded="${open}" data-group-toggle="${group.id}">
+          <span class="tv-tf__group-title">${group.title}</span>
+          <span class="tv-tf__group-chev${open ? "" : " is-collapsed"}">${CHEVRON}</span>
+        </button>
+        <div class="tv-tf__group-body"${open ? "" : " hidden"}>
+          ${items.map((r) => intervalRow(r, isCustomResolution(r.id, customResolutions) && !BUILTIN_IDS.has(r.id))).join("")}
+        </div>
+      </div>`;
+    }).filter(Boolean);
+
+    panel.innerHTML = `<div class="tv-tf__panel-backdrop" data-tf-backdrop aria-hidden="true"></div>
+<div class="tv-tf__panel-dialog">
+  <div class="tv-tf__panel-header">
+    <h2 class="tv-tf__panel-title">Intervals</h2>
+    <button type="button" class="tv-tf__panel-close" data-tf-close aria-label="Close">${CLOSE}</button>
+  </div>
+  <div class="tv-tf__panel-scroll">${addCustomRowHtml()}${parts.join('<div class="tv-tf__group-divider" role="separator"></div>')}</div>
+</div>`;
+    restoreElementScroll(panel.querySelector(".tv-tf__panel-scroll"), scrollTop);
+  }
+
+  function clearPanelPosition() {
+    panel.style.left = "";
+    panel.style.top = "";
+    panel.style.height = "";
+    panel.style.maxHeight = "";
+    const scroll = panel.querySelector(".tv-tf__panel-scroll");
+    if (scroll instanceof HTMLElement) scroll.style.maxHeight = "";
+  }
+
+  function positionPanel() {
+    if (isMobilePanel()) {
+      clearPanelPosition();
+      return;
+    }
+
+    const rect = root.getBoundingClientRect();
+    const pad = 8;
+    const gap = 4;
+    let top = rect.bottom + gap;
+    let left = Math.max(pad, rect.left);
+    const maxHeight = Math.max(160, window.innerHeight - top - pad);
+
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.height = "auto";
+    panel.style.maxHeight = "";
+    const scroll = panel.querySelector(".tv-tf__panel-scroll");
+    if (scroll instanceof HTMLElement) {
+      scroll.style.maxHeight = `${maxHeight}px`;
+    }
+
+    const panelRect = panel.getBoundingClientRect();
+    if (panelRect.right > window.innerWidth - pad) {
+      left = Math.max(pad, window.innerWidth - panelRect.width - pad);
+      panel.style.left = `${left}px`;
+    }
+
+    if (panelRect.bottom > window.innerHeight - pad) {
+      const flipTop = rect.top - panelRect.height - gap;
+      if (flipTop >= pad) {
+        panel.style.top = `${flipTop}px`;
+        const flipMax = Math.max(160, rect.top - gap - pad);
+        if (scroll instanceof HTMLElement) {
+          scroll.style.maxHeight = `${flipMax}px`;
+        }
+      }
+    }
+  }
+
+  /** @type {(() => void) | null} */
+  let closeCustomDialog = null;
+
+  function isSoloPicker() {
+    if (!favorites.length) return true;
+    return favorites.length === 1 && favorites[0] === active;
+  }
+
+  function updatePickerChrome() {
+    const solo = isSoloPicker();
+    root.classList.toggle("tv-tf--solo", solo);
+    if (menuWrap instanceof HTMLElement) menuWrap.hidden = solo;
+
+    favEl.querySelectorAll(".tv-tf__btn").forEach((btn) => {
+      if (!(btn instanceof HTMLButtonElement)) return;
+      if (solo) {
+        btn.setAttribute("aria-haspopup", "tree");
+        btn.setAttribute("aria-controls", "tf-interval-panel");
+        btn.setAttribute("aria-expanded", panelOpen ? "true" : "false");
+        if (btn.classList.contains("is-active")) btn.title = "All intervals";
+      } else {
+        btn.removeAttribute("aria-haspopup");
+        btn.removeAttribute("aria-controls");
+        btn.removeAttribute("aria-expanded");
+        btn.title = titleOf(btn.dataset.resolution ?? active);
+      }
+    });
+
+    const overflowBtn = overflowEl.querySelector(".tv-tf__btn");
+    if (overflowBtn instanceof HTMLButtonElement && !solo) {
+      overflowBtn.removeAttribute("aria-haspopup");
+      overflowBtn.removeAttribute("aria-controls");
+      overflowBtn.removeAttribute("aria-expanded");
+      overflowBtn.title = titleOf(overflowBtn.dataset.resolution ?? active);
+    }
+  }
+
+  function renderFavorites() {
+    const barScrollLeft = barEl.scrollLeft;
+    const pageScrollY = window.scrollY;
+
+    if (!favorites.length) {
+      favEl.innerHTML = tfBtn(active, true);
+      overflowEl.hidden = true;
+      overflowEl.innerHTML = "";
+      barEl.scrollLeft = barScrollLeft;
+      updatePickerChrome();
+      if (pageScrollY) window.scrollTo(0, pageScrollY);
+      return;
+    }
+
+    favEl.innerHTML = favorites.map((id) => tfBtn(id, id === active)).join("");
+
+    if (!favorites.includes(active)) {
+      overflowEl.hidden = false;
+      overflowEl.innerHTML = tfBtn(active, true);
+    } else {
+      overflowEl.hidden = true;
+      overflowEl.innerHTML = "";
+    }
+    barEl.scrollLeft = barScrollLeft;
+    updatePickerChrome();
+    if (pageScrollY) window.scrollTo(0, pageScrollY);
+  }
+
+  function closePanel() {
+    panelOpen = false;
+    panel.hidden = true;
+    panel.classList.remove("tv-tf__panel--modal");
+    document.body.classList.remove("tv-tf-panel-open");
+    clearPanelPosition();
+    closeCustomDialog?.();
+    closeCustomDialog = null;
+    menuBtn.setAttribute("aria-expanded", "false");
+    barEl.classList.remove("tv-tf__bar--open");
+    root.classList.remove("tv-tf--open");
+    updatePickerChrome();
+  }
+
+  function openPanel() {
+    closeAllContextMenus();
+    renderPanel();
+    panel.hidden = false;
+    panelOpen = true;
+    if (isMobilePanel()) {
+      panel.classList.add("tv-tf__panel--modal");
+      document.body.classList.add("tv-tf-panel-open");
+      clearPanelPosition();
+    } else {
+      panel.classList.remove("tv-tf__panel--modal");
+      document.body.classList.remove("tv-tf-panel-open");
+      positionPanel();
+    }
+    menuBtn.setAttribute("aria-expanded", "true");
+    barEl.classList.add("tv-tf__bar--open");
+    root.classList.add("tv-tf--open");
+    updatePickerChrome();
+  }
+
+  function syncActiveResolution(resolution) {
+    if (resolution === active) return;
+    active = resolution;
+    renderFavorites();
+    if (panelOpen) renderPanel();
+    closePanel();
+  }
+
+  function setActive(resolution, { toggleIfSame = false } = {}) {
+    if (resolution === active) {
+      if (toggleIfSame && isSoloPicker()) {
+        if (panelOpen) closePanel();
+        else openPanel();
+      } else {
+        closePanel();
+      }
+      return;
+    }
+    active = resolution;
+    renderFavorites();
+    if (panelOpen) renderPanel();
+    closePanel();
+    saveLastResolution(resolution);
+    onChange(resolution, labelOf(resolution));
+  }
+
+  function toggleFavoriteId(id) {
+    if (!isFavorite(favorites, id) && favorites.length >= MAX_FAVORITES) return;
+    favorites = toggleFavorite(favorites, id, resolutions);
+    renderFavorites();
+    if (panelOpen) renderPanel();
+  }
+
+  function openCustomDialog() {
+    closeCustomDialog?.();
+    closeCustomDialog = openCustomIntervalDialog({
+      anchorEl: isMobilePanel() ? undefined : panel,
+      existingIds: resolutions.map((r) => r.id),
+      onAdd: ({ id }) => {
+        if (resolutions.some((r) => r.id === id)) {
+          setActive(id);
+          return;
+        }
+        const def = resolutionDef(id);
+        customResolutions = addCustomResolution(customResolutions, def);
+        saveCustomResolutions(customResolutions);
+        syncResolutions();
+        favorites = loadFavorites(resolutions);
+        renderPanel();
+        if (!isMobilePanel()) positionPanel();
+        setActive(id);
+      },
+      onClose: () => {
+        closeCustomDialog = null;
+      },
+    });
+  }
+
+  function removeCustomInterval(id) {
+    if (BUILTIN_IDS.has(id)) return;
+    customResolutions = removeCustomResolution(customResolutions, id);
+    saveCustomResolutions(customResolutions);
+    syncResolutions();
+    favorites = favorites.filter((f) => f !== id);
+    renderFavorites();
+    if (panelOpen) renderPanel();
+  }
+
+  renderFavorites();
+
+  panel.addEventListener(
+    "wheel",
+    (ev) => {
+      if (!panelOpen || panel.hidden) return;
+      ev.stopPropagation();
+    },
+    { capture: true },
+  );
+
+  /** @param {Event} ev @returns {boolean} */
+  function handleRootActivation(ev) {
+    if (!(ev.target instanceof Element)) return false;
+    if (ev.target.closest(".tv-tf__menu-btn")) {
+      if (panelOpen) closePanel();
+      else openPanel();
+      return true;
+    }
+    const favBtn = ev.target.closest("[data-fav-toggle]");
+    if (favBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleFavoriteId(favBtn.dataset.resolution);
+      return true;
+    }
+    const btn = ev.target.closest("[data-resolution]");
+    if (!btn || btn.closest(".tv-tf__panel")) return false;
+    setActive(btn.dataset.resolution, { toggleIfSame: true });
+    return true;
+  }
+
+  // iOS can swallow/delay the synthesized click inside this horizontally
+  // scrollable bar. Activate a stationary touch on pointerup, but leave swipes
+  // alone so users can still scroll through favorites.
+  let touchStart = null;
+  let suppressClickUntil = 0;
+  root.addEventListener("pointerdown", (ev) => {
+    if (ev.pointerType !== "touch") return;
+    touchStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+  }, { passive: true });
+  root.addEventListener("pointercancel", () => {
+    touchStart = null;
+  }, { passive: true });
+  root.addEventListener("pointerup", (ev) => {
+    if (ev.pointerType !== "touch" || !touchStart || touchStart.id !== ev.pointerId) return;
+    const moved = Math.hypot(ev.clientX - touchStart.x, ev.clientY - touchStart.y);
+    touchStart = null;
+    if (moved > 10) return;
+    if (!handleRootActivation(ev)) return;
+    suppressClickUntil = performance.now() + 700;
+    ev.preventDefault();
+  });
+
+  root.addEventListener("click", (ev) => {
+    if (performance.now() < suppressClickUntil) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
+    handleRootActivation(ev);
+  });
+
+  panel.addEventListener("click", (ev) => {
+    if (ev.target.closest("[data-tf-backdrop]") || ev.target.closest("[data-tf-close]")) {
+      closePanel();
+      return;
+    }
+    if (ev.target.closest("[data-open-custom]")) {
+      openCustomDialog();
+      return;
+    }
+    const head = ev.target.closest("[data-group-toggle]");
+    if (head) {
+      const id = head.dataset.groupToggle;
+      expanded[id] = !expanded[id];
+      renderPanel();
+      return;
+    }
+    const removeBtn = ev.target.closest("[data-remove-custom]");
+    if (removeBtn) {
+      ev.stopPropagation();
+      removeCustomInterval(removeBtn.dataset.resolution);
+      return;
+    }
+    const favBtn = ev.target.closest("[data-fav-toggle]");
+    if (favBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleFavoriteId(favBtn.dataset.resolution);
+      return;
+    }
+    const row = ev.target.closest("[data-resolution]");
+    if (!row) return;
+    setActive(row.dataset.resolution);
+  });
+
+  window.addEventListener("resize", () => {
+    if (!panelOpen) return;
+    if (isMobilePanel()) {
+      panel.classList.add("tv-tf__panel--modal");
+      document.body.classList.add("tv-tf-panel-open");
+      clearPanelPosition();
+    } else {
+      panel.classList.remove("tv-tf__panel--modal");
+      document.body.classList.remove("tv-tf-panel-open");
+      positionPanel();
+    }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !closeCustomDialog) closePanel();
+  });
+
+  registerContextMenu({
+    close: () => {
+      closeCustomDialog?.();
+      closeCustomDialog = null;
+      closePanel();
+    },
+    isOpen: () => panelOpen || Boolean(closeCustomDialog),
+    contains: (node) => root.contains(node) || panel.contains(node) || Boolean(node?.closest?.(".tv-tf-dialog-overlay")),
+  });
+
+  return {
+    getResolution: () => active,
+    getFavorites: () => [...favorites],
+    getResolutions: () => [...resolutions],
+    openPanel,
+    setResolution(resolution) {
+      syncActiveResolution(resolution);
+    },
+    getLabel: () => labelOf(active),
+  };
+}

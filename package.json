@@ -1,0 +1,46 @@
+{
+  "name": "betterweightchartpro",
+  "version": "1.0.0",
+  "description": "BWC Pro — chart widget on the original ProChart engine (no lightweight-charts dependency), 68 drawing tools",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": "./public/js/sdk.js",
+    "./chart": "./public/chart/sdk.js",
+    "./api": "./public/chart/api.js",
+    "./app": "./public/chart/app.js",
+    "./datafeed": "./public/js/datafeed/index.js",
+    "./news": "./public/js/news/index.js",
+    "./engine": "./public/vendor/prochart/index.mjs"
+  },
+  "files": [
+    "public",
+    "server",
+    "testing_web",
+    "scripts"
+  ],
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node scripts/dev-server.mjs",
+    "dev:live": "node scripts/dev-live.mjs",
+    "start:testing": "node server/index.mjs",
+    "dev:testing": "npm run dev",
+    "new:indicator": "node scripts/new-indicator.mjs",
+    "test": "node --test test/**/*.test.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "playwright": "^1.61.1"
+  },
+  "keywords": [
+    "prochart",
+    "tradingview",
+    "chart",
+    "drawings",
+    "ohlc"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,149 @@
+import { symbolsMatch } from "../../app/bar/symbolBarCache.js";
+
+/**
+ * @typedef {{ symbol: string, resolution: string, countBack: number }} HtfNeed
+ * @typedef {{ resolution: string, countBack: number }} CompareHtfNeed
+ * @typedef {{ symbol: string, chartCountBack: number, htf?: CompareHtfNeed[] }} CompareNeed
+ * @typedef {{ source: string, types: string[], days: string[] }} NewsNeed
+ * @typedef {{ htf?: HtfNeed[], compare?: CompareNeed[], news?: NewsNeed }} IndicatorDataNeeds
+ * @typedef {{ htf: Map<string, number>, compareChart: Map<string, number>, compareHtf: Map<string, number>, news?: NewsNeed | null }} PaneDataNeeds
+ */
+
+/** @param {string} symbol @param {string} resolution */
+function htfKey(symbol, resolution) {
+  return `${symbol}|${resolution}`;
+}
+
+/** @returns {PaneDataNeeds} */
+export function emptyPaneDataNeeds() {
+  return {
+    htf: new Map(),
+    compareChart: new Map(),
+    compareHtf: new Map(),
+    news: null,
+  };
+}
+
+/**
+ * @param {PaneDataNeeds} target
+ * @param {IndicatorDataNeeds | null | undefined} partial
+ */
+export function mergeDataNeeds(target, partial) {
+  if (!partial) return target;
+  for (const item of partial.htf ?? []) {
+    if (!item?.symbol || !item.resolution) continue;
+    const key = htfKey(item.symbol, item.resolution);
+    target.htf.set(key, Math.max(target.htf.get(key) ?? 0, item.countBack));
+  }
+  for (const item of partial.compare ?? []) {
+    if (!item?.symbol) continue;
+    target.compareChart.set(
+      item.symbol,
+      Math.max(target.compareChart.get(item.symbol) ?? 0, item.chartCountBack),
+    );
+    for (const htf of item.htf ?? []) {
+      if (!htf?.resolution) continue;
+      const key = htfKey(item.symbol, htf.resolution);
+      target.compareHtf.set(key, Math.max(target.compareHtf.get(key) ?? 0, htf.countBack));
+    }
+  }
+  if (partial.news?.days?.length) {
+    const prev = target.news;
+    const types = new Set([...(prev?.types ?? []), ...(partial.news.types ?? [])]);
+    const days = new Set([...(prev?.days ?? []), ...(partial.news.days ?? [])]);
+    target.news = {
+      source: partial.news.source ?? prev?.source ?? "forexfactory",
+      types: [...types],
+      days: [...days],
+    };
+  }
+  return target;
+}
+
+/**
+ * @param {import("../types.js").IndicatorInstance[]} instances
+ * @param {{ symbol?: string, resolution?: string, bars?: object[] }} pane
+ * @param {(id: string) => typeof import("../BaseIndicator.js").BaseIndicator | null} getIndicatorClass
+ */
+export function collectPaneDataNeeds(instances, pane, getIndicatorClass) {
+  const needs = emptyPaneDataNeeds();
+  for (const inst of instances) {
+    if (inst.hidden) continue;
+    const Indicator = getIndicatorClass(inst.defId);
+    if (!Indicator) continue;
+    mergeDataNeeds(needs, Indicator.collectDataNeeds(inst, pane));
+  }
+  return needs;
+}
+
+/** @param {PaneDataNeeds} needs */
+export function paneDataNeedsEmpty(needs) {
+  return !needs.htf.size && !needs.compareChart.size && !needs.compareHtf.size && !needs.news?.days?.length;
+}
+
+/**
+ * Minimum chart bars the pane should load for active indicators (maxBarsBack, sessions, etc.).
+ * @param {import("../types.js").IndicatorInstance[]} instances
+ * @param {{ resolution?: string }} pane
+ * @param {(id: string) => typeof import("../BaseIndicator.js").BaseIndicator | null} getIndicatorClass
+ */
+export function collectPaneRequiredChartBars(instances, pane, getIndicatorClass) {
+  let max = 0;
+  const resolution = pane.resolution ?? "1";
+  for (const inst of instances) {
+    if (inst.hidden) continue;
+    const Indicator = getIndicatorClass(inst.defId);
+    if (!Indicator || typeof Indicator.requiredChartBars !== "function") continue;
+    const want = Number(Indicator.requiredChartBars(inst.inputs, resolution)) || 0;
+    if (want > max) max = want;
+  }
+  return max;
+}
+
+/**
+ * Whether an indicator instance depends on HTF bars for any of the given cache keys.
+ * @param {import("../types.js").IndicatorInstance} instance
+ * @param {{ symbol?: string, resolution?: string, bars?: object[] }} pane
+ * @param {(id: string) => typeof import("../BaseIndicator.js").BaseIndicator | null} getIndicatorClass
+ * @param {Set<string>} htfKeys — `symbol|resolution`
+ */
+export function instanceUsesHtfKeys(instance, pane, getIndicatorClass, htfKeys) {
+  if (!htfKeys?.size || instance.hidden) return false;
+  const Indicator = getIndicatorClass(instance.defId);
+  if (typeof Indicator?.collectDataNeeds !== "function") return true;
+  const needs = Indicator.collectDataNeeds(instance, pane);
+  for (const item of needs.htf ?? []) {
+    if (item?.symbol && item?.resolution && htfKeys.has(htfKey(item.symbol, item.resolution))) {
+      return true;
+    }
+  }
+  for (const item of needs.compare ?? []) {
+    for (const htf of item.htf ?? []) {
+      if (item?.symbol && htf?.resolution && htfKeys.has(htfKey(item.symbol, htf.resolution))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether an indicator instance depends on compare-symbol chart bars.
+ * @param {import("../types.js").IndicatorInstance} instance
+ * @param {{ symbol?: string, resolution?: string, bars?: object[] }} pane
+ * @param {(id: string) => typeof import("../BaseIndicator.js").BaseIndicator | null} getIndicatorClass
+ * @param {Set<string>} compareSymbols
+ */
+export function instanceUsesCompareSymbols(instance, pane, getIndicatorClass, compareSymbols) {
+  if (!compareSymbols?.size || instance.hidden) return false;
+  const Indicator = getIndicatorClass(instance.defId);
+  if (typeof Indicator?.collectDataNeeds !== "function") return true;
+  const needs = Indicator.collectDataNeeds(instance, pane);
+  for (const item of needs.compare ?? []) {
+    if (!item?.symbol) continue;
+    for (const sym of compareSymbols) {
+      if (symbolsMatch(item.symbol, sym)) return true;
+    }
+  }
+  return false;
+}
