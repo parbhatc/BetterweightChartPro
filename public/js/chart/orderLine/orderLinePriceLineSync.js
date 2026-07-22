@@ -1,11 +1,73 @@
-import { LineStyle } from "prochart";
+import { LineStyle } from "../../../vendor/prochart/core/enums.mjs";
 import {
   formatOrderLinePrice,
   resolveOrderLineFontFamily,
   resolveOrderLineFontSize,
   resolveOrderLineFontWeight,
   DEFAULT_ORDER_LINE_PILL_OFFSET,
+  drawOrderLineRow,
+  layoutOrderLineGeometry,
 } from "./rowLayout.js";
+
+function orderLineDrawState(options) {
+  const pills = options?.pills ?? {};
+  const body = pills.body ?? {};
+  const quantity = pills.quantity ?? {};
+  const cancel = pills.cancel ?? {};
+  return {
+    id: String(options?.id ?? ""), price: Number(options?.price), lineColor: options?.color,
+    pillSide: pills.side === "left" ? "left" : "right",
+    pillOffset: Number(pills.offset) || DEFAULT_ORDER_LINE_PILL_OFFSET,
+    isMoving: Boolean(pills.moving), text: String(body.text ?? ""),
+    bodyBackgroundColor: body.backgroundColor, bodyTextColor: body.textColor,
+    bodyBorderColor: body.borderColor, bodyFontSize: body.fontSize,
+    bodyFontWeight: body.fontWeight, bodyFontFamily: body.fontFamily,
+    quantity: String(quantity.text ?? ""), quantityBackgroundColor: quantity.backgroundColor,
+    quantityTextColor: quantity.textColor, quantityBorderColor: quantity.borderColor,
+    quantityFontSize: quantity.fontSize, quantityFontWeight: quantity.fontWeight,
+    quantityFontFamily: quantity.fontFamily, cancelButtonBackgroundColor: cancel.backgroundColor,
+    cancelButtonBorderColor: cancel.borderColor, cancelButtonIconColor: cancel.iconColor,
+  };
+}
+
+class OrderLinePillPrimitive {
+  constructor(priceLine) {
+    this._priceLine = priceLine;
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = null;
+    this._view = { zOrder: () => "top", renderer: () => ({ draw: (target) => this._draw(target) }) };
+  }
+  attached(param) { this._chart = param.chart; this._series = param.series; this._requestUpdate = param.requestUpdate; }
+  detached() { this._chart = null; this._series = null; this._requestUpdate = null; }
+  paneViews() { return [this._view]; }
+  requestRefresh() { this._requestUpdate?.(); }
+  _draw(target) {
+    const options = this._priceLine.options();
+    if (options?.pills?.visible === false || !this._chart || !this._series) return;
+    const y = this._series.priceToCoordinate(Number(options.price));
+    if (y == null || !Number.isFinite(y)) return;
+    const state = orderLineDrawState(options);
+    const { rowLeft } = layoutOrderLineGeometry(state, this._chart.paneSize().width, 0);
+    target.useMediaCoordinateSpace(({ context }) => drawOrderLineRow(context, state, rowLeft, y));
+  }
+}
+
+function createCompatOrderLine(series, options) {
+  const priceLine = series.createPriceLine(options);
+  const primitive = new OrderLinePillPrimitive(priceLine);
+  series.attachPrimitive(primitive);
+  return {
+    applyOptions(patch) { priceLine.applyOptions(patch); primitive.requestRefresh(); },
+    options() { return priceLine.options(); },
+    _remove() { series.detachPrimitive(primitive); series.removePriceLine(priceLine); },
+  };
+}
+
+function removeCompatOrderLine(series, line) {
+  if (typeof line?._remove === "function") line._remove();
+  else series.removeOrderLine?.(line);
+}
 
 /** @param {number} lineStyle */
 function mapOrderLineStyle(lineStyle) {
@@ -94,11 +156,6 @@ export function createOrderLinePriceLineSync(getActivePane) {
       seriesRef = pane.series;
     }
 
-    if (!pane.series.createOrderLine) {
-      console.warn("[BWC:order-line] series.createOrderLine missing — run npm run vendor and hard refresh");
-      return;
-    }
-
     /** @type {Set<string>} */
     const activeIds = new Set();
 
@@ -112,7 +169,9 @@ export function createOrderLinePriceLineSync(getActivePane) {
       if (handle) {
         handle.applyOptions(options);
       } else {
-        handle = pane.series.createOrderLine(options);
+        handle = pane.series.createOrderLine
+          ? pane.series.createOrderLine(options)
+          : createCompatOrderLine(pane.series, options);
         lines.set(state.id, handle);
       }
 
@@ -125,7 +184,7 @@ export function createOrderLinePriceLineSync(getActivePane) {
     for (const [id, line] of lines) {
       if (activeIds.has(id)) continue;
       try {
-        pane.series.removeOrderLine(line);
+        removeCompatOrderLine(pane.series, line);
       } catch {
         /* ignore */
       }
@@ -139,7 +198,7 @@ export function createOrderLinePriceLineSync(getActivePane) {
     if (seriesRef) {
       for (const line of lines.values()) {
         try {
-          seriesRef.removeOrderLine(line);
+          removeCompatOrderLine(seriesRef, line);
         } catch {
           /* ignore */
         }
