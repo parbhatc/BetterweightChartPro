@@ -86,7 +86,7 @@ function capturePriceLayout(pane, settingsStore) {
     visiblePriceRange: Math.abs(maxPrice - minPrice),
     scaleMargins: {
       top: scaleMargins?.top ?? 0.08,
-      bottom: scaleMargins?.bottom ?? 0.12,
+      bottom: scaleMargins?.bottom ?? 0.04,
     },
     autoScale: autoScale !== false,
     lockPriceToBarRatio: Boolean(sc.lockPriceToBarRatio),

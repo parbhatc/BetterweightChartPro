@@ -3,6 +3,7 @@ import {
   loadFavorites,
   MAX_FAVORITES,
   saveLastResolution,
+  shouldShowTimeframeMenu,
   toggleFavorite,
 } from "./favorites.js";
 import {
@@ -233,8 +234,7 @@ export function mountTimeframePicker(opts) {
   let closeCustomDialog = null;
 
   function isSoloPicker() {
-    if (!favorites.length) return true;
-    return favorites.length === 1 && favorites[0] === active;
+    return !shouldShowTimeframeMenu(favorites, active);
   }
 
   function updatePickerChrome() {

@@ -5,7 +5,7 @@ const STORAGE_KEY = "tv-chart-layout-state";
 
 /** @typedef {{ symbol: boolean, interval: boolean, crosshair: boolean, time: boolean, dateRange: boolean, drawings: boolean }} SyncSettings */
 
-/** @typedef {{ name: string, layoutId: string, sync: SyncSettings, drawings?: Record<string, object[]>, indicators?: Record<string, object[]>, chartSettings?: object, toolDefaults?: Record<string, Record<string, unknown>>, drawingTemplates?: import("../../../drawings/toolbars/defaults/layoutTemplates.js").LayoutDrawingTemplates, viewports?: Record<string, { scaleMargins?: { top: number, bottom: number }, logicalRange?: { from: number, to: number }, barSpacing?: number }>, createdAt?: number, updatedAt?: number, lastUsedAt?: number }} SavedLayout */
+/** @typedef {{ name: string, layoutId: string, sync: SyncSettings, drawings?: Record<string, object[]>, indicators?: Record<string, object[]>, chartSettings?: object, toolDefaults?: Record<string, Record<string, unknown>>, drawingTemplates?: import("../../../drawings/toolbars/defaults/layoutTemplates.js").LayoutDrawingTemplates, viewports?: Record<string, object>, createdAt?: number, updatedAt?: number, lastUsedAt?: number }} SavedLayout */
 
 /** @typedef {{ chart: import("prochart").IChartApi, series: import("prochart").ISeriesApi, wrapEl: HTMLElement, chartEl: HTMLElement, destroy: () => void, symbol: string, resolution: string, symbolInfo: object | null, bars: object[] }} SecondaryPane */
 
@@ -66,7 +66,7 @@ export function createLayoutManager(opts) {
   let toolDefaultsSnapshot = null;
   /** @type {import("../../../drawings/toolbars/defaults/layoutTemplates.js").LayoutDrawingTemplates | null} */
   let drawingTemplatesSnapshot = null;
-  /** @type {Record<string, { scaleMargins?: { top: number, bottom: number }, logicalRange?: { from: number, to: number }, barSpacing?: number }> | null} */
+  /** @type {Record<string, object> | null} */
   let viewportsSnapshot = null;
 
   function applyPlacements() {

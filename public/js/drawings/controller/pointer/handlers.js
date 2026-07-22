@@ -42,6 +42,10 @@ function positionMoveDragExtras(drawing) {
   return Number.isFinite(entry) ? { startEntryPrice: entry } : {};
 }
 
+export function supportsValuesLongPress(pointerType) {
+  return pointerType === "mouse" || !pointerType;
+}
+
 /**
  * @param {object} api
  */
@@ -55,6 +59,7 @@ export function createPointerHandlers(api) {
   let pendingMobileTap = null;
   let mobileScrollGesture = false;
   let pinnedCrosshairPointer = null;
+  let activeLongPressPointer = null;
   /** @type {number | null} */
   let mobilePlacementPointerId = null;
   /** @type {{ startClientX: number, startClientY: number, mediaX: number, mediaY: number } | null} */
@@ -420,7 +425,10 @@ export function createPointerHandlers(api) {
       }
 
       api.selectDrawing(null);
-      if (api.getValuesTooltipOnLongPress()) api.scheduleLongPress(ev.clientX, ev.clientY);
+      if (api.getValuesTooltipOnLongPress() && supportsValuesLongPress(ev.pointerType)) {
+        activeLongPressPointer = { pointerId: ev.pointerId, pointerType: ev.pointerType };
+        api.scheduleLongPress(ev.clientX, ev.clientY);
+      }
       return;
     }
 
@@ -471,6 +479,7 @@ export function createPointerHandlers(api) {
 
   function onPointerMove(ev) {
     if (api.isValuesTooltipPinned?.()) {
+      api.swallowChartPointer(ev);
       api.updateValuesTooltipAt(ev.clientX, ev.clientY);
       return;
     }
@@ -573,10 +582,21 @@ export function createPointerHandlers(api) {
 
   function onPointerUp(ev) {
     if (api.isValuesTooltipPinned?.()) {
+      api.swallowChartPointer(ev);
       api.clearLongPress();
       if (ev.type === "pointercancel") {
+        activeLongPressPointer = null;
         pinnedCrosshairPointer = null;
         api.unpinValuesTooltip();
+        return;
+      }
+      if (
+        activeLongPressPointer &&
+        (activeLongPressPointer.pointerId == null || activeLongPressPointer.pointerId === ev.pointerId)
+      ) {
+        const closeOnRelease = activeLongPressPointer.pointerType === "mouse";
+        activeLongPressPointer = null;
+        if (closeOnRelease) api.unpinValuesTooltip();
         return;
       }
       // The release after the original long press keeps inspection active.
@@ -631,6 +651,7 @@ export function createPointerHandlers(api) {
     }
     api.finishPointerDrag(ev);
     api.clearLongPress();
+    activeLongPressPointer = null;
     api.hideValuesTooltip();
     if (api.shouldSyncDrawCrosshair?.() && !pinnedFromMobileTap && !api.useMobileDragPlacement?.()) {
       api.pinDrawCrosshairAt?.(ev.clientX, ev.clientY);
@@ -643,6 +664,7 @@ export function createPointerHandlers(api) {
 
   function onPointerLeave(ev) {
     api.clearLongPress();
+    if (!api.isValuesTooltipPinned?.()) activeLongPressPointer = null;
     if (!api.isValuesTooltipPinned?.()) api.hideValuesTooltip();
     api.setHoveredDrawing(null);
     if (["dot", "demonstration"].includes(api.getActiveTool())) {

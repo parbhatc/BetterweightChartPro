@@ -13,5 +13,5 @@ export const ANCHOR_HIT_PADDING = 5;
 /** Extra hit slop for touch devices when dragging endpoint anchors. */
 export const ANCHOR_HIT_PADDING_COARSE = 14;
 export const VALUES_TOOLTIP_LONG_PRESS_MS = 500;
-export const VALUES_TOOLTIP_MOVE_THRESHOLD = 6;
+export const VALUES_TOOLTIP_MOVE_THRESHOLD = 10;
 export const DRAWING_DRAG_ACTIVATION_PX = 3;

@@ -30,7 +30,7 @@ export function enforcePriceBarRatio(chart, series, priceScaleId, targetRatio) {
   const ps = chart.priceScale(priceScaleId);
   const { scaleMargins } = ps.options();
   const top = scaleMargins?.top ?? 0.08;
-  const bottom = scaleMargins?.bottom ?? 0.12;
+  const bottom = scaleMargins?.bottom ?? 0.04;
   let visible = Math.max(0.04, 1 - top - bottom);
   visible = Math.max(0.04, Math.min(0.96, visible * k));
   const pad = (1 - visible) / 2;

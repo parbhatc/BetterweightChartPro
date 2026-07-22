@@ -11,12 +11,32 @@
 
 /** TV-style wheel zoom: ×1.1 per 100 deltaY */
 const WHEEL_ZOOM_BASE = 1.1;
+export const TOUCH_TRACKING_LONG_PRESS_MS = 240;
+export const TOUCH_TRACKING_CANCEL_DISTANCE = 5;
+
+/** Lightweight Charts tracking-mode movement: preserve the crosshair origin
+ * and add only the current gesture delta on both axes. */
+export function trackingCrosshairPosition(origin, gestureStart, current, bounds = {}) {
+  const clamp = (value, min, max) => Math.min(Math.max(value, min ?? -Infinity), max ?? Infinity);
+  return {
+    x: clamp(origin.x + (current.x - gestureStart.x), bounds.minX, bounds.maxX),
+    y: clamp(origin.y + (current.y - gestureStart.y), bounds.minY, bounds.maxY),
+  };
+}
 
 export function bindEvents(m) {
   const el = m.root;
   let dragging = null;
   let pinch = null;
+  let touchCrosshairPinned = false;
+  let touchTrackingTimer = null;
   const pointers = new Map();
+
+  const clearTouchTrackingTimer = () => {
+    if (touchTrackingTimer == null) return;
+    clearTimeout(touchTrackingTimer);
+    touchTrackingTimer = null;
+  };
 
   const rectPos = (e) => {
     const r = el.getBoundingClientRect();
@@ -38,6 +58,7 @@ export function bindEvents(m) {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2 && m.options.handleScale.pinch) {
+      clearTouchTrackingTimer();
       const pts = [...pointers.values()];
       pinch = { dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), barSpacing: m.timeScale.barSpacing };
       dragging = null;
@@ -48,6 +69,11 @@ export function bindEvents(m) {
     m._stopKinetic();
     dragging = {
       zone,
+      crosshairOnly: e.pointerType === "touch" && touchCrosshairPinned,
+      crosshairWasPinnedAtStart: e.pointerType === "touch" && touchCrosshairPinned,
+      crosshairOriginX: m.crosshair.x,
+      crosshairOriginY: m.crosshair.y,
+      crosshairPaneIndex: m.crosshair.paneIndex,
       startX: e.clientX,
       startY: e.clientY,
       lastX: e.clientX,
@@ -58,10 +84,25 @@ export function bindEvents(m) {
       paneIndex: m.paneIndexAtY(pos.y),
       startBarSpacing: m.timeScale.barSpacing,
     };
+    if (e.pointerType === "touch" && zone === "plot" && !touchCrosshairPinned) {
+      clearTouchTrackingTimer();
+      touchTrackingTimer = setTimeout(() => {
+        touchTrackingTimer = null;
+        if (!dragging || dragging.zone !== "plot" || dragging.moved || pointers.size !== 1) return;
+        const trackedPos = rectPos(e);
+        m.updateCrosshair(trackedPos.x, trackedPos.y, e);
+        touchCrosshairPinned = true;
+        dragging.crosshairOnly = true;
+        dragging.crosshairOriginX = trackedPos.x;
+        dragging.crosshairOriginY = trackedPos.y;
+        dragging.crosshairPaneIndex = m.paneIndexAtY(trackedPos.y);
+      }, TOUCH_TRACKING_LONG_PRESS_MS);
+    }
     try { el.setPointerCapture(e.pointerId); } catch { /* noop */ }
   });
 
   el.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "mouse") touchCrosshairPinned = false;
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && pointers.size === 2) {
       const pts = [...pointers.values()];
@@ -86,15 +127,27 @@ export function bindEvents(m) {
       dragging.lastX = e.clientX;
       dragging.lastY = e.clientY;
       dragging.lastT = now;
-      if (Math.abs(e.clientX - dragging.startX) + Math.abs(e.clientY - dragging.startY) > 2) dragging.moved = true;
+      const gestureDistance = Math.abs(e.clientX - dragging.startX) + Math.abs(e.clientY - dragging.startY);
+      if (gestureDistance >= TOUCH_TRACKING_CANCEL_DISTANCE && !dragging.crosshairOnly) {
+        dragging.moved = true;
+        clearTouchTrackingTimer();
+      } else if (gestureDistance > 2 && dragging.crosshairOnly) {
+        dragging.moved = true;
+      }
+
+      // Match Lightweight Charts: sub-threshold touch movement waits for the
+      // long-press decision instead of accidentally panning or showing a cursor.
+      if (e.pointerType === "touch" && !dragging.crosshairOnly && gestureDistance < TOUCH_TRACKING_CANCEL_DISTANCE) {
+        return;
+      }
 
       if (dragging.zone === "plot") {
         const hs = m.options.handleScroll;
         const isTouch = e.pointerType === "touch";
         const horzOk = isTouch ? hs.horzTouchDrag !== false : hs.pressedMouseMove !== false;
         const vertOk = isTouch ? hs.vertTouchDrag !== false : hs.pressedMouseMove !== false;
-        if (horzOk && dx !== 0) m.timeScale.scrollBy(-dx); // 1:1 px pan, TV-style
-        if (vertOk && dy !== 0) {
+        if (!dragging.crosshairOnly && horzOk && dx !== 0) m.timeScale.scrollBy(-dx); // 1:1 px pan, TV-style
+        if (!dragging.crosshairOnly && vertOk && dy !== 0) {
           const pane = m.panes[dragging.paneIndex];
           if (pane) {
             for (const scale of pane.priceScales.values()) {
@@ -119,11 +172,32 @@ export function bindEvents(m) {
         }
       }
     }
-    if (zoneAt(e) === "plot" || dragging) m.updateCrosshair(pos.x, pos.y, e);
+    if (dragging?.crosshairOnly) {
+      const trackedPane = m.panes[dragging.crosshairPaneIndex];
+      const tracked = trackingCrosshairPosition(
+        { x: dragging.crosshairOriginX, y: dragging.crosshairOriginY },
+        { x: dragging.startX, y: dragging.startY },
+        { x: e.clientX, y: e.clientY },
+        {
+          minX: 0,
+          maxX: Math.max(0, m.paneWidth() - 1),
+          minY: trackedPane?.top ?? 0,
+          maxY: trackedPane
+            ? Math.max(trackedPane.top, trackedPane.top + trackedPane.height - 1)
+            : Math.max(0, m.height - m.timeAxisHeight() - 1),
+        },
+      );
+      m.updateCrosshair(tracked.x, tracked.y, e);
+    } else if (e.pointerType === "touch" && dragging) {
+      // Ordinary mobile swipes pan only. Crosshair tracking is entered solely
+      // by the 240 ms long press above.
+      m.clearCrosshair();
+    } else if (zoneAt(e) === "plot" || dragging) m.updateCrosshair(pos.x, pos.y, e);
     else m.clearCrosshair();
   });
 
   const endPointer = (e) => {
+    clearTouchTrackingTimer();
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
     if (dragging) {
@@ -132,14 +206,45 @@ export function bindEvents(m) {
       const isTouch = e.pointerType === "touch";
       const kinetic = m.options.kineticScroll;
       const kineticOn = isTouch ? kinetic.touch !== false : kinetic.mouse === true;
-      if (wasPlot && kineticOn && Math.abs(vx) > 0.15 && dragging.moved) m._startKinetic(vx);
+      if (wasPlot && !dragging.crosshairOnly && kineticOn && Math.abs(vx) > 0.15 && dragging.moved) m._startKinetic(vx);
       dragging = null;
     }
   };
   el.addEventListener("pointerup", (e) => {
     const pos = rectPos(e);
     const wasDrag = dragging && dragging.moved;
+    const wasPlot = dragging?.zone === "plot";
+    const wasCrosshairOnly = Boolean(dragging?.crosshairOnly);
+    const crosshairWasPinnedAtStart = Boolean(dragging?.crosshairWasPinnedAtStart);
     endPointer(e);
+    if (e.pointerType === "touch") {
+      if (wasCrosshairOnly && crosshairWasPinnedAtStart && !wasDrag) {
+        // A simple tap while already tracking exits tracking mode.
+        touchCrosshairPinned = false;
+        m.clearCrosshair();
+        return;
+      }
+      if (wasCrosshairOnly && wasPlot) {
+        // Releasing tracking leaves the selected candle pinned.
+        touchCrosshairPinned = true;
+        return;
+      }
+      if (touchCrosshairPinned) {
+        // The next ordinary tap dismisses the pinned crosshair.
+        touchCrosshairPinned = false;
+        m.clearCrosshair();
+        return;
+      }
+      if (!wasDrag && wasPlot) {
+        // Preserve chart/drawing click subscribers without leaving a crosshair
+        // behind after an ordinary mobile tap.
+        m.updateCrosshair(pos.x, pos.y, e);
+        const param = m._crosshairParam(e);
+        for (const fn of m._clickSubs) { try { fn(param); } catch (err) { console.error(err); } }
+        m.clearCrosshair();
+      }
+      return;
+    }
     if (!wasDrag && zoneAt(e) === "plot") {
       m.updateCrosshair(pos.x, pos.y, e);
       const param = m._crosshairParam(e);
@@ -147,8 +252,8 @@ export function bindEvents(m) {
     }
   });
   el.addEventListener("pointercancel", endPointer);
-  el.addEventListener("pointerleave", () => {
-    if (!dragging) m.clearCrosshair();
+  el.addEventListener("pointerleave", (e) => {
+    if (!dragging && !(e.pointerType === "touch" && touchCrosshairPinned)) m.clearCrosshair();
   });
 
   el.addEventListener("dblclick", (e) => {

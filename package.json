@@ -20,10 +20,10 @@
     "scripts"
   ],
   "scripts": {
-    "start": "node server/index.mjs",
+    "start": "node --use-system-ca server/index.mjs",
     "dev": "node scripts/dev-server.mjs",
     "dev:live": "node scripts/dev-live.mjs",
-    "start:testing": "node server/index.mjs",
+    "start:testing": "node --use-system-ca server/index.mjs",
     "dev:testing": "npm run dev",
     "new:indicator": "node scripts/new-indicator.mjs",
     "test": "node --test test/**/*.test.mjs"

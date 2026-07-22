@@ -1,4 +1,23 @@
 /**
+ * Convert a logical pan delta between panes with different bar cadences.
+ * @param {{ from: number, to: number }} delta
+ * @param {number | null | undefined} sourceBarSec
+ * @param {number | null | undefined} targetBarSec
+ */
+export function scaleLogicalPanDelta(delta, sourceBarSec, targetBarSec) {
+  if (
+    !Number.isFinite(sourceBarSec) ||
+    !Number.isFinite(targetBarSec) ||
+    sourceBarSec <= 0 ||
+    targetBarSec <= 0
+  ) {
+    return delta;
+  }
+  const ratio = sourceBarSec / targetBarSec;
+  return { from: delta.from * ratio, to: delta.to * ratio };
+}
+
+/**
  * Layout sync helpers for multi-pane charts.
  * @param {object} deps
  */
@@ -48,15 +67,8 @@ export function createLayoutSync(deps) {
       }
       return;
     }
-    if (deps.isBarsLoading?.()) return;
-    if (deps.isHistoryRestorePending?.()) return;
-
     const sourcePane = layoutPanes().find((p) => p.chart === sourceChart);
     if (!sourcePane?.bars?.length) return;
-
-    const isPanning = Boolean(deps.isChartPanning?.());
-    const activePane = deps.getActivePane?.();
-    if (isPanning && activePane?.chart && activePane.chart !== sourceChart) return;
 
     const ts = sourceChart.timeScale();
     const timeRange = ts.getVisibleRange?.();
@@ -64,6 +76,15 @@ export function createLayoutSync(deps) {
       ? liveLogicalRange
       : ts.getVisibleLogicalRange();
     const previousLogicalRange = lastSyncedLogicalRange.get(sourceChart);
+    if (deps.isBarsLoading?.() || deps.isHistoryRestorePending?.()) {
+      if (isValidLogicalRange(logicalRange)) lastSyncedLogicalRange.set(sourceChart, logicalRange);
+      return;
+    }
+
+    const isPanning = Boolean(deps.isChartPanning?.());
+    const activePane = deps.getActivePane?.();
+    if (isPanning && activePane?.chart && activePane.chart !== sourceChart) return;
+
     const logicalDelta =
       isPanning && isValidLogicalRange(previousLogicalRange) && isValidLogicalRange(logicalRange)
         ? {
@@ -71,6 +92,12 @@ export function createLayoutSync(deps) {
             to: logicalRange.to - previousLogicalRange.to,
           }
         : null;
+    // The first live range event establishes a baseline. Copying its absolute
+    // logical indexes would jump peers whose history length or interval differs.
+    if (isPanning && !logicalDelta) {
+      if (isValidLogicalRange(logicalRange)) lastSyncedLogicalRange.set(sourceChart, logicalRange);
+      return;
+    }
     // Lightweight Charts can report a stale time range until pointer-up. Use
     // the event's live logical movement while dragging, then exact time sync
     // resumes automatically after the gesture ends.
@@ -86,9 +113,14 @@ export function createLayoutSync(deps) {
         try {
           const targetLogical = targetTs.getVisibleLogicalRange();
           if (logicalDelta && isValidLogicalRange(targetLogical)) {
+            const targetDelta = scaleLogicalPanDelta(
+              logicalDelta,
+              sourcePane.barSec,
+              pane.barSec,
+            );
             const nextLogical = {
-              from: targetLogical.from + logicalDelta.from,
-              to: targetLogical.to + logicalDelta.to,
+              from: targetLogical.from + targetDelta.from,
+              to: targetLogical.to + targetDelta.to,
             };
             targetTs.setVisibleLogicalRange(nextLogical);
             lastSyncedLogicalRange.set(pane.chart, nextLogical);
@@ -98,12 +130,12 @@ export function createLayoutSync(deps) {
             if (isValidLogicalRange(applied)) {
               lastSyncedLogicalRange.set(pane.chart, applied);
             }
-          } else if (useLogical) {
+          } else if (useLogical && sourcePane.barSec === pane.barSec) {
             targetTs.setVisibleLogicalRange(logicalRange);
             lastSyncedLogicalRange.set(pane.chart, logicalRange);
           }
         } catch {
-          if (useLogical) {
+          if (useLogical && sourcePane.barSec === pane.barSec) {
             try {
               targetTs.setVisibleLogicalRange(logicalRange);
             } catch {

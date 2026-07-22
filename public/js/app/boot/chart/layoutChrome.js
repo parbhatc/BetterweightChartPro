@@ -78,6 +78,8 @@ export function wireLayoutChrome(ctx) {
       ctx.layoutManager.setToolDefaultsSnapshot(item.toolDefaults ?? null);
       setLayoutDrawingTemplates(item.drawingTemplates);
       ctx.layoutManager.setDrawingTemplatesSnapshot(item.drawingTemplates ?? null);
+      ctx.layoutManager.setViewportsSnapshot(item.viewports ?? null);
+      ctx.queueLayoutViewportRestore?.(item.viewports ?? null);
       ctx.drawingHub?.setDrawingsByPane?.(item.drawings);
       ctx.indicatorController?.setIndicatorsByPane?.(item.indicators ?? null);
       ctx.layoutManager.setIndicatorsSnapshot(item.indicators ?? null);
@@ -145,6 +147,7 @@ export function wireLayoutChrome(ctx) {
     ctx.restoreLayoutToolDefaults();
     ctx.restoreLayoutDrawingTemplates();
     ctx.restoreLayoutDrawings();
+    ctx.queueLayoutViewportRestore?.();
     if (ctx.layoutManager.getAutoSave()) {
       ctx.saveLayoutToLibrary();
     } else {

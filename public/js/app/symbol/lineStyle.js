@@ -9,6 +9,17 @@ export function resolveSymbolLineColor(sc, sym, bar, prevBar) {
   return isBarUp(bar, prevBar, sym.colorBarsOnPrevClose) ? up : down;
 }
 
+export function resolveChartStyleLineColor(seriesOptions = {}) {
+  const style = seriesOptions.chartStyle ?? "candles";
+  if (style === "line" || style === "area") {
+    return seriesOptions.chartLineColor || seriesOptions.upColor || "#089981";
+  }
+  if (style === "baseline") {
+    return seriesOptions.upColor || seriesOptions.chartLineColor || "#089981";
+  }
+  return null;
+}
+
 /**
  * Bar used for custom price-line color — always the forming candle, not crosshair hover.
  * @param {object} pane
@@ -28,6 +39,8 @@ export function priceLineBarForPane(pane, settingsStore, symbolInfo) {
  * @param {object | null} symbolInfo
  */
 export function resolvePriceLineColorForPane(pane, settingsStore, symbolInfo) {
+  const chartStyleColor = resolveChartStyleLineColor(pane?.series?.options?.());
+  if (chartStyleColor) return chartStyleColor;
   const sc = settingsStore.get().scales ?? {};
   const sym = settingsStore.get().symbol ?? {};
   const { bar, prevBar } = priceLineBarForPane(pane, settingsStore, symbolInfo);

@@ -97,7 +97,7 @@ function wireSynchronizedVerticalPan(pane, getAllChartPanes, getDrawingHub) {
 
     const height = pane.el.getBoundingClientRect().height;
     if (!height) return;
-    const sourceMargins = pane.series.priceScale().options().scaleMargins ?? { top: 0.08, bottom: 0.12 };
+    const sourceMargins = pane.series.priceScale().options().scaleMargins ?? { top: 0.08, bottom: 0.04 };
     const requestedShift = (ev.clientY - drag.lastY) / height;
     const shift = Math.max(0.02 - sourceMargins.top, Math.min(sourceMargins.bottom - 0.02, requestedShift));
     drag.lastY = ev.clientY;
@@ -105,7 +105,7 @@ function wireSynchronizedVerticalPan(pane, getAllChartPanes, getDrawingHub) {
     for (const target of getAllChartPanes()) {
       const scale = target.series?.priceScale?.();
       if (!scale) continue;
-      const margins = scale.options().scaleMargins ?? { top: 0.08, bottom: 0.12 };
+      const margins = scale.options().scaleMargins ?? { top: 0.08, bottom: 0.04 };
       const targetShift = Math.max(0.02 - margins.top, Math.min(margins.bottom - 0.02, shift));
       if (targetShift === 0) continue;
       scale.applyOptions({

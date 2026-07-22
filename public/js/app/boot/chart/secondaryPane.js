@@ -23,6 +23,7 @@ export function createSecondaryPaneFactory(ctx) {
     wrap.appendChild(stage);
 
     const paneChart = createTvChart(chartEl, ctx.themeColors);
+    paneChart.series.applyOptions({ chartStyle: ctx.chartType ?? "candles" });
     paneChart.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       if (ctx._layoutRestorePending) return;
       ctx.scheduleAutosaveLayout?.();

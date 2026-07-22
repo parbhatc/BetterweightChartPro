@@ -285,6 +285,7 @@ export function createBootContext(overrides) {
     restoreLayoutChartSettings: () => {},
     restoreLayoutToolDefaults: () => {},
     restoreLayoutDrawingTemplates: () => {},
+    queueLayoutViewportRestore: () => {},
     restoreLayoutDrawings: () => {},
     uniqueLayoutName: async () => null,
     mountChartSettingsUi: () => /** @type {ReturnType<import("../../../ui/chart/settings.js").mountChartSettings>} */ (/** @type {unknown} */ (null)),

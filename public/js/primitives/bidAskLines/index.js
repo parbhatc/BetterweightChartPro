@@ -61,6 +61,7 @@ export function attachBidAskLinesPrimitive(opts) {
         axisLabelColor: color,
         axisLabelTextColor: "#ffffff",
         axisLabelText: axisLabelVisible ? (cfg.text ?? String(cfg.price)) : "",
+        axisLabelTitle: title,
         lineWidth,
         lineStyle,
         title,

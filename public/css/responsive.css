@@ -227,9 +227,14 @@
 
   .tv-tf__menu-wrap:not([hidden]) {
     width: 1.125rem;
-    margin-left: var(--space-1);
+    margin-left: 0;
     opacity: 1;
     pointer-events: auto;
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    flex: 0 0 1.125rem;
+    background: var(--tv-toolbar-bg, var(--tv-bg));
   }
 
   .tv-tf__bar {

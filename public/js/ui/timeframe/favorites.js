@@ -7,6 +7,11 @@ export const MAX_FAVORITES = 8;
 /** Default favorite bar order when none are saved yet. */
 export const DEFAULT_FAVORITES = ["30S", "1", "5", "15", "60"];
 
+export function shouldShowTimeframeMenu(favorites, active) {
+  if (!favorites?.length) return false;
+  return favorites.length > 1 || favorites[0] !== active;
+}
+
 /**
  * @param {string[]} ids
  * @param {Array<{ id: string }>} resolutions

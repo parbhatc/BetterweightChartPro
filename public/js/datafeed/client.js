@@ -106,7 +106,9 @@ export function readPageOptions(search = window.location.search) {
   const sp = new URLSearchParams(search);
   const isTesting =
     typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "").endsWith("/testing");
-  const datafeed = sp.get("datafeed") ?? (isTesting ? "tradesea" : undefined);
+  // The regular workspace is a trader-facing surface, so use the live feed by
+  // default. The deterministic fake feed remains available with ?datafeed=fake.
+  const datafeed = sp.get("datafeed") ?? (isTesting ? "tradesea" : "tradingview");
   const remoteFeed = datafeed === "tradingview" || datafeed === "tradesea";
   const defaultSymbol =
     datafeed === "tradingview" ? "CME_MINI:NQ1!" : datafeed === "tradesea" ? "MNQ" : "NQ";
@@ -130,6 +132,7 @@ export function readPageOptions(search = window.location.search) {
     drawings: sp.get("drawings") !== "0",
     replay: sp.get("replay") !== "0",
     chrome: sp.get("chrome") !== "0",
+    chartTypes: sp.get("chart_types") !== "0",
     disabled_features: sp.get("disabled_features")
       ? sp.get("disabled_features").split(",").map((s) => s.trim()).filter(Boolean)
       : undefined,

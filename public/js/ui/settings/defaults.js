@@ -66,11 +66,13 @@ export const DEFAULT_SETTINGS = {
     askLabelLineColor: "#F23645",
     bidAskLabelLineWidth: 1,
     bidAskLabelLineStyle: 1,
+    bidAskDefaultsVersion: 2,
     dayOfWeekOnLabels: true,
     dateFormat: "dd_mmm_yy",
     timeHoursFormat: "12-hours",
   },
   canvas: {
+    appearancePreset: "none",
     backgroundType: "solid",
     backgroundColor: "#020617",
     backgroundGradientTopColor: "#0f172a",
@@ -91,9 +93,9 @@ export const DEFAULT_SETTINGS = {
     scalesLineColor: "rgba(242, 242, 242, 0)",
     navButtonsVisibility: "visibleOnMouseOver",
     paneButtonsVisibility: "visibleOnMouseOver",
-    attributionLogo: true,
+    attributionLogo: false,
     marginTop: 10,
-    marginBottom: 8,
+    marginBottom: 4,
     marginRight: 10,
   },
 };
@@ -109,6 +111,14 @@ export const SETTINGS_SECTIONS = [
 
 export const THEME_OPTIONS = [
   { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+];
+
+export const APPEARANCE_PRESET_OPTIONS = [
+  { value: "none", label: "None / Custom" },
+  { value: "dark", label: "Dark" },
+  { value: "gray", label: "Cool Gray" },
+  { value: "blue", label: "Deep Blue" },
   { value: "light", label: "Light" },
 ];
 

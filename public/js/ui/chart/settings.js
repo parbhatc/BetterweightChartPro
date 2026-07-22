@@ -19,6 +19,7 @@ import {
   BACKGROUND_TYPE_OPTIONS,
   SETTINGS_UI_STORAGE_KEY,
   THEME_OPTIONS,
+  APPEARANCE_PRESET_OPTIONS,
   resolveSettingsSection,
 } from "../settings/defaults.js";
 
@@ -61,6 +62,7 @@ function saveSettingsUiState(patch) {
  * @param {() => void} [opts.onLiveChange]
  * @param {() => "dark" | "light"} [opts.getTheme]
  * @param {(mode: "dark" | "light") => void} [opts.onThemeChange]
+ * @param {(preset: string) => void} [opts.onAppearancePresetChange]
  * @param {() => { showMobilePlacementBar?: boolean }} [opts.getDrawingSettings]
  * @param {() => boolean} [opts.getQuotesEnabled]
  * @param {() => number | null} [opts.getLivePriceBarRatio]
@@ -73,6 +75,7 @@ export function mountChartSettings(opts) {
     onLiveChange,
     getTheme,
     onThemeChange,
+    onAppearancePresetChange,
     getDrawingSettings,
     getQuotesEnabled,
     getLivePriceBarRatio,
@@ -762,19 +765,29 @@ export function mountChartSettings(opts) {
 
   function appearanceSection() {
     const theme = getTheme?.() ?? "dark";
+    const preset = getDraft().canvas?.appearancePreset ?? "none";
     const opts = THEME_OPTIONS.map(
       (o) => `<option value="${o.value}" ${o.value === theme ? "selected" : ""}>${o.label}</option>`,
+    ).join("");
+    const presetOpts = APPEARANCE_PRESET_OPTIONS.map(
+      (o) => `<option value="${o.value}" ${o.value === preset ? "selected" : ""}>${o.label}</option>`,
     ).join("");
     return `${sectionBlock(
       "Theme",
       `<div class="tv-set__field-row">
+        <span class="tv-set__field-label">Chart preset</span>
+        <div class="tv-set__select-wrap">
+          <select class="tv-set__select" data-appearance-preset-select aria-label="Chart preset">${presetOpts}</select>
+          <span class="tv-set__select-chev">${ICONS.chevron}</span>
+        </div>
+      </div>
+      <div class="tv-set__field-row">
         <span class="tv-set__field-label">Color theme</span>
         <div class="tv-set__select-wrap">
           <select class="tv-set__select" data-theme-select aria-label="Color theme">${opts}</select>
           <span class="tv-set__select-chev">${ICONS.chevron}</span>
         </div>
-      </div>
-      ${checkRow("TradingView logo", "canvas", "attributionLogo")}`,
+      </div>`,
       { fields: true },
     )}`;
   }
@@ -1093,6 +1106,15 @@ export function mountChartSettings(opts) {
 
       dialogEl.addEventListener("change", (ev) => {
         const t = ev.target;
+        if (t instanceof HTMLSelectElement && t.dataset.appearancePresetSelect !== undefined) {
+          onAppearancePresetChange?.(t.value);
+          if (draft) {
+            snapshot = structuredClone(store.get());
+            draft = structuredClone(store.get());
+          }
+          renderPanel();
+          return;
+        }
         if (t instanceof HTMLSelectElement && t.dataset.themeSelect !== undefined) {
           const mode = t.value === "light" ? "light" : "dark";
           onThemeChange?.(mode);

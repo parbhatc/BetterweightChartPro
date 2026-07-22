@@ -1,4 +1,3 @@
-import { resolutionSec } from "../../../chart/resolutions.js";
 import { withPreservedViewport } from "../../../chart/pane/viewport.js";
 import {
   restoreViewportBarLayout,
@@ -6,6 +5,9 @@ import {
   computeViewportBarLayoutLogical,
   computeViewportLogicalFromUtc,
 } from "../../../chart/pane/viewportBarLayout.js";
+import { timeframeSwitchPrefersUtcRestore } from "./timeframeRestorePolicy.js";
+
+export { timeframeSwitchPrefersUtcRestore } from "./timeframeRestorePolicy.js";
 
 /**
  * @param {object[]} bars
@@ -51,29 +53,12 @@ export function clampLogicalRangeToPlaybackAnchor(pane, logicalRange, anchorSec)
 export function resolveTimeframeSwitchLogicalRange(pane, layout, ctx) {
   if (!layout || !pane?.bars?.length) return null;
 
-  const fromSec = layout.barSec ?? resolutionSec(layout.resolution);
-  const toSec = resolutionSec(pane.resolution);
   const barLogical = computeViewportBarLayoutLogical(pane, layout);
   const utcLogical = computeViewportLogicalFromUtc(pane, layout, ctx.settingsStore, ctx.resolutions);
-  const hasUtc = layout.visibleFromUtc != null && layout.visibleToUtc != null;
-
-  if (fromSec != null && toSec != null && toSec > fromSec && barLogical) {
-    return barLogical;
-  }
-  if (hasUtc && utcLogical && fromSec != null && toSec != null && toSec < fromSec) {
-    return utcLogical;
-  }
-  if (barLogical) return barLogical;
-  return utcLogical;
-}
-
-/** @param {ReturnType<typeof import("../../../chart/pane/viewportBarLayout.js").captureViewportBarLayout> | null | undefined} layout @param {string | null | undefined} targetResolution */
-export function timeframeSwitchPrefersUtcRestore(layout, targetResolution) {
-  if (!layout || layout.visibleFromUtc == null || layout.visibleToUtc == null) return false;
-  const fromSec = layout.barSec ?? resolutionSec(layout.resolution);
-  const toSec = resolutionSec(targetResolution);
-  if (fromSec != null && toSec != null && toSec > fromSec) return false;
-  return true;
+  // A live timeframe switch should preserve how many bar slots are visible and
+  // how many slots sit beyond the latest candle. Preserving UTC duration turns
+  // a 10-bar tail on 60m into roughly 600 empty slots on 1m.
+  return barLogical ?? utcLogical;
 }
 
 /**

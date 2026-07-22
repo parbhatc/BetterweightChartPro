@@ -27,7 +27,7 @@ export async function attachQuoteManager(ctx) {
   /** @type {Map<string, import("../../datafeed/quotes.js").MarketQuote>} */
   ctx.quotesBySymbol = new Map();
 
-  /** @type {Map<string, { uid: string, refCount: number }>} */
+  /** @type {Map<string, { uid: string, refCount: number, listeners: Set<(quote: object) => void> }>} */
   const subs = new Map();
 
   function refreshPanesForSymbol(symbol) {
@@ -44,18 +44,22 @@ export async function attachQuoteManager(ctx) {
    * @param {object} pane
    * @param {import("../../datafeed/types.js").SymbolInfo} [symbolInfo]
    */
-  function subscribePaneQuotes(pane, symbolInfo) {
-    const sym = pane?.symbol;
-    const info = symbolInfo ?? pane?.symbolInfo;
+  function subscribeSymbolQuote(sym, info, listener) {
     if (!sym || !info) return;
 
     const existing = subs.get(sym);
     if (existing) {
       existing.refCount += 1;
-      return;
+      if (listener) existing.listeners.add(listener);
+      const cached = ctx.quotesBySymbol.get(sym);
+      if (cached && listener) queueMicrotask(() => listener(cached));
+      let active = true;
+      return () => { if (!active) return; active = false; unsubscribeSymbolQuote(sym, listener); };
     }
 
     const uid = `quote_${sym}_${Date.now()}`;
+    const listeners = new Set();
+    if (listener) listeners.add(listener);
     datafeed.subscribeQuotes(
       [info],
       (quotes) => {
@@ -72,18 +76,30 @@ export async function attachQuoteManager(ctx) {
         };
         ctx.quotesBySymbol.set(sym, q);
         refreshPanesForSymbol(sym);
+        for (const notify of listeners) {
+          try { notify(q); } catch { /* isolate quote consumers */ }
+        }
       },
       uid,
     );
-    subs.set(sym, { uid, refCount: 1 });
+    subs.set(sym, { uid, refCount: 1, listeners });
+    let active = true;
+    return () => { if (!active) return; active = false; unsubscribeSymbolQuote(sym, listener); };
+  }
+
+  function subscribePaneQuotes(pane, symbolInfo) {
+    const sym = pane?.symbol;
+    const info = symbolInfo ?? pane?.symbolInfo;
+    return subscribeSymbolQuote(sym, info);
   }
 
   /**
    * @param {string} symbol
    */
-  function unsubscribePaneQuotes(symbol) {
+  function unsubscribeSymbolQuote(symbol, listener) {
     const sub = subs.get(symbol);
     if (!sub) return;
+    if (listener) sub.listeners.delete(listener);
     sub.refCount -= 1;
     if (sub.refCount > 0) return;
     datafeed.unsubscribeQuotes?.(sub.uid);
@@ -97,9 +113,11 @@ export async function attachQuoteManager(ctx) {
       typeof paneOrSymbol === "string"
         ? paneOrSymbol
         : paneOrSymbol?.symbol;
-    if (symbol) unsubscribePaneQuotes(symbol);
+    if (symbol) unsubscribeSymbolQuote(symbol);
   };
   ctx.getQuoteForSymbol = (symbol) => ctx.quotesBySymbol.get(symbol) ?? null;
+  ctx.subscribeQuote = (symbol, symbolInfo, listener) =>
+    subscribeSymbolQuote(symbol, symbolInfo, listener) ?? (() => {});
 
   for (const pane of ctx.getAllChartPanes()) {
     if (pane.symbolInfo) subscribePaneQuotes(pane, pane.symbolInfo);

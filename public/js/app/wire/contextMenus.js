@@ -27,6 +27,7 @@ export function wirePaneContextMenus(opts) {
     getIndicatorCount,
     removeIndicators,
     resetChartView,
+    resetPriceScale = resetChartView,
     resetTimeScale,
   } = opts;
 
@@ -121,9 +122,11 @@ export function wirePaneContextMenus(opts) {
       };
     },
     actions: {
-      setAutoScale: () => {
-        settingsStore.set("scales", "autoScale", true);
-        resetChartView(pane);
+      resetPriceScale: () => resetPriceScale(pane),
+      toggleAutoScale: () => {
+        const current = Boolean(settingsStore.get().scales?.autoScale);
+        settingsStore.set("scales", "autoScale", !current);
+        if (!current) resetPriceScale(pane);
       },
       toggleLockRatio: () => {
         const sc = settingsStore.get().scales ?? {};

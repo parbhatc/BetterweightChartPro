@@ -550,3 +550,39 @@
   text-align: center;
   line-height: 1.05;
 }
+
+[data-prochart-line-end-pulse] {
+  position: absolute;
+  z-index: 3;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  color: var(--prochart-line-end-color, #089981);
+}
+
+[data-prochart-line-end-dot],
+[data-prochart-line-end-ring] {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+[data-prochart-line-end-dot] {
+  background: currentColor;
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent);
+}
+
+[data-prochart-line-end-ring] {
+  border: 2px solid currentColor;
+  animation: prochart-line-end-flash 1.6s ease-out infinite;
+}
+
+@keyframes prochart-line-end-flash {
+  0%, 18% { opacity: .8; transform: scale(.75); }
+  70%, 100% { opacity: 0; transform: scale(2.4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-prochart-line-end-ring] { animation: none; opacity: .35; }
+}

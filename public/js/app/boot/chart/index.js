@@ -28,6 +28,7 @@ import { wireLayoutChrome } from "./layoutChrome.js";
 import { wireKeyboardShortcuts } from "./keyboard.js";
 import { wireSymbolAndTimeframePickers } from "./pickers.js";
 import { mountChartToolbarTools } from "../../../ui/header/chartTools.js";
+import { loadChartType, mountChartTypePicker } from "../../../ui/header/chartTypes.js";
 import { attachIndicatorsBoot } from "./indicatorsBoot.js";
 import { attachBottomPaneBoot } from "./bottomPaneBoot.js";
 import { attachChartTableBoot } from "./chartTableBoot.js";
@@ -67,6 +68,7 @@ export async function bootChart(overrides = {}) {
   setBootFeatureFlags(featureFlags);
   ctx.featureFlags = featureFlags;
   ctx.debugOn = debugOn;
+  ctx.chartType = loadChartType();
   document.documentElement.setAttribute("data-theme", ctx.currentTheme);
   const releaseTouchScrollLock = mountAppTouchScrollLock();
 
@@ -150,6 +152,18 @@ export async function bootChart(overrides = {}) {
   if (ctx.opts.chrome && ctx.chromeEl) {
     const toolbarLeft = ctx.chromeEl.querySelector(".tv-toolbar__left");
     if (toolbarLeft) {
+      if (ctx.opts.chartTypes !== false && ctx.featureFlags.isEnabled(CHART_FEATURES.CHART_TYPES)) {
+        ctx.chartTypeUi = mountChartTypePicker(toolbarLeft, {
+          initial: ctx.chartType,
+          apply: (type) => {
+            ctx.chartType = type;
+            for (const pane of ctx.getAllChartPanes()) {
+              pane.series?.applyOptions?.({ chartStyle: type });
+              pane.priceLineLabel?.requestRefresh?.();
+            }
+          },
+        });
+      }
       ctx.chartToolbarTools = mountChartToolbarTools(toolbarLeft, {
         replay: replayEnabled,
         replayHideToggle: Boolean(ctx.opts.replayHideToggle ?? ctx.opts.replayPersistent),
@@ -241,6 +255,28 @@ export async function bootChart(overrides = {}) {
       liveBarListeners: ctx.liveBarListeners,
     });
     ctx.orderLines = widget.orderLines;
+    widget.chartTypes = {
+      available: () => ["candles", "hollow-candles", "bars", "line", "area", "baseline", "heikin-ashi"],
+      get: () => ctx.chartType,
+      set: (type) => ctx.chartTypeUi?.setValue(type),
+    };
+    widget.quotes = {
+      get: (symbol) => ctx.getQuoteForSymbol?.(symbol) ?? null,
+      async snapshot(symbols) {
+        const list = Array.isArray(symbols) ? symbols : [symbols];
+        const infos = await Promise.all(list.map((symbol) => ctx.datafeed.resolveSymbol(symbol)));
+        return typeof ctx.datafeed.getQuotes === "function" ? ctx.datafeed.getQuotes(infos) : [];
+      },
+      async subscribe(symbol, listener) {
+        const info = await ctx.datafeed.resolveSymbol(symbol);
+        return ctx.subscribeQuote?.(symbol, info, listener) ?? (() => {});
+      },
+    };
+    const destroyWidget = widget.destroy.bind(widget);
+    widget.destroy = () => {
+      ctx.chartTypeUi?.destroy?.();
+      destroyWidget();
+    };
     const orderLines = widget.orderLines;
     const prevPanEnd = ctx.viewportDeps.onChartPanEnd;
     ctx.viewportDeps.onChartPanEnd = () => {

@@ -39,6 +39,8 @@ export function attachPaneHelpers(ctx) {
       chart: p.chart,
       series: p.series,
       symbol: p.symbol,
+      resolution: p.resolution,
+      barSec: barSecForPane(p, ctx.resolutions),
       bars: p.bars,
     }));
   }

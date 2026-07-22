@@ -9,7 +9,7 @@ import { measurePriceBarRatio } from "../../../chart/price/barRatio.js";
 import { withPreservedViewport } from "../../../chart/pane/viewport.js";
 import { mountChartSettings } from "../../../ui/chart/settings.js";
 import { loadShowMobilePlacementBar, saveShowMobilePlacementBar } from "../../../drawings/toolbars/utility/settings/store.js";
-import { applyCanvasPresetForTheme } from "../themes.js";
+import { applyCanvasPresetForTheme, chartAppearancePreset } from "../themes.js";
 import { saveThemePreference } from "../../../ui/theme/store.js";
 import { chartThemeFallback } from "../themes.js";
 
@@ -48,6 +48,10 @@ export function attachSettingsBoot(ctx) {
       onThemeChange: (mode) => {
         saveThemePreference(mode);
         applyThemeMode(mode);
+      },
+      onAppearancePresetChange: (id) => {
+        applyAppearancePreset(id);
+        chartSettings?.syncDraftFromStore?.();
       },
       getDrawingSettings: () => ({
         showMobilePlacementBar: ctx.drawing?.getShowMobilePlacementBar?.() ?? loadShowMobilePlacementBar(),
@@ -92,6 +96,23 @@ export function attachSettingsBoot(ctx) {
     applyCanvasPresetForTheme(ctx.settingsStore, ctx.currentTheme);
     ctx.applyChartSettings();
     refreshWatermark();
+  }
+
+  function applyAppearancePreset(id) {
+    const preset = chartAppearancePreset(id);
+    if (!preset) {
+      ctx.settingsStore.set("canvas", "appearancePreset", "none");
+      return;
+    }
+    ctx.currentTheme = preset.theme;
+    saveThemePreference(ctx.currentTheme);
+    const colors =
+      ctx.cfg.themes?.[ctx.currentTheme] ??
+      ctx.cfg.themes?.dark ??
+      chartThemeFallback(ctx.currentTheme);
+    document.documentElement.setAttribute("data-theme", ctx.currentTheme);
+    ctx.applyTheme(colors);
+    ctx.settingsStore.merge({ canvas: preset.canvas, symbol: preset.symbol });
   }
 
   function formatPrice(n) {
@@ -190,6 +211,7 @@ export function attachSettingsBoot(ctx) {
     mountChartSettingsUi,
     refreshWatermark,
     applyThemeMode,
+    applyAppearancePreset,
     formatPrice,
     activePriceScaleId,
     applySettingsToChartLocal,

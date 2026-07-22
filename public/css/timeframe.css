@@ -62,10 +62,11 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: 0;
+  width: 1.125rem;
+  margin-left: 0;
   overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   transition:
     width var(--duration-normal) var(--ease-out),
     opacity var(--duration-fast) var(--ease-out),
@@ -78,7 +79,7 @@
 .tv-tf__bar--open .tv-tf__menu-wrap:not([hidden]),
 .tv-tf__bar:focus-within .tv-tf__menu-wrap:not([hidden]) {
   width: 1.125rem;
-  margin-left: var(--space-1);
+  margin-left: 0;
   opacity: 1;
   pointer-events: auto;
 }

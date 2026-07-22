@@ -411,8 +411,9 @@ async function handleNews(pathname, sp, res) {
   if (pathname === "/news/calendar") {
     try {
       const payload = await newsCalendar(sp);
-      const status = payload.error && !payload.events?.length ? 404 : 200;
-      json(res, status, payload);
+      // An empty optional calendar is still a valid response. Returning 404
+      // makes the chart boot look broken when no local news file is installed.
+      json(res, 200, payload);
     } catch (err) {
       json(res, 502, { error: err.message || "Calendar failed", events: [] });
     }

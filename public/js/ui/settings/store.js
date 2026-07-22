@@ -15,6 +15,23 @@ function normalizeSettings(next) {
       Object.assign(merged[section], values);
     }
   }
+  // Migrate the previous lower-margin default so existing saved layouts pick
+  // up the tighter TradingView-like spacing without touching custom values.
+  if (Number(next.canvas?.marginBottom) === 8) {
+    merged.canvas.marginBottom = DEFAULT_SETTINGS.canvas.marginBottom;
+  }
+  // Version 1 briefly shipped bid/ask labels and lines enabled by default.
+  // Move those profiles back to the quieter opt-in default once; version 2
+  // then preserves every explicit user choice.
+  if (Number(next.scales?.bidAskDefaultsVersion) === 1) {
+    merged.scales.bidLabelValue = false;
+    merged.scales.bidLabelLine = false;
+    merged.scales.askLabelValue = false;
+    merged.scales.askLabelLine = false;
+  }
+  merged.scales.bidAskDefaultsVersion = 2;
+  // TradingView attribution is not part of BWC Pro's appearance controls.
+  merged.canvas.attributionLogo = false;
   return merged;
 }
 

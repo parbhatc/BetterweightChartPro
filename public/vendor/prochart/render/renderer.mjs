@@ -18,6 +18,28 @@ import { TIME_AXIS_HEIGHT, SEPARATOR_H } from "../core/defaults.mjs";
 import { RenderTarget } from "./target.mjs";
 import { queueSeriesGpu } from "./gpu.mjs";
 
+export function usesCustomOhlcRenderer(series) {
+  return series?.type === "Candlestick" && (series.options?.chartStyle ?? "candles") !== "candles";
+}
+
+export function seriesLastValueColor(series) {
+  const options = series?.options ?? {};
+  const style = options.chartStyle ?? "candles";
+  if (series?.type === "Candlestick" && (style === "line" || style === "area")) {
+    return options.chartLineColor || options.upColor || "#089981";
+  }
+  if (series?.type === "Candlestick" && style === "baseline") {
+    return options.upColor || options.chartLineColor || "#089981";
+  }
+  if (series?.valueCount === 4) {
+    return series.barColorAt?.(series.times.length - 1)
+      || (series.packed?.[series.packed.length - 1] >= series.packed?.[series.packed.length - 4]
+        ? options.upColor
+        : options.downColor);
+  }
+  return options.color || options.lineColor || "#2196f3";
+}
+
 /* ------------------------------ full frame ------------------------------ */
 
 export function renderChart(m) {
@@ -25,6 +47,7 @@ export function renderChart(m) {
   const dpr = m.dpr || 1;
   const baseCtx = m.baseCtx;
   const mainCtx = m.mainCtx;
+  if (m.lineEndPulseHost) m.lineEndPulseHost.hidden = true;
 
   // 1. layout + autoscale + axis width measurement
   m._layoutPanes();
@@ -83,7 +106,75 @@ export function renderChart(m) {
 
   renderPriceAxes(m, mainCtx, plotX, plotW);
   renderTimeAxis(m, mainCtx, plotX, plotW);
+  renderAxisCorner(m);
   renderTop(m);
+}
+
+function renderAxisCorner(m) {
+  const host = m.axisCornerHost;
+  const canvas = m.axisCornerCanvas;
+  const ctx = m.axisCornerCtx;
+  const width = m._rightW || 0;
+  const height = m.timeAxisHeight();
+  const visible = width > 0 && height > 0;
+  if (!host || !canvas || !ctx) return;
+  host.hidden = !visible;
+  if (m.priceAxisModeHost) {
+    m.priceAxisModeHost.style.bottom = `${height}px`;
+    m.priceAxisModeHost.style.color = m.options.layout.textColor || "#B2B5BE";
+    const background = m.options.layout.background || {};
+    m.priceAxisModeHost.style.backgroundColor = background.color || background.bottomColor || background.topColor || "#131722";
+    m.priceAxisAutoButton?._paintModeState?.(false);
+    m.priceAxisLogButton?._paintModeState?.(false);
+  }
+  if (!visible) return;
+
+  const dpr = m.dpr || 1;
+  const bitmapWidth = Math.max(1, Math.round(width * dpr));
+  const bitmapHeight = Math.max(1, Math.round(height * dpr));
+  host.style.width = `${width}px`;
+  host.style.height = `${height}px`;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  if (canvas.width !== bitmapWidth) canvas.width = bitmapWidth;
+  if (canvas.height !== bitmapHeight) canvas.height = bitmapHeight;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  const layout = m.options.layout;
+  const background = layout.background || {};
+  ctx.fillStyle = background.color || background.bottomColor || background.topColor || "#131722";
+  ctx.fillRect(0, 0, width, height);
+
+  const borderColor = m.options.timeScale.borderColor || m.options.rightPriceScale.borderColor || "#2B2B43";
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0.5, 0);
+  ctx.lineTo(0.5, height);
+  ctx.moveTo(0, 0.5);
+  ctx.lineTo(width, 0.5);
+  ctx.stroke();
+
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2) + 1;
+  const radius = 8;
+  ctx.strokeStyle = layout.textColor || "#B2B5BE";
+  ctx.lineWidth = 1.25;
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  for (let i = 0; i < 6; i += 1) {
+    const angle = i * Math.PI / 3;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2.25, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 /* ------------------------- pane: grid + bottom --------------------------- */
@@ -143,6 +234,7 @@ function renderPaneSeries(m, ctx, pane, plotX, plotW, dpr, useGpu) {
     let queued = false;
     for (const s of pane.series) {
       if (!s.options.visible) continue;
+      if (usesCustomOhlcRenderer(s)) continue;
       const scale = pane.scale(s.options.priceScaleId);
       const xOf = (local) => plotX + (s.indices[local] - vr.from) * bs;
       if (queueSeriesGpu(m.gpu, s, scale, xOf, bs, dpr, pane.top)) queued = true;
@@ -160,7 +252,8 @@ function renderPaneSeries(m, ctx, pane, plotX, plotW, dpr, useGpu) {
 
   for (const s of pane.series) {
     if (!s.options.visible) continue;
-    const gpuHandled = useGpu && (s.type === "Candlestick" || s.type === "Bar" || s.type === "Histogram");
+    const customCandleStyle = usesCustomOhlcRenderer(s);
+    const gpuHandled = useGpu && !customCandleStyle && (s.type === "Candlestick" || s.type === "Bar" || s.type === "Histogram");
     if (!gpuHandled) renderSeries2d(m, ctx, pane, s, plotW);
   }
 
@@ -206,6 +299,11 @@ export function renderSeries2d(m, ctx, pane, s, plotW) {
   const bs = ts.barSpacing;
   const xOf = (local) => (s.indices[local] - vr.from) * bs;
   const o = s.options;
+
+  if (s.type === "Candlestick" && (o.chartStyle ?? "candles") !== "candles") {
+    renderOhlcChartStyle(m, ctx, pane, s, scale, r, xOf, bs, o);
+    return;
+  }
 
   if (s.type === "Candlestick" || s.type === "Bar") {
     const bodyW = Math.max(1, Math.min(bs - Math.max(1, Math.floor(bs * 0.24)), bs * 0.8));
@@ -349,6 +447,136 @@ export function renderSeries2d(m, ctx, pane, s, plotW) {
   }
 }
 
+function renderOhlcChartStyle(m, ctx, pane, s, scale, r, xOf, bs, o) {
+  const style = o.chartStyle ?? "candles";
+  if (style === "hollow-candles" || style === "bars" || style === "heikin-ashi") {
+    const bodyW = Math.max(1, Math.min(bs - Math.max(1, Math.floor(bs * 0.24)), bs * 0.8));
+    const half = bodyW / 2;
+    let haOpen = null;
+    let haClose = null;
+    for (let i = 0; i <= r.b; i += 1) {
+      if (s.whitespace[i]) continue;
+      let open = s.packed[i * 4];
+      let high = s.packed[i * 4 + 1];
+      let low = s.packed[i * 4 + 2];
+      let close = s.packed[i * 4 + 3];
+      if (style === "heikin-ashi") {
+        const nextClose = (open + high + low + close) / 4;
+        const nextOpen = haOpen == null ? (open + close) / 2 : (haOpen + haClose) / 2;
+        haOpen = nextOpen;
+        haClose = nextClose;
+        open = nextOpen;
+        close = nextClose;
+        high = Math.max(high, open, close);
+        low = Math.min(low, open, close);
+      }
+      if (i < r.a) continue;
+      const up = close >= open;
+      const color = up ? o.upColor : o.downColor;
+      const wickColor = up ? (o.wickUpColor || color) : (o.wickDownColor || color);
+      const x = xOf(i);
+      const yO = scale.priceToCoordinate(open);
+      const yH = scale.priceToCoordinate(high);
+      const yL = scale.priceToCoordinate(low);
+      const yC = scale.priceToCoordinate(close);
+      ctx.strokeStyle = wickColor;
+      ctx.fillStyle = color;
+      ctx.lineWidth = Math.max(1, Math.floor(bs / 10));
+      if (style === "bars") {
+        ctx.beginPath();
+        ctx.moveTo(Math.round(x) + 0.5, yH);
+        ctx.lineTo(Math.round(x) + 0.5, yL);
+        ctx.moveTo(Math.round(x - half), Math.round(yO) + 0.5);
+        ctx.lineTo(Math.round(x) + 0.5, Math.round(yO) + 0.5);
+        ctx.moveTo(Math.round(x) + 0.5, Math.round(yC) + 0.5);
+        ctx.lineTo(Math.round(x + half), Math.round(yC) + 0.5);
+        ctx.stroke();
+        continue;
+      }
+      if (o.wickVisible !== false) {
+        ctx.beginPath();
+        ctx.moveTo(Math.round(x) + 0.5, yH);
+        ctx.lineTo(Math.round(x) + 0.5, yL);
+        ctx.stroke();
+      }
+      const top = Math.min(yO, yC);
+      const height = Math.max(1, Math.abs(yC - yO));
+      const left = Math.round(x - half);
+      const width = Math.max(1, Math.round(bodyW));
+      if (style === "hollow-candles" && up) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(left + 0.5, Math.round(top) + 0.5, Math.max(1, width - 1), Math.max(1, Math.round(height) - 1));
+      } else {
+        ctx.fillRect(left, Math.round(top), width, Math.round(height));
+      }
+    }
+    return;
+  }
+
+  const points = [];
+  for (let i = r.a; i <= r.b; i += 1) {
+    if (s.whitespace[i]) continue;
+    points.push([xOf(i), scale.priceToCoordinate(s.packed[i * 4 + 3])]);
+  }
+  if (points.length < 2) return;
+  const upColor = o.upColor || "#089981";
+  const downColor = o.downColor || "#f23645";
+  const lineColor = o.chartLineColor || upColor;
+  const baseline = points[0][1];
+
+  if (style === "area" || style === "baseline") {
+    const gradient = ctx.createLinearGradient(0, 0, 0, pane.height);
+    if (style === "baseline") {
+      const stop = Math.max(0, Math.min(1, baseline / Math.max(1, pane.height)));
+      gradient.addColorStop(0, colorWithAlpha(upColor, "55"));
+      gradient.addColorStop(Math.max(0, stop - 0.001), colorWithAlpha(upColor, "10"));
+      gradient.addColorStop(Math.min(1, stop + 0.001), colorWithAlpha(downColor, "10"));
+      gradient.addColorStop(1, colorWithAlpha(downColor, "55"));
+    } else {
+      gradient.addColorStop(0, colorWithAlpha(lineColor, "55"));
+      gradient.addColorStop(1, colorWithAlpha(lineColor, "05"));
+    }
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], pane.height);
+    for (const [x, y] of points) ctx.lineTo(x, y);
+    ctx.lineTo(points.at(-1)[0], pane.height);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = style === "baseline" ? upColor : lineColor;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i][0], points[i][1]);
+  ctx.stroke();
+
+  if (style === "line" && m.lineEndPulseHost && points.length) {
+    const [lastX, lastY] = points.at(-1);
+    if (lastX >= 0 && lastX <= m.paneWidth() && lastY >= 0 && lastY <= pane.height) {
+      const pulse = m.lineEndPulseHost;
+      pulse.hidden = false;
+      pulse.style.left = `${(m._leftW || 0) + lastX}px`;
+      pulse.style.top = `${pane.top + lastY}px`;
+      pulse.style.setProperty("--prochart-line-end-color", lineColor);
+    }
+  }
+}
+
+function colorWithAlpha(color, alpha) {
+  const value = String(color || "");
+  if (/^#[0-9a-f]{6}$/i.test(value)) return `${value}${alpha}`;
+  if (/^#[0-9a-f]{3}$/i.test(value)) {
+    const [r, g, b] = value.slice(1).split("");
+    return `#${r}${r}${g}${g}${b}${b}${alpha}`;
+  }
+  return value;
+}
+
 function renderSeriesPriceLines(m, ctx, pane, s, plotW) {
   const scale = pane.scale(s.options.priceScaleId);
   if (!scale.priceRange) return;
@@ -357,7 +585,7 @@ function renderSeriesPriceLines(m, ctx, pane, s, plotW) {
     if (last != null) {
       const y = scale.priceToCoordinate(last);
       if (y != null && y >= 0 && y <= pane.height) {
-        const color = s.options.priceLineColor || (s.valueCount === 4 ? (s.packed[s.packed.length - 1] >= s.packed[s.packed.length - 4] ? s.options.upColor : s.options.downColor) : (s.options.color || s.options.lineColor || "#2196f3"));
+        const color = s.options.priceLineColor || seriesLastValueColor(s);
         ctx.strokeStyle = color;
         ctx.lineWidth = s.options.priceLineWidth || 1;
         setCtxLineStyle(ctx, s.options.priceLineStyle ?? LineStyle.Dashed, 1);
@@ -536,10 +764,14 @@ function renderPriceAxes(m, ctx, plotX, plotW) {
       const x0 = side === "left" ? 0 : m.width - w;
       ctx.save();
       ctx.beginPath();
-      ctx.rect(x0, pane.top, w, pane.height);
+      // Price-line titles (Bid/Ask) attach to the outside edge of the scale.
+      // Clip vertically to the pane while allowing that small title segment to
+      // extend into the plot, like TradingView's quote labels.
+      ctx.rect(0, pane.top, m.width, pane.height);
       ctx.clip();
 
       if (scale && scale.options.visible && scale.priceRange) {
+        const pendingAxisLabels = [];
         const fmt = scale.formatterForAxis();
         if (scale.options.borderVisible !== false) {
           ctx.strokeStyle = scale.options.borderColor || "#2B2B43";
@@ -568,8 +800,16 @@ function renderPriceAxes(m, ctx, plotX, plotW) {
             if (last != null) {
               const yy = scale.priceToCoordinate(last);
               if (yy != null && yy >= 0 && yy <= pane.height) {
-                const color = s.valueCount === 4 ? s.barColorAt(s.times.length - 1) : (s.options.color || s.options.lineColor || "#2196f3");
-                axisLabel(m, ctx, side, x0, w, pane.top + yy, s.priceFormatter()(last), color, "#ffffff", pane.top, pane.height);
+                const color = seriesLastValueColor(s);
+                pendingAxisLabels.push({
+                  y: pane.top + yy,
+                  text: s.priceFormatter()(last),
+                  bgColor: color,
+                  textColor: "#ffffff",
+                  subtitle: "",
+                  title: "",
+                  priority: 0,
+                });
               }
             }
           }
@@ -578,8 +818,20 @@ function renderPriceAxes(m, ctx, plotX, plotW) {
             if (!lo.axisLabelVisible) continue;
             const yy = scale.priceToCoordinate(lo.price);
             if (yy == null || yy < 0 || yy > pane.height) continue;
-            axisLabel(m, ctx, side, x0, w, pane.top + yy, s.priceFormatter()(lo.price), lo.axisLabelColor || lo.color, lo.axisLabelTextColor || "#ffffff", pane.top, pane.height);
+            const title = lo.axisLabelTitle || "";
+            pendingAxisLabels.push({
+              y: pane.top + yy,
+              text: lo.axisLabelText || s.priceFormatter()(lo.price),
+              bgColor: lo.axisLabelColor || lo.color,
+              textColor: lo.axisLabelTextColor || "#ffffff",
+              subtitle: lo.axisSubtitleText || "",
+              title,
+              priority: title === "Ask" ? 1 : title === "Bid" ? 2 : 0,
+            });
           }
+        }
+        for (const label of layoutAxisLabels(m, pendingAxisLabels, pane.top, pane.height)) {
+          axisLabel(m, ctx, side, x0, w, label, pane.top, pane.height);
         }
       }
 
@@ -612,19 +864,77 @@ function renderPriceAxes(m, ctx, plotX, plotW) {
   }
 }
 
-function axisLabel(m, ctx, side, x0, w, y, text, bgColor, textColor, paneTop, paneH) {
+export function layoutAxisLabels(m, labels, paneTop, paneH) {
   const layout = m.options.layout;
-  const h = layout.fontSize + 6;
-  // keep the label rect fully inside the pane so the clip never cuts it (TV behavior)
-  if (paneH != null) y = Math.min(Math.max(y, paneTop + h / 2 + 1), paneTop + paneH - h / 2 - 1);
+  const priceH = layout.fontSize + 6;
+  const minTop = paneTop + 1;
+  const paneBottom = paneTop + paneH - 1;
+  const ordered = labels
+    .map((label, index) => {
+      const subtitleSize = Math.max(10, layout.fontSize - 2);
+      const height = priceH + (label.subtitle ? subtitleSize + 4 : 0);
+      return { ...label, index, height };
+    })
+    // Smaller y means a higher price. A stable priority only resolves exact
+    // ties: Close, then Ask, then Bid.
+    .sort((a, b) => a.y - b.y || a.priority - b.priority || a.index - b.index);
+  let cursor = minTop;
+  for (const label of ordered) {
+    const maxTop = paneBottom - label.height;
+    const preferredTop = Math.min(Math.max(label.y - priceH / 2, minTop), maxTop);
+    label.top = Math.max(preferredTop, cursor);
+    cursor = label.top + label.height + 1;
+  }
+  // If a packed cluster hits the bottom, walk it upward. This retains price
+  // order instead of moving a lower-priced label above a higher-priced one.
+  for (let i = ordered.length - 1; i >= 0; i -= 1) {
+    const label = ordered[i];
+    const nextTop = i + 1 < ordered.length ? ordered[i + 1].top - label.height - 1 : paneBottom - label.height;
+    label.top = Math.min(label.top, nextTop);
+  }
+  // A very tall cluster may hit the top after the backward pass. Repack it
+  // downward once; normal chart panes have ample room for the quote group.
+  cursor = minTop;
+  for (const label of ordered) {
+    label.top = Math.max(label.top, cursor);
+    cursor = label.top + label.height + 1;
+  }
+  return ordered;
+}
+
+function axisLabel(m, ctx, side, x0, w, label, paneTop, paneH) {
+  const layout = m.options.layout;
+  const priceH = layout.fontSize + 6;
+  const subtitleSize = Math.max(10, layout.fontSize - 2);
+  const subtitleH = label.subtitle ? subtitleSize + 4 : 0;
+  const h = priceH + subtitleH;
+  const top = label.top;
+  const priceY = top + priceH / 2;
   ctx.font = `${layout.fontSize}px ${layout.fontFamily}`;
-  ctx.fillStyle = bgColor;
-  roundRectPath(ctx, x0 + 1, y - h / 2, w - 2, h, 2);
+  ctx.fillStyle = label.bgColor;
+  roundRectPath(ctx, x0 + 1, top, w - 2, h, 2);
   ctx.fill();
-  ctx.fillStyle = textColor;
+  ctx.fillStyle = label.textColor;
   ctx.textBaseline = "middle";
   ctx.textAlign = side === "left" ? "right" : "left";
-  ctx.fillText(text, side === "left" ? x0 + w - 8 : x0 + 8, y + 0.5);
+  const textX = side === "left" ? x0 + w - 8 : x0 + 8;
+  ctx.fillText(label.text, textX, priceY + 0.5);
+  if (label.title) {
+    ctx.font = `600 ${Math.max(10, layout.fontSize - 2)}px ${layout.fontFamily}`;
+    const titlePad = 6;
+    const titleW = Math.ceil(ctx.measureText(label.title).width) + titlePad * 2;
+    const titleX = side === "left" ? x0 + w : x0 - titleW;
+    ctx.fillStyle = label.bgColor;
+    roundRectPath(ctx, titleX, top, titleW, priceH, 2);
+    ctx.fill();
+    ctx.fillStyle = label.textColor;
+    ctx.textAlign = "center";
+    ctx.fillText(label.title, titleX + titleW / 2, priceY + 0.5);
+  }
+  if (label.subtitle) {
+    ctx.font = `${subtitleSize}px ${layout.fontFamily}`;
+    ctx.fillText(label.subtitle, textX, top + priceH + subtitleH / 2);
+  }
 }
 
 /* ------------------------------- top layer ------------------------------ */

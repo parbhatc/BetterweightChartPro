@@ -20,6 +20,7 @@ export function buildPaneContextMenuOpts(ctx, pane, wrapEl) {
     getIndicatorCount: ctx.getIndicatorCountForPane,
     removeIndicators: ctx.removeIndicatorsForPane,
     resetChartView: ctx.resetPaneChartView,
+    resetPriceScale: ctx.resetPanePriceScale,
     resetTimeScale: ctx.resetPaneTimeScale,
   };
 }

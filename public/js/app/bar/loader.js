@@ -40,6 +40,19 @@ import {
 export const HISTORY_EDGE_BARS = 80;
 
 /**
+ * A successful load can come from the network or the resolution cache. Keep
+ * stale unsupported/no-data overlays out of both paths.
+ * @param {{ bars?: object[], _emptyStateMeta?: object | null }} pane
+ * @param {((pane: object, opts: { show: boolean }) => void) | undefined} syncEmptyState
+ */
+export function clearResolvedPaneEmptyState(pane, syncEmptyState) {
+  if (!pane?.bars?.length) return false;
+  pane._emptyStateMeta = null;
+  syncEmptyState?.(pane, { show: false });
+  return true;
+}
+
+/**
  * True when the user has panned near the oldest loaded bar (scroll-back prefetch).
  * Negative logical positions are whitespace before the oldest loaded bar. A
  * quick drag can move far into that whitespace, so every negative value must
@@ -622,6 +635,7 @@ export function createBarLoader(opts) {
   }
 
   async function finishPaneAfterBarsLoaded(pane, loadOpts = {}) {
+    clearResolvedPaneEmptyState(pane, syncPaneEmptyState);
     await ensurePaneSymbolInfo(pane);
     if (!loadOpts.deferChartRefresh) {
       refreshPaneCandleData(pane, loadOpts);
@@ -881,8 +895,7 @@ export function createBarLoader(opts) {
         pane._emptyStateMeta = result.meta ?? null;
         syncPaneEmptyState?.(pane, { show: true, meta: pane._emptyStateMeta });
       } else if (pane.bars.length) {
-        pane._emptyStateMeta = null;
-        syncPaneEmptyState?.(pane, { show: false });
+        clearResolvedPaneEmptyState(pane, syncPaneEmptyState);
       }
       chartDebug("data", "history loaded", { pane: pane.index, bars: pane.bars.length });
       if (wasFirstRequest && pane.bars.length && !opts.deferChartRefresh) {

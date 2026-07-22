@@ -88,7 +88,7 @@ export function applySettingsToChart(opts) {
       background: resolveLayoutBackground(cv, themeColors),
       textColor: cv.scalesTextColor || themeColors.text,
       fontSize: Number(cv.scalesFontSize) || 12,
-      attributionLogo: Boolean(cv.attributionLogo),
+      attributionLogo: false,
     },
     grid: {
       vertLines: {
@@ -153,7 +153,7 @@ export function applySettingsToChart(opts) {
 
   const defaultMargins = {
     top: Number.isFinite(marginTop) ? marginTop / 100 : 0.08,
-    bottom: Number.isFinite(marginBottom) ? marginBottom / 100 : 0.12,
+    bottom: Number.isFinite(marginBottom) ? marginBottom / 100 : 0.04,
   };
   const autoScale = sc.lockPriceToBarRatio ? false : sc.autoScale;
 
@@ -246,7 +246,7 @@ export function scaleMarginsFromSettings(settingsStore) {
   const marginBottom = Number(cv.marginBottom);
   return {
     top: Number.isFinite(marginTop) ? marginTop / 100 : 0.08,
-    bottom: Number.isFinite(marginBottom) ? marginBottom / 100 : 0.12,
+    bottom: Number.isFinite(marginBottom) ? marginBottom / 100 : 0.04,
   };
 }
 

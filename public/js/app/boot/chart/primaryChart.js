@@ -19,6 +19,7 @@ export function initPrimaryChart(ctx) {
   ctx.chart = chart;
   ctx.series = series;
   ctx.applyTheme = applyTheme;
+  series.applyOptions({ chartStyle: ctx.chartType ?? "candles" });
 
   let ratioLockBusy = false;
 

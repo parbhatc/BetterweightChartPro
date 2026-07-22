@@ -1,6 +1,7 @@
 /** Chart feature ids (`disabled_features` / `enabled_features` at boot). */
 export const CHART_FEATURES = {
   REPLAY: "replay",
+  CHART_TYPES: "chart_types",
 };
 
 /** Features off unless listed in `enabled_features`. */

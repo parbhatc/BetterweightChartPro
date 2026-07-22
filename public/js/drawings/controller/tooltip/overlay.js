@@ -1,6 +1,30 @@
 import { VALUES_TOOLTIP_LONG_PRESS_MS, VALUES_TOOLTIP_MOVE_THRESHOLD } from "../../constants.js";
 import { barPriceClass, candleValueColor, isBarUp, barChangeFromPrevClose } from "../../../chart/bar/style.js";
 
+export function nearestBarForTooltip(bars, time, barSec = 60) {
+  if (!bars?.length || time == null) return { bar: null, prev: null };
+  const tolerance = Math.max(1, Number(barSec) || 60) * 0.5;
+  const lastIdx = bars.length - 1;
+  if (time > bars[lastIdx].time + tolerance) {
+    return {
+      bar: bars[lastIdx],
+      prev: lastIdx > 0 ? bars[lastIdx - 1] : null,
+      future: true,
+    };
+  }
+  let bestIdx = 0;
+  let bestDist = Math.abs(bars[0].time - time);
+  for (let i = 1; i < bars.length; i += 1) {
+    const dist = Math.abs(bars[i].time - time);
+    if (dist < bestDist) {
+      bestIdx = i;
+      bestDist = dist;
+    }
+  }
+  if (bestDist > tolerance) return { bar: null, prev: null };
+  return { bar: bars[bestIdx], prev: bestIdx > 0 ? bars[bestIdx - 1] : null };
+}
+
 /**
  * @param {object} deps
  * @param {import("prochart").IChartApi} [deps.chart]
@@ -20,21 +44,8 @@ export function createTooltipOverlay(deps) {
   let savedVertCrosshairVisible = true;
 
   function nearestBar(time) {
-    const { bars } = getContext();
-    if (!bars.length || time == null) return { bar: null, prev: null };
-    let bestIdx = 0;
-    let bestDist = Math.abs(bars[0].time - time);
-    for (let i = 1; i < bars.length; i += 1) {
-      const dist = Math.abs(bars[i].time - time);
-      if (dist < bestDist) {
-        bestIdx = i;
-        bestDist = dist;
-      }
-    }
-    return {
-      bar: bars[bestIdx],
-      prev: bestIdx > 0 ? bars[bestIdx - 1] : null,
-    };
+    const { bars, barSec = 60 } = getContext();
+    return nearestBarForTooltip(bars, time, barSec);
   }
 
   function buildTooltipHtml(bar, prev) {
@@ -85,8 +96,14 @@ export function createTooltipOverlay(deps) {
   /** @param {number} clientX @param {number} clientY */
   function positionTooltip(clientX, clientY) {
     const rect = overlayRoot.getBoundingClientRect();
-    valuesTooltip.style.left = `${clientX - rect.left + 12}px`;
-    valuesTooltip.style.top = `${clientY - rect.top + 12}px`;
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const width = valuesTooltip.offsetWidth || 168;
+    const height = valuesTooltip.offsetHeight || 170;
+    const left = localX + 12 + width <= rect.width ? localX + 12 : localX - width - 12;
+    const top = Math.max(8, Math.min(localY + 12, rect.height - height - 8));
+    valuesTooltip.style.left = `${Math.max(8, left)}px`;
+    valuesTooltip.style.top = `${top}px`;
   }
 
   /** @param {object} bar @param {number} price */
@@ -97,21 +114,35 @@ export function createTooltipOverlay(deps) {
     chart.setCrosshairPosition(Number.isFinite(price) ? price : bar.close, chartTime, series);
   }
 
+  function syncCrosshairToTime(time, price) {
+    if (!chart || !series || time == null) return;
+    const ta = getContext().timeAdapter;
+    const chartTime = ta ? ta.time.toChart(time) : time;
+    chart.setCrosshairPosition(Number.isFinite(price) ? price : 0, chartTime, series);
+  }
+
   /**
    * @param {number} clientX
    * @param {number} clientY
-   * @returns {{ bar: object, prev: object | null } | null}
+   * @returns {{ bar: object | null, prev: object | null, future?: boolean } | null}
    */
   function renderAt(clientX, clientY) {
     const point = resolvePoint(clientX, clientY);
     if (!point) return null;
-    const { bar, prev } = nearestBar(point.time);
-    if (!bar) return null;
-    // Keep values in the chart legend and leave candles unobstructed.
-    valuesTooltip.hidden = true;
-    syncCrosshairToPoint(bar, point.price);
+    const { bar, prev, future = false } = nearestBar(point.time);
+    if (!bar) {
+      valuesTooltip.hidden = true;
+      syncCrosshairToTime(point.time, point.price);
+      onBarHover?.(null, null);
+      return { bar: null, prev: null, future: true };
+    }
+    valuesTooltip.innerHTML = buildTooltipHtml(bar, prev);
+    valuesTooltip.hidden = false;
+    positionTooltip(clientX, clientY);
+    if (future) syncCrosshairToTime(point.time, point.price);
+    else syncCrosshairToPoint(bar, point.price);
     onBarHover?.(bar, prev);
-    return { bar, prev };
+    return { bar, prev, future };
   }
 
   function hideValuesTooltip() {

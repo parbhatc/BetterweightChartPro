@@ -8,6 +8,10 @@ import { getLayoutToolDefaultsSnapshot, setLayoutToolDefaults } from "../../../d
 import { getLayoutDrawingTemplatesSnapshot, setLayoutDrawingTemplates } from "../../../drawings/toolbars/defaults/layoutTemplates.js";
 import { scrollPaneToLatest } from "../../../chart/viewportReset.js";
 import { applyPriceScaleMarginsAfterBarLoad } from "../../../chart/settings/applier.js";
+import {
+  captureViewportBarLayout,
+  restoreViewportBarLayout,
+} from "../../../chart/pane/viewportBarLayout.js";
 /**
  * @param {import("./state.js").BootContext} ctx
  */
@@ -25,7 +29,24 @@ export function attachLayoutPersistence(ctx) {
       chartSettings: structuredClone(ctx.settingsStore.get()),
       toolDefaults: getLayoutToolDefaultsSnapshot(),
       drawingTemplates: getLayoutDrawingTemplatesSnapshot(),
+      viewports: captureLayoutViewports(),
     };
+  }
+
+  function captureLayoutViewports() {
+    const entries = ctx.getAllChartPanes().map((pane) => [
+      String(pane.index),
+      captureViewportBarLayout(pane, ctx.settingsStore, ctx.resolutions),
+    ]);
+    return Object.fromEntries(entries.filter(([, viewport]) => viewport));
+  }
+
+  function queueLayoutViewportRestore(viewports) {
+    const saved = viewports ?? ctx.layoutManager?.getViewportsSnapshot?.() ?? null;
+    if (!saved || typeof saved !== "object") return;
+    for (const pane of ctx.getAllChartPanes()) {
+      pane._pendingLayoutViewport = saved[String(pane.index)] ?? null;
+    }
   }
 
   function applyLayoutChartSettings(settings) {
@@ -57,6 +78,7 @@ export function attachLayoutPersistence(ctx) {
     ctx.layoutManager.setChartSettingsSnapshot(entry.chartSettings ?? null);
     ctx.layoutManager.setToolDefaultsSnapshot(entry.toolDefaults ?? null);
     ctx.layoutManager.setDrawingTemplatesSnapshot(entry.drawingTemplates ?? null);
+    ctx.layoutManager.setViewportsSnapshot(entry.viewports ?? null);
     if (toLibrary) {
       upsertLayoutLibraryEntry(entry);
     }
@@ -97,6 +119,7 @@ export function attachLayoutPersistence(ctx) {
     ctx.layoutManager.setToolDefaultsSnapshot(null);
     setLayoutDrawingTemplates(null);
     ctx.layoutManager.setDrawingTemplatesSnapshot(null);
+    ctx.layoutManager.setViewportsSnapshot(null);
     ctx.layoutManager.markSaved();
     ctx.headerToolbarUi?.updateSaveState();
   }
@@ -170,6 +193,23 @@ export function attachLayoutPersistence(ctx) {
     if (!opts.skipPriceScaleMargins) {
       applyPriceScaleMarginsAfterBarLoad(pane, ctx.settingsStore, ctx.activePriceScaleId);
     }
+    const pendingViewport = pane._pendingLayoutViewport;
+    delete pane._pendingLayoutViewport;
+    if (pendingViewport) {
+      pane._historyRestorePending = true;
+      try {
+        restoreViewportBarLayout(
+          pane,
+          pendingViewport,
+          ctx.settingsStore,
+          ctx.resolutions,
+          "layout",
+          ctx.activePriceScaleId,
+        );
+      } finally {
+        pane._historyRestorePending = false;
+      }
+    }
   }
 
   function applyPriceScaleMarginsForPane(pane) {
@@ -189,6 +229,8 @@ export function attachLayoutPersistence(ctx) {
     restoreLayoutDrawingTemplates,
     restoreLayoutDrawings,
     restoreLayoutIndicators,
+    captureLayoutViewports,
+    queueLayoutViewportRestore,
     finishPaneAfterLoad,
     applyPriceScaleMarginsForPane,
     uniqueLayoutName,

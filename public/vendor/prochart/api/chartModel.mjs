@@ -9,6 +9,14 @@ import { Pane, PaneApi } from "../layout/pane.mjs";
 import { GpuRenderer } from "../render/gpu.mjs";
 import { renderChart, renderTop } from "../render/renderer.mjs";
 import { bindEvents, startKinetic, stopKinetic } from "../input/interactions.mjs";
+
+export function pointInRightPriceAxis(width, height, rightAxisWidth, timeAxisHeight, x, y) {
+  return rightAxisWidth > 0
+    && x >= width - rightAxisWidth
+    && x < width
+    && y >= 0
+    && y < height - timeAxisHeight;
+}
 import { ChartApi } from "./chartApi.mjs";
 
 
@@ -71,6 +79,9 @@ export class ChartModel {
     this.glCanvas = this._makeCanvas(2);
     this.mainCanvas = this._makeCanvas(3);
     this.topCanvas = this._makeCanvas(4);
+    this._buildLineEndPulse();
+    this._buildAxisCorner();
+    this._buildPriceAxisModeControls();
     // NOTE: no `desynchronized` hint — it lets the 2D and WebGL layers present on
     // different vsyncs on Windows, which flickers. rAF already runs at display Hz.
     const ctx2d = {};
@@ -79,6 +90,132 @@ export class ChartModel {
     this.topCtx = this.topCanvas.getContext("2d", ctx2d);
     this.gpu = this.options.renderer === "cpu" ? null : new GpuRenderer(this.glCanvas);
     if (this.gpu && !this.gpu.ok) this.gpu = null;
+  }
+
+  _buildLineEndPulse() {
+    const host = document.createElement("span");
+    host.setAttribute("data-prochart-line-end-pulse", "1");
+    host.setAttribute("aria-hidden", "true");
+    host.hidden = true;
+    host.innerHTML = '<span data-prochart-line-end-ring></span><span data-prochart-line-end-dot></span>';
+    this.root.appendChild(host);
+    this.lineEndPulseHost = host;
+  }
+
+  _buildAxisCorner() {
+    const host = document.createElement("div");
+    host.setAttribute("data-prochart-axis-corner", "1");
+    host.setAttribute("role", "button");
+    host.setAttribute("aria-label", "Chart settings");
+    host.title = "Chart settings";
+    host.tabIndex = 0;
+    host.style.cssText = "position:absolute;right:0;bottom:0;z-index:5;overflow:hidden;cursor:pointer;outline:none;";
+
+    const canvas = document.createElement("canvas");
+    canvas.style.cssText = "user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;position:absolute;left:0;top:0;";
+    host.appendChild(canvas);
+    this.root.appendChild(host);
+
+    const activate = () => {
+      host.dispatchEvent(new CustomEvent("prochart-axis-corner-click", { bubbles: true }));
+    };
+    host.addEventListener("pointerdown", (event) => event.stopPropagation());
+    host.addEventListener("dblclick", (event) => event.stopPropagation());
+    host.addEventListener("click", activate);
+    host.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      activate();
+    });
+
+    this.axisCornerHost = host;
+    this.axisCornerCanvas = canvas;
+    this.axisCornerCtx = canvas.getContext("2d");
+  }
+
+  _buildPriceAxisModeControls() {
+    const host = document.createElement("div");
+    host.setAttribute("data-prochart-price-axis-modes", "1");
+    host.hidden = true;
+    host.style.cssText = "position:absolute;right:1px;z-index:6;width:70px;height:29.6px;align-items:center;justify-content:center;gap:4px;";
+
+    const makeButton = (label, ariaLabel, eventName) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.setAttribute("aria-label", ariaLabel);
+      button.setAttribute("aria-pressed", "false");
+      button.style.cssText = `width:20px;height:21.6px;border:0;padding:0;margin:0;border-radius:4px;background:transparent;color:inherit;font:400 14px/18px ${this.options.layout.fontFamily};cursor:pointer;`;
+      const paint = (hovered = false) => {
+        const active = button.getAttribute("aria-pressed") === "true";
+        button.style.backgroundColor = active ? "#2962ff" : hovered ? "rgba(128,128,128,0.18)" : "transparent";
+        button.style.color = active ? "#ffffff" : "inherit";
+      };
+      button.addEventListener("pointerenter", () => paint(true));
+      button.addEventListener("pointerleave", () => paint(false));
+      button.addEventListener("pointerdown", (event) => event.stopPropagation());
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        button.dispatchEvent(new CustomEvent(eventName, { bubbles: true }));
+      });
+      button._paintModeState = paint;
+      host.appendChild(button);
+      return button;
+    };
+
+    this.priceAxisAutoButton = makeButton("A", "Toggle auto scale", "prochart-price-axis-auto-toggle");
+    this.priceAxisLogButton = makeButton("L", "Toggle log scale", "prochart-price-axis-log-toggle");
+    host.addEventListener("pointerenter", () => {
+      host.dispatchEvent(new CustomEvent("prochart-price-axis-modes-show", { bubbles: true }));
+    });
+    this.root.appendChild(host);
+    this.priceAxisModeHost = host;
+
+    const setModesVisible = (visible) => {
+      host.hidden = !visible;
+      host.style.display = visible ? "flex" : "none";
+      if (visible) {
+        host.dispatchEvent(new CustomEvent("prochart-price-axis-modes-show", { bubbles: true }));
+      }
+    };
+
+    this.root.addEventListener("pointermove", (event) => {
+      if (event.pointerType && event.pointerType !== "mouse") return;
+      const rect = this.root.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const onRightPriceAxis = pointInRightPriceAxis(
+        this.width,
+        this.height,
+        this._rightW || 0,
+        this.timeAxisHeight(),
+        x,
+        y,
+      );
+      if (onRightPriceAxis && host.hidden) {
+        setModesVisible(true);
+      } else if (!onRightPriceAxis && !host.hidden) {
+        setModesVisible(false);
+      }
+    });
+    this.root.addEventListener("pointerup", (event) => {
+      if (event.pointerType === "mouse") return;
+      if (event.target instanceof Element && event.target.closest("[data-prochart-price-axis-modes] button")) return;
+      const rect = this.root.getBoundingClientRect();
+      const onRightPriceAxis = pointInRightPriceAxis(
+        this.width,
+        this.height,
+        this._rightW || 0,
+        this.timeAxisHeight(),
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+      );
+      if (onRightPriceAxis) setModesVisible(host.hidden);
+    });
+    this.root.addEventListener("pointerleave", (event) => {
+      if (event.pointerType && event.pointerType !== "mouse") return;
+      setModesVisible(false);
+    });
   }
 
   _makeCanvas(z) {
@@ -102,6 +239,17 @@ export class ChartModel {
       c.style.width = `${w}px`;
       c.style.height = `${h}px`;
     }
+    // Resizing a canvas clears its backing store immediately. Paint the chart
+    // background before the next animation frame so toolbar/layout width
+    // changes never expose a transparent gray flash.
+    const background = this.options.layout?.background || {};
+    const resizeFill = background.color || background.bottomColor || background.topColor || "#131722";
+    this.root.style.backgroundColor = resizeFill;
+    this.baseCtx.save();
+    this.baseCtx.setTransform(1, 0, 0, 1, 0, 0);
+    this.baseCtx.fillStyle = resizeFill;
+    this.baseCtx.fillRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
+    this.baseCtx.restore();
     // gl backing store is resized in beginFrame; keep CSS size in sync here
     this.glCanvas.style.width = `${w}px`;
     this.glCanvas.style.height = `${h}px`;
@@ -283,7 +431,9 @@ export class ChartModel {
     };
     if (ch.visible && ch.logical != null) {
       const rounded = Math.round(ch.logical);
-      if (rounded >= 0 && rounded < ts.times.length) param.time = ts.times[rounded];
+      // Whitespace has an extrapolated time too. Keeping it in the event lets
+      // synchronized and pinned crosshairs remain under the pointer in future space.
+      param.time = ts.indexToTime(rounded) ?? undefined;
       for (const [model, api] of this.seriesApis) {
         const item = model.dataByIndex(rounded, MismatchDirection.None);
         if (item) param.seriesData.set(api, item);

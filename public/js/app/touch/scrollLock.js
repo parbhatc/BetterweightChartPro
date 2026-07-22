@@ -114,6 +114,12 @@ function isInteractiveControl(target) {
   );
 }
 
+/** @param {EventTarget | null} target */
+function isEditableTextTarget(target) {
+  return target instanceof Element
+    && Boolean(target.closest('input, textarea, [contenteditable="true"]'));
+}
+
 /** @type {(() => void) | null} */
 let activeTouchScrollRelease = null;
 
@@ -133,11 +139,19 @@ export function mountAppTouchScrollLock() {
     ev.preventDefault();
   }
 
+  function onSelectStart(ev) {
+    if (!(ev.target instanceof Element) || !ev.target.closest(".tv-app")) return;
+    if (isEditableTextTarget(ev.target)) return;
+    ev.preventDefault();
+  }
+
   document.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+  document.addEventListener("selectstart", onSelectStart, { capture: true });
 
   const release = () => {
     document.documentElement.classList.remove("tv-app--touch");
     document.removeEventListener("touchmove", onTouchMove, { capture: true });
+    document.removeEventListener("selectstart", onSelectStart, { capture: true });
     if (activeTouchScrollRelease === release) activeTouchScrollRelease = null;
   };
 

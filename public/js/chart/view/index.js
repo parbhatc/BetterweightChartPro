@@ -9,6 +9,7 @@ import {
 import { dateTime12h, toDate } from "../format.js";
 import { lwcPaneIndexAtY } from "../pane/studyScale.js";
 import { patchChartPrimitiveLogging } from "../primitiveLogging.js";
+import { responsiveAxisMinimums } from "./responsiveAxes.js";
 
 const DEFAULT_VISIBLE_BARS = 96;
 /** Right offset (bars) so the chart can scroll into empty future time. */
@@ -20,6 +21,10 @@ export const FUTURE_RIGHT_OFFSET = 48;
  */
 export function createTvChart(el, themeColors) {
   const c = themeColors;
+  const axisMinimums = responsiveAxisMinimums(
+    globalThis.innerWidth ?? 1024,
+    globalThis.matchMedia?.("(pointer: coarse)")?.matches ?? false,
+  );
 
   const chart = createChart(el, {
     autoSize: true,
@@ -56,7 +61,8 @@ export function createTvChart(el, themeColors) {
     rightPriceScale: {
       visible: true,
       borderColor: c.border,
-      scaleMargins: { top: 0.08, bottom: 0.12 },
+      scaleMargins: { top: 0.08, bottom: 0.04 },
+      minimumWidth: axisMinimums.priceScaleWidth,
     },
     timeScale: {
       visible: true,
@@ -66,6 +72,7 @@ export function createTvChart(el, themeColors) {
       rightOffset: FUTURE_RIGHT_OFFSET,
       barSpacing: 8,
       minBarSpacing: 3,
+      minimumHeight: axisMinimums.timeScaleHeight,
       tickMarkFormatter: (time, tickMarkType) => {
         const d = toDate(time);
         switch (tickMarkType) {
@@ -125,7 +132,7 @@ export function createTvChart(el, themeColors) {
   // Scale margins only here; autoScale comes from settings. After the first bar
   // load we fit once then lock autoScale off for free chart-body dragging.
   series.priceScale().applyOptions({
-    scaleMargins: { top: 0.08, bottom: 0.12 },
+    scaleMargins: { top: 0.08, bottom: 0.04 },
   });
 
   el.addEventListener(
@@ -161,7 +168,7 @@ export function createTvChart(el, themeColors) {
       const ps = series.priceScale();
       const { scaleMargins } = ps.options();
       let top = scaleMargins?.top ?? 0.08;
-      let bottom = scaleMargins?.bottom ?? 0.12;
+      let bottom = scaleMargins?.bottom ?? 0.04;
       if (zoomIn) {
         top = Math.max(0.02, top - step);
         bottom = Math.max(0.02, bottom - step);
@@ -207,6 +214,7 @@ export function createTvChart(el, themeColors) {
         downColor: colors.down,
         wickUpColor: colors.up,
         wickDownColor: colors.down,
+        chartLineColor: colors.accent ?? colors.up,
       });
     },
     scrollToLatest(barCount) {

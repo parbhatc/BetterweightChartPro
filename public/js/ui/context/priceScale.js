@@ -26,7 +26,8 @@ const ICONS = {
 
 /**
  * @typedef {{
- *   setAutoScale: () => void,
+ *   resetPriceScale: () => void,
+ *   toggleAutoScale: () => void,
  *   toggleLockRatio: () => void,
  *   toggleScalePriceChartOnly: () => void,
  *   toggleInvertScale: () => void,
@@ -45,7 +46,7 @@ const ICONS = {
  * @param {PriceScaleMenuActions} opts.actions
  */
 export function mountPriceScaleContextMenu(opts) {
-  const { container, chartEl, chart, getState, actions } = opts;
+  const { container, chartEl, chart, getState, actions, onBeforeOpen } = opts;
 
   const root = document.createElement("div");
   root.className = "ctx-menu ctx-menu--chart ctx-menu--price-scale";
@@ -86,9 +87,21 @@ export function mountPriceScaleContextMenu(opts) {
     return getState(activeSide);
   }
 
+  function syncAxisModeButtons() {
+    const state = getState("right");
+    const autoButton = chartEl.querySelector('[data-prochart-price-axis-modes] [aria-label="Toggle auto scale"]');
+    const logButton = chartEl.querySelector('[data-prochart-price-axis-modes] [aria-label="Toggle log scale"]');
+    autoButton?.setAttribute("aria-pressed", String(state.autoScale));
+    logButton?.setAttribute("aria-pressed", String(state.priceScaleMode === "logarithmic"));
+    autoButton?._paintModeState?.(false);
+    logButton?._paintModeState?.(false);
+  }
+
   function render() {
     const s = resolveState();
     root.innerHTML = `<div class="ctx-menu__scroll"><table class="ctx-menu__table"><tbody>
+      ${rowItem({ id: "reset-scale", label: "Reset price scale", shortcut: "Alt + R" })}
+      ${rowDivider()}
       ${rowItem({ id: "auto-scale", label: "Auto (fits data to screen)", checked: s.autoScale })}
       ${rowItem({
         id: "lock-ratio",
@@ -138,8 +151,11 @@ export function mountPriceScaleContextMenu(opts) {
   function runAction(id) {
     runContextMenuAction("price-scale", id, close, () => {
       switch (id) {
+        case "reset-scale":
+          actions.resetPriceScale();
+          break;
         case "auto-scale":
-          actions.setAutoScale();
+          actions.toggleAutoScale();
           break;
         case "lock-ratio":
           actions.toggleLockRatio();
@@ -182,16 +198,46 @@ export function mountPriceScaleContextMenu(opts) {
 
   container.addEventListener(
     "contextmenu",
-    (ev) => {
+    async (ev) => {
       if (ev.target.closest(".ctx-menu, .drawing-toolbar, .draw-tools")) return;
       const side = hitPriceScale(chart, chartEl, ev.clientX, ev.clientY);
       if (!side) return;
       ev.preventDefault();
       ev.stopPropagation();
+      await onBeforeOpen?.();
       positionMenu(ev.clientX, ev.clientY, side);
     },
     true,
   );
+
+  container.addEventListener("prochart-axis-corner-click", async (ev) => {
+    if (!(ev.target instanceof Element) || !chartEl.contains(ev.target)) return;
+    const corner = ev.target.closest("[data-prochart-axis-corner]");
+    if (!corner) return;
+    await onBeforeOpen?.();
+    const rect = corner.getBoundingClientRect();
+    positionMenu(rect.right, rect.top, "right");
+  });
+
+  container.addEventListener("prochart-price-axis-modes-show", (ev) => {
+    if (!(ev.target instanceof Element) || !chartEl.contains(ev.target)) return;
+    syncAxisModeButtons();
+  });
+
+  container.addEventListener("prochart-price-axis-auto-toggle", async (ev) => {
+    if (!(ev.target instanceof Element) || !chartEl.contains(ev.target)) return;
+    await onBeforeOpen?.();
+    actions.toggleAutoScale();
+    syncAxisModeButtons();
+  });
+
+  container.addEventListener("prochart-price-axis-log-toggle", async (ev) => {
+    if (!(ev.target instanceof Element) || !chartEl.contains(ev.target)) return;
+    await onBeforeOpen?.();
+    const state = getState("right");
+    actions.setPriceScaleMode(state.priceScaleMode === "logarithmic" ? "regular" : "logarithmic");
+    syncAxisModeButtons();
+  });
 
   document.addEventListener("keydown", (ev) => {
     if (root.hidden) return;
