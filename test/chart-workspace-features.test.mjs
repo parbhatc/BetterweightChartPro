@@ -9,7 +9,7 @@ import { resolveChartStyleLineColor } from "../public/js/app/symbol/lineStyle.js
 import { shouldShowTimeframeMenu } from "../public/js/ui/timeframe/favorites.js";
 import { timeframeSwitchPrefersUtcRestore } from "../public/js/app/boot/chart/timeframeRestorePolicy.js";
 import { createLayoutSync, scaleLogicalPanDelta } from "../public/js/app/layout/sync.js";
-import { chartAppearancePreset } from "../public/js/app/boot/themes.js";
+import { chartAppearancePreset, chartThemeFallback } from "../public/js/app/boot/themes.js";
 import { createChartSettings } from "../public/js/ui/settings/store.js";
 import { clearResolvedPaneEmptyState } from "../public/js/app/bar/loader.js";
 import {
@@ -170,6 +170,46 @@ test("appearance presets include trader-friendly gray and never enable attributi
   assert.equal(settings.get().scales.bidAskDefaultsVersion, 2);
   assert.equal(settings.get().scales.bidLabelValue, false);
   assert.equal(settings.get().scales.askLabelValue, false);
+});
+
+test("dark appearance uses Auren's neutral palette", () => {
+  const dark = chartAppearancePreset("dark");
+  assert.equal(dark.theme, "dark");
+  assert.equal(dark.canvas.backgroundColor, "#09090b");
+  assert.equal(dark.canvas.scalesTextColor, "#a1a1aa");
+
+  assert.deepEqual(chartThemeFallback("dark"), {
+    bg: "#09090b",
+    text: "#a1a1aa",
+    grid: "#27272a",
+    border: "#3f3f46",
+    crosshair: "#71717a",
+    labelBg: "#18181b",
+    up: "#10b981",
+    down: "#ef4444",
+  });
+});
+
+test("saved legacy dark Basic styles migrate without replacing custom colors", () => {
+  const settings = createChartSettings();
+  settings.replace({
+    canvas: {
+      backgroundColor: "#020617",
+      backgroundGradientTopColor: "#0f172a",
+      backgroundGradientBottomColor: "#020617",
+      gridVertColor: "rgba(226, 232, 240, 0.06)",
+      gridHorzColor: "rgba(226, 232, 240, 0.06)",
+      crosshairColor: "#64748b",
+      watermarkColor: "rgba(148, 163, 184, 0.25)",
+      scalesTextColor: "#e2e8f0",
+      scalesLineColor: "#123456",
+    },
+  });
+
+  assert.deepEqual(settings.get().canvas, {
+    ...settings.getDefaults().canvas,
+    scalesLineColor: "#123456",
+  });
 });
 
 test("overlapping close, ask, and bid labels remain sorted by price", () => {

@@ -50,7 +50,7 @@ function drawLine(ctx, line, x1, x2, priceToY, paneW) {
     if (!Number.isFinite(rightX) || !Number.isFinite(ly)) return;
     ctx.save();
     ctx.font = LABEL_FONT;
-    ctx.fillStyle = line.labelTextColor ?? line.color ?? "#e2e8f0";
+    ctx.fillStyle = line.labelTextColor ?? line.color ?? "#fafafa";
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     ctx.globalAlpha = swept ? 0.7 : 0.95;

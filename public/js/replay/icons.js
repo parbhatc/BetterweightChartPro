@@ -17,7 +17,7 @@ export const JUMP_TO_END = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0
 export const CLOSE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 8l12 12M20 8 8 20"></path></svg>`;
 
 /** Scissors cursor for replay bar selection (TV-style). */
-export const REPLAY_SCISSORS = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 22" width="16" height="22" aria-hidden="true"><path fill="#fff" stroke="#131722" stroke-width="1.05" stroke-linejoin="round" d="M8 1.75a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5Zm0 14a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5ZM8 5.25v11.5M4.35 7.1l7.3 7.3M11.65 7.1l-7.3 7.3"></path></svg>`;
+export const REPLAY_SCISSORS = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 22" width="16" height="22" aria-hidden="true"><path fill="#fff" stroke="#09090b" stroke-width="1.05" stroke-linejoin="round" d="M8 1.75a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5Zm0 14a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5ZM8 5.25v11.5M4.35 7.1l7.3 7.3M11.65 7.1l-7.3 7.3"></path></svg>`;
 
 /** @typedef {'bar' | 'date'} ReplaySelectMode */
 

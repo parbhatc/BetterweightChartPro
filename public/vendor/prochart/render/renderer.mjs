@@ -80,7 +80,7 @@ export function renderChart(m) {
     g.addColorStop(1, bg.bottomColor || bg.topColor);
     baseCtx.fillStyle = g;
   } else {
-    baseCtx.fillStyle = bg.color || "#131722";
+    baseCtx.fillStyle = bg.color || "#09090B";
   }
   baseCtx.fillRect(0, 0, m.width, m.height);
 
@@ -98,7 +98,7 @@ export function renderChart(m) {
 
   // pane separators (on base, under everything drawn in plot areas)
   if (m.panes.length > 1) {
-    baseCtx.fillStyle = m.options.layout.panes?.separatorColor || "#2B2B43";
+    baseCtx.fillStyle = m.options.layout.panes?.separatorColor || "#27272A";
     for (let i = 1; i < m.panes.length; i++) {
       baseCtx.fillRect(0, m.panes[i].top - SEPARATOR_H, m.width, SEPARATOR_H);
     }
@@ -121,9 +121,9 @@ function renderAxisCorner(m) {
   host.hidden = !visible;
   if (m.priceAxisModeHost) {
     m.priceAxisModeHost.style.bottom = `${height}px`;
-    m.priceAxisModeHost.style.color = m.options.layout.textColor || "#B2B5BE";
+    m.priceAxisModeHost.style.color = m.options.layout.textColor || "#A1A1AA";
     const background = m.options.layout.background || {};
-    m.priceAxisModeHost.style.backgroundColor = background.color || background.bottomColor || background.topColor || "#131722";
+    m.priceAxisModeHost.style.backgroundColor = background.color || background.bottomColor || background.topColor || "#09090B";
     m.priceAxisAutoButton?._paintModeState?.(false);
     m.priceAxisLogButton?._paintModeState?.(false);
   }
@@ -143,10 +143,10 @@ function renderAxisCorner(m) {
   ctx.clearRect(0, 0, width, height);
   const layout = m.options.layout;
   const background = layout.background || {};
-  ctx.fillStyle = background.color || background.bottomColor || background.topColor || "#131722";
+  ctx.fillStyle = background.color || background.bottomColor || background.topColor || "#09090B";
   ctx.fillRect(0, 0, width, height);
 
-  const borderColor = m.options.timeScale.borderColor || m.options.rightPriceScale.borderColor || "#2B2B43";
+  const borderColor = m.options.timeScale.borderColor || m.options.rightPriceScale.borderColor || "#27272A";
   ctx.strokeStyle = borderColor;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -159,7 +159,7 @@ function renderAxisCorner(m) {
   const cx = Math.round(width / 2);
   const cy = Math.round(height / 2) + 1;
   const radius = 8;
-  ctx.strokeStyle = layout.textColor || "#B2B5BE";
+  ctx.strokeStyle = layout.textColor || "#A1A1AA";
   ctx.lineWidth = 1.25;
   ctx.lineJoin = "round";
   ctx.beginPath();
@@ -728,7 +728,7 @@ function renderTimeAxis(m, ctx, plotX, plotW) {
   const top = m.height - TIME_AXIS_HEIGHT;
   ctx.save();
   if (tsOpts.borderVisible !== false) {
-    ctx.strokeStyle = tsOpts.borderColor || "#2B2B43";
+    ctx.strokeStyle = tsOpts.borderColor || "#27272A";
     ctx.beginPath();
     ctx.moveTo(0, top + 0.5);
     ctx.lineTo(m.width, top + 0.5);
@@ -774,7 +774,7 @@ function renderPriceAxes(m, ctx, plotX, plotW) {
         const pendingAxisLabels = [];
         const fmt = scale.formatterForAxis();
         if (scale.options.borderVisible !== false) {
-          ctx.strokeStyle = scale.options.borderColor || "#2B2B43";
+          ctx.strokeStyle = scale.options.borderColor || "#27272A";
           ctx.beginPath();
           const bx = side === "left" ? x0 + w - 0.5 : x0 + 0.5;
           ctx.moveTo(bx, pane.top);
@@ -998,7 +998,7 @@ export function renderTop(m) {
       const tw = ctx.measureText(label).width + 14;
       const lx = Math.min(Math.max(plotX + x - tw / 2, 0), m.width - tw);
       const ty = m.height - TIME_AXIS_HEIGHT;
-      ctx.fillStyle = opts.vertLine.labelBackgroundColor || "#4c525e";
+      ctx.fillStyle = opts.vertLine.labelBackgroundColor || "#18181B";
       roundRectPath(ctx, lx, ty + 1, tw, TIME_AXIS_HEIGHT - 4, 2);
       ctx.fill();
       ctx.fillStyle = "#ffffff";
@@ -1019,7 +1019,7 @@ export function renderTop(m) {
           const sScale = pane.priceScales.get(side);
           if (!sScale || !sScale.options.visible) continue;
           const x0 = side === "left" ? 0 : m.width - w;
-          crossAxisLabel(m, ctx, side, x0, w, ch.y, label, opts.horzLine.labelBackgroundColor || "#4c525e");
+          crossAxisLabel(m, ctx, side, x0, w, ch.y, label, opts.horzLine.labelBackgroundColor || "#18181B");
         }
       }
     }

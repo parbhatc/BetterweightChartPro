@@ -13,12 +13,12 @@
 .chart-table {
   font-size: 11px;
   line-height: 1.25;
-  color: #d1d4dc;
-  border: 1px solid #050608;
+  color: var(--tv-text);
+  border: 1px solid var(--tv-border);
   border-radius: 2px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  background: #131722;
+  background: var(--tv-surface);
 }
 
 .chart-table__grid {
@@ -34,7 +34,7 @@
 
 .chart-table__cell {
   padding: 2px 6px;
-  border: 1px solid #050608;
+  border: 1px solid var(--tv-border);
   vertical-align: middle;
   white-space: nowrap;
   overflow: hidden;
@@ -53,7 +53,7 @@
 .chart-table__cell--header,
 .chart-table__cell--title.chart-table__cell--header,
 .chart-table__cell--title.chart-table__cell--neutral {
-  background: #2962ff;
+  background: var(--tv-accent);
   color: #fff;
 }
 
@@ -78,13 +78,13 @@
 }
 
 .chart-table__cell--pending {
-  background: #1e222d;
-  color: #b2b5be;
+  background: var(--tv-surface-raised);
+  color: var(--tv-text-secondary);
 }
 
 .chart-table__cell--muted {
-  background: #1e222d;
-  color: #787b86;
+  background: var(--tv-surface-raised);
+  color: var(--tv-muted);
 }
 
 .chart-table__cell--title.chart-table__cell--bull {
@@ -96,7 +96,7 @@
 }
 
 .chart-table__cell--title.chart-table__cell--done {
-  background: #2962ff;
+  background: var(--tv-accent);
 }
 
 .chart-table__cell--title.chart-table__cell--current {
@@ -108,8 +108,8 @@
   align-items: center;
   gap: 3px;
   padding: 3px 5px 4px;
-  background: #0f121a;
-  border-top: 1px solid #050608;
+  background: var(--tv-bg);
+  border-top: 1px solid var(--tv-border);
 }
 
 .chart-table__dot {

@@ -6,6 +6,17 @@ import {
 
 const MAX_UNDO = 100;
 
+const LEGACY_DARK_CANVAS_COLORS = {
+  backgroundColor: ["#020617", DEFAULT_SETTINGS.canvas.backgroundColor],
+  backgroundGradientTopColor: ["#0f172a", DEFAULT_SETTINGS.canvas.backgroundGradientTopColor],
+  backgroundGradientBottomColor: ["#020617", DEFAULT_SETTINGS.canvas.backgroundGradientBottomColor],
+  gridVertColor: ["rgba(226, 232, 240, 0.06)", DEFAULT_SETTINGS.canvas.gridVertColor],
+  gridHorzColor: ["rgba(226, 232, 240, 0.06)", DEFAULT_SETTINGS.canvas.gridHorzColor],
+  crosshairColor: ["#64748b", DEFAULT_SETTINGS.canvas.crosshairColor],
+  watermarkColor: ["rgba(148, 163, 184, 0.25)", DEFAULT_SETTINGS.canvas.watermarkColor],
+  scalesTextColor: ["#e2e8f0", DEFAULT_SETTINGS.canvas.scalesTextColor],
+};
+
 /** @param {typeof DEFAULT_SETTINGS | null | undefined} next */
 function normalizeSettings(next) {
   const merged = cloneSettingsDefaults();
@@ -19,6 +30,14 @@ function normalizeSettings(next) {
   // up the tighter TradingView-like spacing without touching custom values.
   if (Number(next.canvas?.marginBottom) === 8) {
     merged.canvas.marginBottom = DEFAULT_SETTINGS.canvas.marginBottom;
+  }
+  // Saved layouts from the previous dark theme otherwise restore its navy
+  // Basic styles over Auren's neutral zinc palette. Only migrate exact legacy
+  // defaults so intentional custom colors remain untouched.
+  for (const [key, [legacy, replacement]] of Object.entries(LEGACY_DARK_CANVAS_COLORS)) {
+    if (String(next.canvas?.[key] ?? "").toLowerCase() === legacy.toLowerCase()) {
+      merged.canvas[key] = replacement;
+    }
   }
   // Version 1 briefly shipped bid/ask labels and lines enabled by default.
   // Move those profiles back to the quieter opt-in default once; version 2

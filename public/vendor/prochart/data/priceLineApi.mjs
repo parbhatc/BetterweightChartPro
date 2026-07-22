@@ -7,7 +7,7 @@ export class PriceLineApi {
     this._series = series;
     this._chart = chart;
     this._options = deepMerge(
-      { price: 0, color: "#4c525e", lineWidth: 1, lineStyle: LineStyle.Solid, lineVisible: true, axisLabelVisible: true, title: "", axisLabelColor: "", axisLabelTextColor: "", axisLabelText: "", axisLabelTitle: "", axisSubtitleText: "" },
+      { price: 0, color: "#71717a", lineWidth: 1, lineStyle: LineStyle.Solid, lineVisible: true, axisLabelVisible: true, title: "", axisLabelColor: "", axisLabelTextColor: "", axisLabelText: "", axisLabelTitle: "", axisSubtitleText: "" },
       opts || {},
     );
   }

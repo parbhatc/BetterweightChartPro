@@ -148,7 +148,7 @@ export class ChartModel {
       button.style.cssText = `width:20px;height:21.6px;border:0;padding:0;margin:0;border-radius:4px;background:transparent;color:inherit;font:400 14px/18px ${this.options.layout.fontFamily};cursor:pointer;`;
       const paint = (hovered = false) => {
         const active = button.getAttribute("aria-pressed") === "true";
-        button.style.backgroundColor = active ? "#2962ff" : hovered ? "rgba(128,128,128,0.18)" : "transparent";
+        button.style.backgroundColor = active ? "#3B82F6" : hovered ? "rgba(161,161,170,0.18)" : "transparent";
         button.style.color = active ? "#ffffff" : "inherit";
       };
       button.addEventListener("pointerenter", () => paint(true));
@@ -243,7 +243,7 @@ export class ChartModel {
     // background before the next animation frame so toolbar/layout width
     // changes never expose a transparent gray flash.
     const background = this.options.layout?.background || {};
-    const resizeFill = background.color || background.bottomColor || background.topColor || "#131722";
+    const resizeFill = background.color || background.bottomColor || background.topColor || "#09090B";
     this.root.style.backgroundColor = resizeFill;
     this.baseCtx.save();
     this.baseCtx.setTransform(1, 0, 0, 1, 0, 0);

@@ -50,11 +50,11 @@ export class Constants {
       down: "#e11d48",
     },
     dark: {
-      bg: "#131722",
-      text: "#d1d4dc",
-      grid: "rgba(255, 255, 255, 0.06)",
-      up: "#089981",
-      down: "#f23645",
+      bg: "#09090b",
+      text: "#a1a1aa",
+      grid: "rgba(161, 161, 170, 0.10)",
+      up: "#10b981",
+      down: "#ef4444",
     },
   };
 

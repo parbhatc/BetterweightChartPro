@@ -335,7 +335,7 @@ export function attachReplayFutureDim(ctx, replay) {
 
   function resolveFill() {
     const cv = ctx.settingsStore.get().canvas ?? {};
-    const fallback = ctx.themeColors?.bg ?? "#020617";
+    const fallback = ctx.themeColors?.bg ?? "#09090b";
     const bg =
       cv.backgroundType === "gradient"
         ? (cv.backgroundGradientTopColor ?? fallback)

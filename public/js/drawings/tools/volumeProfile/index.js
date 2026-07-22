@@ -158,7 +158,7 @@ export function renderFixedRangeVolumeProfile(ctx, drawingIn, pts, state = {}) {
     if (drawing.vpShowValues && width > 36) {
       ctx.save();
       ctx.font = "10px system-ui, sans-serif";
-      ctx.fillStyle = "#e2e8f0";
+      ctx.fillStyle = "#fafafa";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.fillText(Math.round(row.totalVolume).toLocaleString(), rowStart + 3, top + height / 2);

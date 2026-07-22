@@ -7,7 +7,7 @@ export function gridAxisVisible(mode, axis) {
 
 /** @param {object} cv @param {{ bg?: string }} [themeColors] */
 export function resolveLayoutBackground(cv, themeColors = {}) {
-  const fallback = themeColors.bg ?? "#020617";
+  const fallback = themeColors.bg ?? "#09090b";
   if (cv?.backgroundType === "gradient") {
     return {
       type: "gradient",
@@ -23,7 +23,7 @@ export function resolveLayoutBackground(cv, themeColors = {}) {
 
 /** @param {object} cv @param {{ bg?: string }} [themeColors] */
 export function resolvePaneBackgroundColor(cv, themeColors = {}) {
-  const fallback = themeColors.bg ?? "#020617";
+  const fallback = themeColors.bg ?? "#09090b";
   if (cv?.backgroundType === "gradient") {
     return cv.backgroundGradientTopColor ?? fallback;
   }
