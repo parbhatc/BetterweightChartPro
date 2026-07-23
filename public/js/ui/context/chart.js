@@ -53,9 +53,11 @@ const ICONS = {
  * @param {() => MenuState} opts.getState
  * @param {MenuActions} opts.actions
  * @param {() => void | Promise<void>} [opts.onBeforeOpen]
+ * @param {string[]} [opts.hiddenActions]
  */
 export function mountChartContextMenu(opts) {
   const { container, getState, actions, onBeforeOpen, chart, chartEl } = opts;
+  const hiddenActions = new Set(opts.hiddenActions ?? []);
 
   const root = document.createElement("div");
   root.className = "ctx-menu ctx-menu--chart";
@@ -83,6 +85,7 @@ export function mountChartContextMenu(opts) {
   }
 
   function rowItem({ id, label, shortcut, icon = "", disabled = false, checked = false, hasSubmenu = false }) {
+    if (hiddenActions.has(id)) return "";
     const dis = disabled ? " ctx-menu__row--disabled" : "";
     const shortcutHtml = shortcut ? `<span class="ctx-menu__shortcut">${shortcut}</span>` : "";
     const arrowHtml = hasSubmenu ? `<span class="ctx-menu__arrow">${ICONS.chevron}</span>` : "";
@@ -142,6 +145,12 @@ export function mountChartContextMenu(opts) {
       ${rowDivider()}
       ${rowItem({ id: "settings", label: "Settings…", icon: ICONS.settings })}
     </tbody></table></div>`;
+    const rows = Array.from(root.querySelectorAll("tbody > tr"));
+    rows.forEach((row, index) => {
+      if (!row.classList.contains("ctx-menu__divider-row")) return;
+      const next = rows[index + 1];
+      if (index === 0 || index === rows.length - 1 || next?.classList.contains("ctx-menu__divider-row")) row.remove();
+    });
   }
 
   function positionMenu(x, y) {

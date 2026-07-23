@@ -22,6 +22,7 @@ export function buildPaneContextMenuOpts(ctx, pane, wrapEl) {
     resetChartView: ctx.resetPaneChartView,
     resetPriceScale: ctx.resetPanePriceScale,
     resetTimeScale: ctx.resetPaneTimeScale,
+    contextMenuHiddenActions: ctx.opts.contextMenuHiddenActions ?? [],
   };
 }
 

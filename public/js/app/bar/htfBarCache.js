@@ -9,6 +9,31 @@ import { setHtfBarsReader } from "../../indicators/security/htfAccess.js";
 
 /** @typedef {{ utcBars: object[], chartBars: object[], historyExhausted: boolean, updatedAt: number, source?: string, epoch: number, version: number }} HtfBarEntry */
 
+const SECURITY_FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * Cross-symbol/HTF requests must never hold the indicator loader forever.
+ * The underlying request may not support AbortSignal, so race it and ignore a
+ * late result after the timeout. The cache's in-flight entry is then released
+ * by the caller's `finally`, allowing the scheduled retry to make progress.
+ */
+async function getBarsWithTimeout(datafeed, symbolInfo, resolution, params) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      datafeed.getBars(symbolInfo, resolution, params),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error(`Bar request timed out after ${SECURITY_FETCH_TIMEOUT_MS}ms`)),
+          SECURITY_FETCH_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /** @type {Map<string, HtfBarEntry>} */
 const store = new Map();
 /** @type {Map<string, Promise<HtfBarEntry | null>>} */
@@ -191,7 +216,7 @@ export async function extendHtfCacheForAnchor(opts) {
       lastOpen,
     });
 
-    const result = await datafeed.getBars(symbolInfo, resolution, params);
+    const result = await getBarsWithTimeout(datafeed, symbolInfo, resolution, params);
     // Stale epoch (symbol/TF/replay changed while fetching): drop the result.
     if (startEpoch !== dataEpoch) return getHtfBars(symbol, resolution);
     let fetched = result.bars ?? [];
@@ -471,7 +496,7 @@ async function fetchHtfBars(opts) {
     const params = buildInitialPeriodParams(barSec, fetchCount);
     params.to = to;
     chartDebug("data", "htf cache fetch", { symbol, resolution, countBack: want, to: params.to });
-    const result = await datafeed.getBars(symbolInfo, resolution, params);
+    const result = await getBarsWithTimeout(datafeed, symbolInfo, resolution, params);
     // Stale epoch (symbol/TF/replay changed while fetching): drop the result.
     if (startEpoch !== dataEpoch) return getHtfBars(symbol, resolution);
     let fetched = result.bars ?? [];
@@ -527,7 +552,7 @@ export async function prependHtfBars(opts) {
   const barSec = resolutionSec(resolution);
   const first = entry.utcBars[0].time;
   const params = buildPrependPeriodParams(first, barSec, Math.min(500, countBack));
-  const result = await datafeed.getBars(symbolInfo, resolution, params);
+  const result = await getBarsWithTimeout(datafeed, symbolInfo, resolution, params);
   // Stale epoch: drop — do not mutate an entry from a different data generation.
   if (startEpoch !== dataEpoch) return getHtfBars(symbol, resolution);
   if (!result.bars?.length || result.noData) {

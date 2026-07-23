@@ -20,7 +20,7 @@ import { compareSymbol } from "../../security/compareSymbol.js";
 import { compareSymbolInputs, compareBarsRecomputeKey, ensureCompareAligned } from "../../security/compareBars.js";
 import { pendingInit, readyInit } from "../../security/initWait.js";
 import { styleColor, styleColorWithOpacity } from "../../styleColor.js";
-import { isStrictSmtDivergence } from "./divergence.js";
+import { isSmtCompareTemporarilyUnavailable, isStrictSmtDivergence } from "./divergence.js";
 
 class SmtIndicator extends BarScriptIndicator {
 
@@ -130,6 +130,15 @@ class SmtIndicator extends BarScriptIndicator {
       this.bars,
     );
     if (!cmp.ready) {
+      if (isSmtCompareTemporarilyUnavailable(overlayCtx, cmp.compare)) {
+        chartDebug("smt", "init skip: compare data temporarily unavailable", {
+          compare: cmp.compare,
+          resolution: overlayCtx.chartResolution,
+        });
+        this.state.skip = true;
+        this.state.loading = false;
+        return;
+      }
       if (cmp.covered != null) {
         chartDebug("smt", "init skip: insufficient compare coverage", {
           compare: cmp.compare,

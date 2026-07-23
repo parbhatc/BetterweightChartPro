@@ -30,6 +30,7 @@ import { indicatorDebug } from "../../../debug/chart/indicators.js";
 const HTF_FETCH_IDLE_MS = 200;
 const PREPEND_GUARD = 8;
 const PREPEND_CHUNK = 200;
+const COMPARE_RETRY_MS = 10_000;
 
 /** @param {string} symbol @param {string} resolution */
 function htfStoreBarCount(symbol, resolution) {
@@ -94,6 +95,47 @@ export function createIndicatorDataLoader({
   const htfFetchInFlight = new Set();
   /** @type {Set<string>} */
   const compareFetchInFlight = new Set();
+  /** @type {Map<string, number>} */
+  const compareUnavailableUntil = new Map();
+  /** @type {Map<string, ReturnType<typeof setTimeout>>} */
+  const compareRetryTimers = new Map();
+
+  const compareKey = (symbol, resolution) => `${symbol}|${resolution}`;
+
+  function clearCompareUnavailable(symbol, resolution) {
+    const key = compareKey(symbol, resolution);
+    const timer = compareRetryTimers.get(key);
+    if (timer != null) clearTimeout(timer);
+    compareRetryTimers.delete(key);
+    compareUnavailableUntil.delete(key);
+  }
+
+  function markCompareUnavailable(pane, symbol, resolution, countBack, err) {
+    const key = compareKey(symbol, resolution);
+    const retryAt = Date.now() + COMPARE_RETRY_MS;
+    compareUnavailableUntil.set(key, retryAt);
+    indicatorDebug("data.compare unavailable", {
+      pane: pane?.index,
+      symbol,
+      resolution,
+      retryMs: COMPARE_RETRY_MS,
+      error: err ? String(err) : "no bars",
+    });
+    requestOverlayRefresh(pane.index);
+    const previous = compareRetryTimers.get(key);
+    if (previous != null) clearTimeout(previous);
+    compareRetryTimers.set(key, setTimeout(() => {
+      compareRetryTimers.delete(key);
+      compareUnavailableUntil.delete(key);
+      requestOverlayRefresh(pane.index);
+      scheduleCompareBarsFetch(pane, symbol, resolution, countBack);
+    }, COMPARE_RETRY_MS));
+  }
+
+  function isCompareDataUnavailable(symbol, resolution) {
+    const retryAt = compareUnavailableUntil.get(compareKey(symbol, resolution));
+    return retryAt != null && retryAt > Date.now();
+  }
 
   /**
    * Replay anchor for the pane, or null. Also feeds rewind detection — a
@@ -316,6 +358,7 @@ export function createIndicatorDataLoader({
       });
       guard += 1;
     }
+    return Boolean(hit?.utcBars?.length || entry?.utcBars?.length);
   }
 
   /** @param {import("../../../indicators/security/indicatorDataNeeds.js").NewsNeed} newsNeed */
@@ -461,7 +504,16 @@ export function createIndicatorDataLoader({
           deferHeavyWork();
           return;
         }
-        await fillCompareChart(pane, symbol, countBack);
+        // Do not let routine loader passes continuously restart the cooldown;
+        // the retry timer below owns the next attempt after an empty/error run.
+        if (isCompareDataUnavailable(symbol, pane.resolution)) continue;
+        try {
+          const loaded = await fillCompareChart(pane, symbol, countBack);
+          if (loaded) clearCompareUnavailable(symbol, pane.resolution);
+          else markCompareUnavailable(pane, symbol, pane.resolution, countBack);
+        } catch (err) {
+          markCompareUnavailable(pane, symbol, pane.resolution, countBack, err);
+        }
       }
       for (const [key, countBack] of needs.compareHtf) {
         if (isChartPanning()) {
@@ -531,7 +583,7 @@ export function createIndicatorDataLoader({
       return;
     }
     const want = Math.max(50, Number(countBack) || 300);
-    const key = `${symbol}|${resolution}`;
+    const key = compareKey(symbol, resolution);
     if (compareFetchInFlight.has(key)) return;
 
     const hit = lookupSymbolBars({
@@ -549,7 +601,11 @@ export function createIndicatorDataLoader({
     // compares freeze at the last covered pivot.
     const tailStale =
       anchorSec != null && htfCacheStaleForAnchor(symbol, resolution, anchorSec);
-    if (hit && hit.utcBars.length >= want && !tailStale) return;
+    if (hit && hit.utcBars.length >= want && !tailStale) {
+      clearCompareUnavailable(symbol, resolution);
+      return;
+    }
+    if (isCompareDataUnavailable(symbol, resolution)) return;
 
     compareFetchInFlight.add(key);
     const startEpoch = getDataEpoch();
@@ -578,11 +634,17 @@ export function createIndicatorDataLoader({
           playbackAnchorSec: anchorSec,
         });
       })
-      .then(() => {
+      .then((entry) => {
+        if (!entry?.utcBars?.length) {
+          markCompareUnavailable(pane, symbol, resolution, want);
+          return;
+        }
+        clearCompareUnavailable(symbol, resolution);
         if (getDataEpoch() !== startEpoch) return;
         if (getHtfSeriesVersion(symbol, resolution) === beforeVersion) return;
         refreshPanesUsingCompareSymbol(symbol);
       })
+      .catch((err) => markCompareUnavailable(pane, symbol, resolution, want, err))
       .finally(() => compareFetchInFlight.delete(key));
   }
 
@@ -677,6 +739,7 @@ export function createIndicatorDataLoader({
     extendHtfTailForReplay,
     scheduleCompareBarsFetch,
     scheduleHtfBarsFetch,
+    isCompareDataUnavailable,
     newsContextForPane,
   };
 }

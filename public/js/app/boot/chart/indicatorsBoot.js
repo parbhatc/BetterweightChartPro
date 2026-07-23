@@ -110,6 +110,8 @@ export function attachIndicatorsBoot(ctx) {
         newsPending: newsCtx.newsPending,
         isNewsEnabled: newsCtx.isNewsEnabled,
         getNewsRows: newsCtx.getNewsRows,
+        isCompareDataUnavailable: (symbol, resolution) =>
+          indicatorData.isCompareDataUnavailable(symbol, resolution ?? pane.resolution),
         isReplayLocked: () => ctx.replayEngine?.isReplayLocked?.() ?? false,
         replayHostControlled: Boolean(ctx.opts?.replayHostControlled),
         getPlaybackAnchorSec: (resolution) =>

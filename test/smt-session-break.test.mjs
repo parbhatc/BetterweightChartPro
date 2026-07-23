@@ -8,7 +8,10 @@ import {
   pivotLowStrictAt,
   pricesEqualWithinTicks,
 } from "../public/js/indicators/math/pivots.js";
-import { isStrictSmtDivergence } from "../public/js/indicators/definitions/smt/divergence.js";
+import {
+  isSmtCompareTemporarilyUnavailable,
+  isStrictSmtDivergence,
+} from "../public/js/indicators/definitions/smt/divergence.js";
 
 const bar = (time) => ({ time });
 
@@ -67,4 +70,22 @@ test("SMT matches Pine's strict opposite-direction product check", () => {
   assert.equal(isStrictSmtDivergence(100, 100, 199, 200), false);
   assert.equal(isStrictSmtDivergence(101, 100, 200, 200), false);
   assert.equal(isStrictSmtDivergence(99, 100, 199, 200), false);
+});
+
+test("SMT recognizes when compare data is temporarily unavailable", () => {
+  const unavailable = isSmtCompareTemporarilyUnavailable({
+    chartResolution: "1",
+    isCompareDataUnavailable: () => true,
+  }, "ES");
+
+  assert.equal(unavailable, true);
+});
+
+test("SMT keeps loading while a compare request is actively in flight", () => {
+  const unavailable = isSmtCompareTemporarilyUnavailable({
+    chartResolution: "1",
+    isCompareDataUnavailable: () => false,
+  }, "ES");
+
+  assert.equal(unavailable, false);
 });

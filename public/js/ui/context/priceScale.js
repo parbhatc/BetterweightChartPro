@@ -44,9 +44,11 @@ const ICONS = {
  * @param {import("prochart").IChartApi} opts.chart
  * @param {(side: "left" | "right") => PriceScaleMenuState} opts.getState
  * @param {PriceScaleMenuActions} opts.actions
+ * @param {string[]} [opts.hiddenActions]
  */
 export function mountPriceScaleContextMenu(opts) {
   const { container, chartEl, chart, getState, actions, onBeforeOpen } = opts;
+  const hiddenActions = new Set(opts.hiddenActions ?? []);
 
   const root = document.createElement("div");
   root.className = "ctx-menu ctx-menu--chart ctx-menu--price-scale";
@@ -63,6 +65,7 @@ export function mountPriceScaleContextMenu(opts) {
   }
 
   function rowItem({ id, label, shortcut = "", icon = "", checked = false }) {
+    if (hiddenActions.has(id)) return "";
     const shortcutHtml = shortcut ? `<span class="ctx-menu__shortcut">${shortcut}</span>` : "";
     const iconCell = icon
       ? `<span class="ctx-menu__icon">${icon}</span>`
@@ -130,6 +133,12 @@ export function mountPriceScaleContextMenu(opts) {
       ${rowDivider()}
       ${rowItem({ id: "settings", label: "More settings…", icon: ICONS.settings })}
     </tbody></table></div>`;
+    const rows = Array.from(root.querySelectorAll("tbody > tr"));
+    rows.forEach((row, index) => {
+      if (!row.classList.contains("ctx-menu__divider-row")) return;
+      const next = rows[index + 1];
+      if (index === 0 || index === rows.length - 1 || next?.classList.contains("ctx-menu__divider-row")) row.remove();
+    });
   }
 
   function positionMenu(x, y, side) {

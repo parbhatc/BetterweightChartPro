@@ -126,7 +126,7 @@ export function attachDrawingBoot(ctx) {
     ctx.drawingHub.editToolbar?.syncVisibility?.();
 
     const DRAWINGS_SESSION_KEY = "tv-chart-drawings-session";
-    if (!ctx.opts.chrome) {
+    if (!ctx.opts.chrome && ctx.opts.persistDrawings !== false) {
       try {
         const raw = localStorage.getItem(DRAWINGS_SESSION_KEY);
         if (raw) ctx.drawingHub.setDrawingsByPane(JSON.parse(raw));

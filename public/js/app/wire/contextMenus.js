@@ -29,6 +29,7 @@ export function wirePaneContextMenus(opts) {
     resetChartView,
     resetPriceScale = resetChartView,
     resetTimeScale,
+    contextMenuHiddenActions = [],
   } = opts;
 
   const { chart, series, el: chartEl } = pane;
@@ -37,6 +38,7 @@ export function wirePaneContextMenus(opts) {
     container: wrapEl,
     chart,
     chartEl,
+    hiddenActions: contextMenuHiddenActions,
     onBeforeOpen: async () => {
       await activatePane(pane.index);
     },
@@ -101,6 +103,7 @@ export function wirePaneContextMenus(opts) {
     container: wrapEl,
     chartEl,
     chart,
+    hiddenActions: contextMenuHiddenActions,
     onBeforeOpen: async () => {
       await activatePane(pane.index);
     },
@@ -167,6 +170,7 @@ export function wirePaneContextMenus(opts) {
     container: wrapEl,
     chartEl,
     chart,
+    hiddenActions: contextMenuHiddenActions,
     onBeforeOpen: async () => {
       await activatePane(pane.index);
     },

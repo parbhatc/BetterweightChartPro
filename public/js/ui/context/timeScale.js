@@ -45,9 +45,11 @@ const SESSION_OPTIONS = [
  * @param {import("prochart").IChartApi} opts.chart
  * @param {() => TimeScaleMenuState} opts.getState
  * @param {TimeScaleMenuActions} opts.actions
+ * @param {string[]} [opts.hiddenActions]
  */
 export function mountTimeScaleContextMenu(opts) {
   const { container, chartEl, chart, getState, actions } = opts;
+  const hiddenActions = new Set(opts.hiddenActions ?? []);
 
   const root = document.createElement("div");
   root.className = "ctx-menu ctx-menu--chart ctx-menu--time-scale";
@@ -73,6 +75,7 @@ export function mountTimeScaleContextMenu(opts) {
   }
 
   function rowItem({ id, label, shortcut = "", icon = "", hasSubmenu = false, checked = false }) {
+    if (hiddenActions.has(id)) return "";
     const shortcutHtml = shortcut ? `<span class="ctx-menu__shortcut">${shortcut}</span>` : "";
     const arrowHtml = hasSubmenu ? `<span class="ctx-menu__arrow">${ICONS.chevron}</span>` : "";
     const iconCell = icon
@@ -103,6 +106,12 @@ export function mountTimeScaleContextMenu(opts) {
       ${rowDivider()}
       ${rowItem({ id: "settings", label: "More settings…", icon: ICONS.settings })}
     </tbody></table></div>`;
+    const rows = Array.from(root.querySelectorAll("tbody > tr"));
+    rows.forEach((row, index) => {
+      if (!row.classList.contains("ctx-menu__divider-row")) return;
+      const next = rows[index + 1];
+      if (index === 0 || index === rows.length - 1 || next?.classList.contains("ctx-menu__divider-row")) row.remove();
+    });
   }
 
   function openTimezoneSubmenu(anchorRow) {

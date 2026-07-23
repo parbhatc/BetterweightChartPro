@@ -185,7 +185,7 @@ export function renderDrawing(ctx, drawing, timeToX, priceToY, right, bottom, st
     drawEndpointAnchors(ctx, drawing, timeToX, priceToY, color, lw, isPreview, state);
   }
 
-  drawDrawingLabel(ctx, drawing, timeToX, priceToY);
+  drawDrawingLabel(ctx, drawing, timeToX, priceToY, right);
   ctx.restore();
 }
 
@@ -235,14 +235,28 @@ function renderTrendAngleDrawing(ctx, drawing, timeToX, priceToY, right, bottom,
   drawTrendAngleDecoration(ctx, seg.ax, seg.ay, seg.bx, seg.by, angleDeg, color);
 }
 
-function drawDrawingLabel(ctx, drawing, timeToX, priceToY) {
+function drawDrawingLabel(ctx, drawing, timeToX, priceToY, right) {
   if (drawing.type === "text" || drawing.type === "text-annotation") return;
   const raw = drawing.label;
   if (raw == null || !String(raw).trim()) return;
 
   const a = pt(drawing.points, 0, timeToX, priceToY);
-  const b = pt(drawing.points, 1, timeToX, priceToY) ?? a;
+  const rawB = pt(drawing.points, 1, timeToX, priceToY) ?? a;
   if (!a) return;
+  const labelA = drawing.extendLeft ? { x: 0, y: a.y } : a;
+  const b = rawB
+    ? {
+        x: drawing.extendRight ? right : rawB.x,
+        y: rawB.y,
+      }
+    : a;
+
+  // Programmatic journal annotations can begin well outside the visible
+  // viewport (for example, an overnight FVG reviewed at the cash open).
+  // Center labels inside the visible portion of the shape/segment instead of
+  // centering against an off-screen anchor and making the label disappear.
+  const visibleA = { ...labelA, x: Math.max(0, Math.min(right, labelA.x)) };
+  const visibleB = b ? { ...b, x: Math.max(0, Math.min(right, b.x)) } : visibleA;
 
   const fontSize = drawing.fontSize ?? 14;
   const baseTextColor = drawing.textColor ?? drawing.color ?? DEFAULT_DRAWING_COLOR;
@@ -252,14 +266,14 @@ function drawDrawingLabel(ctx, drawing, timeToX, priceToY) {
   const alignV = drawing.textAlignV ?? "top";
   const gap = fontSize * 0.45 + 5;
 
-  let ax = a.x;
-  let ay = a.y;
-  if (alignH === "right" && b) {
-    ax = b.x;
-    ay = b.y;
-  } else if (alignH === "center" && b) {
-    ax = (a.x + b.x) / 2;
-    ay = (a.y + b.y) / 2;
+  let ax = visibleA.x;
+  let ay = visibleA.y;
+  if (alignH === "right" && visibleB) {
+    ax = visibleB.x;
+    ay = visibleB.y;
+  } else if (alignH === "center" && visibleB) {
+    ax = (visibleA.x + visibleB.x) / 2;
+    ay = (visibleA.y + visibleB.y) / 2;
   }
 
   let x = ax;
