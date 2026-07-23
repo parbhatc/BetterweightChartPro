@@ -44,8 +44,17 @@ export class LevelsEngine {
     const engineOpts = { ...buildLevelsEngineOpts(inputs, style, ctx, this, levelsHtf), chartBars };
     debugLevelsOverlayStart(ctx, utcBars, chartBars, engineOpts);
 
-    const { lines, htfState } = this.run(utcBars, anchorUnix, engineOpts);
-    lines.push(...buildReferenceLevelLines(utcBars, chartBars, anchorUnix, engineOpts, ctx));
+    const referenceLines = buildReferenceLevelLines(
+      utcBars,
+      chartBars,
+      anchorUnix,
+      engineOpts,
+      ctx,
+    );
+    const { lines, htfState } = this.run(utcBars, anchorUnix, {
+      ...engineOpts,
+      referenceLines,
+    });
     debugLevelsEngineResult(utcBars, anchorUnix, engineOpts, lines, htfState);
     debugLevelsReplayStep(anchorUnix, lines, htfState);
 

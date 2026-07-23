@@ -257,6 +257,7 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
   }
   out.push(...sessionLines.filter((l) => !l._drop));
   out.push(...releaseLines.filter((l) => !l._drop));
+  out.push(...(opts.referenceLines ?? []).filter((l) => !l._drop));
 
   if (mergeConfluence) {
     out = applyClusterConfluence(out, proximity, confHi, confLo);
@@ -280,7 +281,11 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
   const sweptPriceKeys = new Set(out.filter((l) => l.swept).map((l) => takenLiquidityKey(l)));
   if (sweptPriceKeys.size) {
     out = out.filter(
-      (l) => l.swept || l.sessionBorn != null || !sweptPriceKeys.has(takenLiquidityKey(l)),
+      (l) =>
+        l.swept ||
+        l.sessionBorn != null ||
+        l.referenceLevel === true ||
+        !sweptPriceKeys.has(takenLiquidityKey(l)),
     );
   }
 

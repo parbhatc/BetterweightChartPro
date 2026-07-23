@@ -115,6 +115,8 @@ function makeReferenceLine(price, label, color, kind, range, showLabels) {
     kind,
     swept: false,
     showLabel: showLabels,
+    referenceLevel: true,
+    referenceTag: label,
   };
 }
 
