@@ -82,7 +82,9 @@ export class LevelsHtf {
   /** @param {object} inputs @param {string} [chartResolution] */
   requiredChartBars(inputs, chartResolution) {
     const htf = this.enabledResolutions(inputs, chartResolution);
-    const sessions = resolveSessionLevels(inputs).some((r) => r.enabled);
+    const sessions =
+      resolveSessionLevels(inputs).some((r) => r.enabled) ||
+      inputs.midpointEnabled === true;
     return Math.max(
       requiredChartBarsWhenNoHtf(htf, inputs),
       requiredChartBarsForSessions(inputs, sessions, chartResolution),

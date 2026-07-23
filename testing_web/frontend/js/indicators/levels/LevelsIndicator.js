@@ -13,9 +13,33 @@ import {
   createColor,
   createField,
   createInt,
+  createSelect,
 } from "/js/indicators/builders.js";
 import { levelsHtf } from "./htf.js";
-import { htfSeriesRecomputeKey } from "/js/indicators/security/htfPolicy.js";
+import {
+  htfPendingForLayers,
+  htfSeriesRecomputeKey,
+} from "/js/indicators/security/htfPolicy.js";
+
+const HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => {
+  const hour = Math.floor(index / 2);
+  const minute = index % 2 ? 30 : 0;
+  const id = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  const suffix = hour < 12 ? "AM" : "PM";
+  const hour12 = hour % 12 || 12;
+  return { id, label: `${hour12}:${String(minute).padStart(2, "0")} ${suffix}` };
+});
+
+const MIDPOINT_END_OPTIONS = [
+  { id: "current", label: "Current candle" },
+  ...HALF_HOUR_OPTIONS,
+];
+
+function referencePeriodResolutions(inputs) {
+  return inputs.previousDayEnabled === true || inputs.previousWeekEnabled === true
+    ? ["60"]
+    : [];
+}
 
 class LevelsIndicator extends BarScriptIndicator {
 
@@ -36,6 +60,31 @@ class LevelsIndicator extends BarScriptIndicator {
       createField("sessionLevels", "sessionLevels", DEFAULT_SESSION_LEVELS, {
         title: "Sessions",
         section: "Sessions",
+      }),
+      createBool("previousDayEnabled", "PDH / PDL", false, { section: "Previous periods" }),
+      createColor("previousDayColor", "PDH / PDL color", { color: "#f59e0b", opacity: 100 }, {
+        section: "Previous periods",
+        disabled: (inputs) => inputs.previousDayEnabled !== true,
+      }),
+      createBool("previousWeekEnabled", "PWH / PWL", false, { section: "Previous periods" }),
+      createColor("previousWeekColor", "PWH / PWL color", { color: "#38bdf8", opacity: 100 }, {
+        section: "Previous periods",
+        disabled: (inputs) => inputs.previousWeekEnabled !== true,
+      }),
+      createBool("midpointEnabled", "Session midpoint", false, { section: "Session midpoint" }),
+      createSelect("midpointStartTime", "Start", "18:00", HALF_HOUR_OPTIONS, {
+        section: "Session midpoint",
+        inline: true,
+        disabled: (inputs) => inputs.midpointEnabled !== true,
+      }),
+      createSelect("midpointEndTime", "End", "current", MIDPOINT_END_OPTIONS, {
+        section: "Session midpoint",
+        inline: true,
+        disabled: (inputs) => inputs.midpointEnabled !== true,
+      }),
+      createColor("midpointColor", "Midpoint color", { color: "#a3e635", opacity: 100 }, {
+        section: "Session midpoint",
+        disabled: (inputs) => inputs.midpointEnabled !== true,
       }),
       createBool("newsEnabled", "News", true, { section: "News" }),
       createField("newsLevels", "newsLevels", DEFAULT_NEWS_LEVELS, {
@@ -96,12 +145,29 @@ class LevelsIndicator extends BarScriptIndicator {
         countBack: levelsHtf.requiredHtfCountForLayer(inputs, chartBars, chartRes, tfSec),
       });
     }
+    for (const tfId of referencePeriodResolutions(inputs)) {
+      if (needs.htf.some((need) => need.resolution === tfId)) continue;
+      needs.htf.push({
+        symbol: pane.symbol ?? "",
+        resolution: tfId,
+        countBack: 240,
+      });
+    }
     return needs;
   }
 
   /** @param {import("../../types.js").IndicatorInstance} instance @param {object} ctx */
   overlayPending(instance, ctx) {
-    return levelsHtf.htfPending(instance.inputs, ctx);
+    if (levelsHtf.htfPending(instance.inputs, ctx)) return true;
+    const refs = referencePeriodResolutions(instance.inputs);
+    if (!refs.length) return false;
+    return htfPendingForLayers(
+      ctx,
+      ctx.primarySymbol ?? ctx.symbol,
+      refs,
+      240,
+      { strict: true },
+    );
   }
 
   legendParams(instance) {
@@ -112,6 +178,9 @@ class LevelsIndicator extends BarScriptIndicator {
     if (instance.inputs.newsEnabled !== false) {
       enabled.push(...resolveNewsLevels(instance.inputs).filter((r) => r.enabled !== false));
     }
+    if (instance.inputs.previousDayEnabled === true) enabled.push({ label: "PDH/PDL" });
+    if (instance.inputs.previousWeekEnabled === true) enabled.push({ label: "PWH/PWL" });
+    if (instance.inputs.midpointEnabled === true) enabled.push({ label: "Mid" });
     if (!enabled.length) return [];
     return [enabled.map((r) => r.label).join(", ")];
   }
@@ -130,9 +199,12 @@ class LevelsIndicator extends BarScriptIndicator {
     const htfKey = htfSeriesRecomputeKey(
       ctx,
       symbol,
-      levelsHtf.enabledResolutions(instance.inputs, ctx.chartResolution ?? "1").map(({ tfId }) => tfId),
+      [
+        ...levelsHtf.enabledResolutions(instance.inputs, ctx.chartResolution ?? "1").map(({ tfId }) => tfId),
+        ...referencePeriodResolutions(instance.inputs),
+      ],
     );
-    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.mergeConfluence}|${instance.inputs.confHiColor}|${instance.inputs.confLoColor}|${instance.style.graphicLabels}`;
+    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.mergeConfluence}|${instance.inputs.confHiColor}|${instance.inputs.confLoColor}|${instance.inputs.previousDayEnabled}|${instance.inputs.previousDayColor}|${instance.inputs.previousWeekEnabled}|${instance.inputs.previousWeekColor}|${instance.inputs.midpointEnabled}|${instance.inputs.midpointStartTime}|${instance.inputs.midpointEndTime}|${instance.inputs.midpointColor}|${instance.style.graphicLabels}`;
   }
 
   /**

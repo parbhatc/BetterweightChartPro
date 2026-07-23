@@ -11,6 +11,7 @@ import {
   levelsToOverlayLines,
 } from "./overlayMap.js";
 import { runLevelsEngine } from "./run.js";
+import { buildReferenceLevelLines } from "./referenceLevels.js";
 
 export { buildLevelsEngineConfig, sessionConfigFromRow, runLevelsEngine, levelsToOverlayLines };
 
@@ -44,6 +45,7 @@ export class LevelsEngine {
     debugLevelsOverlayStart(ctx, utcBars, chartBars, engineOpts);
 
     const { lines, htfState } = this.run(utcBars, anchorUnix, engineOpts);
+    lines.push(...buildReferenceLevelLines(utcBars, chartBars, anchorUnix, engineOpts, ctx));
     debugLevelsEngineResult(utcBars, anchorUnix, engineOpts, lines, htfState);
     debugLevelsReplayStep(anchorUnix, lines, htfState);
 
