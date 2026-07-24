@@ -236,7 +236,14 @@ export function appendNewBarOnPaneSeries(pane, utcBar, settingsStore, symbolInfo
           }
         }
         pane.series.update(batch.newCandle);
-      }, { followUpFrames: 2 });
+      }, {
+        followUpFrames: 2,
+        // Time-scale marker coordinates can change when the newest logical bar
+        // is appended even if Lightweight Charts does not emit a visible-range
+        // event. Re-anchor them after the preserved viewport settles.
+        onDone: () => pane.newsMarkers?.requestRefresh?.(),
+      });
+      pane.newsMarkers?.requestRefresh?.();
       pane.timeAdapter = pane._chartView?.timeAdapter ?? pane.timeAdapter;
       delete pane.utcTimeToIdx;
       delete pane.chartTimeToIdx;
@@ -254,7 +261,11 @@ export function appendNewBarOnPaneSeries(pane, utcBar, settingsStore, symbolInfo
       try {
         withPreservedViewport(pane.chart, () => {
           pane.series.setData(pane._chartView.seriesData);
-        }, { followUpFrames: 1 });
+        }, {
+          followUpFrames: 1,
+          onDone: () => pane.newsMarkers?.requestRefresh?.(),
+        });
+        pane.newsMarkers?.requestRefresh?.();
         pane.timeAdapter = pane._chartView?.timeAdapter ?? pane.timeAdapter;
         delete pane.utcTimeToIdx;
         delete pane.chartTimeToIdx;

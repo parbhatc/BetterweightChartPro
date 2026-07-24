@@ -8,7 +8,6 @@ export function newsImpactKind(raw) {
   return "low";
 }
 
-const IMPACT_RANK = { low: 0, medium: 1, high: 2 };
 const IMPACT_COLOR = {
   high: "#f23645",
   medium: "#ff9800",
@@ -44,8 +43,12 @@ function indexBarsByEtDay(bars) {
   return byDay;
 }
 
-/** Snap an event to the closest loaded bar on its ET calendar day. */
-function nearestBarTime(rows, targetMinute) {
+/**
+ * Resolve an exact ET release minute to UTC using a loaded bar from the same
+ * calendar day as the timezone anchor. Do not snap to the bar: on a 30-minute
+ * chart a 09:45 event still belongs halfway between 09:30 and 10:00.
+ */
+function eventUtcTime(rows, targetMinute) {
   if (!rows?.length || !Number.isFinite(targetMinute)) return null;
   let lo = 0;
   let hi = rows.length;
@@ -54,11 +57,15 @@ function nearestBarTime(rows, targetMinute) {
     if (rows[mid].minute < targetMinute) lo = mid + 1;
     else hi = mid;
   }
-  if (lo <= 0) return rows[0].time;
-  if (lo >= rows.length) return rows.at(-1).time;
-  const before = rows[lo - 1];
-  const after = rows[lo];
-  return targetMinute - before.minute <= after.minute - targetMinute ? before.time : after.time;
+  let anchor;
+  if (lo <= 0) anchor = rows[0];
+  else if (lo >= rows.length) anchor = rows.at(-1);
+  else {
+    const before = rows[lo - 1];
+    const after = rows[lo];
+    anchor = targetMinute - before.minute <= after.minute - targetMinute ? before : after;
+  }
+  return anchor.time + (targetMinute - anchor.minute) * 60;
 }
 
 /**
@@ -84,18 +91,18 @@ export function buildNewsTimeScaleMarkers({ bars, timeAdapter, newsByDay, settin
       const hm = String(event.hmEt ?? "").trim();
       const minute = hmToMinutes(hm);
       if (minute == null || !Number.isFinite(minute)) continue;
-      const utcTime = nearestBarTime(dayBars, minute);
+      const utcTime = eventUtcTime(dayBars, minute);
       if (utcTime == null) continue;
       const chartTime = timeAdapter?.time?.toChart?.(utcTime) ?? utcTime;
-      // Higher-timeframe candles can contain releases with different minute
-      // labels. Group everything that lands on one scale coordinate so nearby
-      // icons do not overlap.
-      const key = `${day}|${chartTime}`;
       const impact = newsImpactKind(event.impact ?? event.importance);
+      // Group only releases with the same announced time and impact. Events at
+      // different times must remain separate even when a higher-timeframe
+      // chart snaps them to the same candle coordinate.
+      const key = `${day}|${hm}|${impact}`;
       let group = groups.get(key);
       if (!group) {
         group = {
-          id: `news:${day}:${chartTime}`,
+          id: `news:${day}:${hm}:${impact}`,
           time: chartTime,
           utcTime,
           label: "⚡",
@@ -107,10 +114,6 @@ export function buildNewsTimeScaleMarkers({ bars, timeAdapter, newsByDay, settin
           events: [],
         };
         groups.set(key, group);
-      }
-      if (IMPACT_RANK[impact] > IMPACT_RANK[group.impact]) {
-        group.impact = impact;
-        group.color = IMPACT_COLOR[impact];
       }
       group.timeLabels.add(event.timeLabel ?? hm);
       group.events.push(event);

@@ -22,8 +22,9 @@ function valueText(value) {
  * @param {object} opts
  * @param {HTMLElement} opts.mountEl
  * @param {import("prochart").IChartApi} opts.chart
+ * @param {(marker: object) => number | null} [opts.coordinateForMarker]
  */
-export function mountTimeScaleMarkers({ mountEl, chart }) {
+export function mountTimeScaleMarkers({ mountEl, chart, coordinateForMarker }) {
   const root = div(mountEl, "tv-timescale-markers");
   root.setAttribute("aria-label", "Chart event markers");
 
@@ -123,7 +124,11 @@ export function mountTimeScaleMarkers({ mountEl, chart }) {
     const axisHeight = typeof chart.timeScale().height === "function" ? chart.timeScale().height() : 26;
     positioned.length = 0;
     for (const entry of buttons) {
-      const x = chart.timeScale().timeToCoordinate(entry.marker.time);
+      const customX = coordinateForMarker?.(entry.marker);
+      const x =
+        customX != null && Number.isFinite(customX)
+          ? customX
+          : chart.timeScale().timeToCoordinate(entry.marker.time);
       entry.x = x;
       if (x == null || !Number.isFinite(x) || x < -MARKER_SIZE || x > mountEl.clientWidth + MARKER_SIZE) {
         entry.button.hidden = true;

@@ -750,6 +750,9 @@ export function mountChartSettings(opts) {
         ${watermarkFieldRow("canvas")}`,
       { fields: true },
     )}${sectionBlock(
+      "Events",
+      `${checkRow("Show news markers", "canvas", "showNewsMarkers")}`,
+    )}${sectionBlock(
       "Scales",
       `${scalesTextFieldRow("canvas")}
         ${colorFieldRow("Lines", "canvas", "scalesLineColor", { alpha: true })}`,

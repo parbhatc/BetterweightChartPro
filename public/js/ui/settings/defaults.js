@@ -88,6 +88,7 @@ export const DEFAULT_SETTINGS = {
     watermarkTicker: false,
     watermarkInterval: false,
     watermarkDescription: false,
+    showNewsMarkers: true,
     scalesTextColor: "#a1a1aa",
     scalesFontSize: "13",
     scalesLineColor: "rgba(242, 242, 242, 0)",

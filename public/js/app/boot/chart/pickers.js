@@ -19,6 +19,9 @@ import {
   hideChartPendingOverlay,
 } from "../../../ui/loader/chartPendingOverlay.js";
 import { showChartError, hideChartError } from "../../../ui/chart/emptyState.js";
+import { waitForTaskOrTimeout } from "../../../utils/async.js";
+
+export const INDICATOR_RELOAD_SOFT_TIMEOUT_MS = 10_000;
 
 /** @param {import("./state.js").BootContext} ctx @param {string} sym */
 function notifyHostSymbolChange(ctx, sym) {
@@ -190,22 +193,34 @@ export async function finishSeriesReload(ctx, panes) {
     delete pane._suppressHistoryPrefetch;
     pane._indicatorHistoryBulkLoad = true;
   }
-  try {
-    for (const pane of panes) {
-      await ctx.ensureIndicatorChartHistory?.(pane);
-    }
-    for (const pane of panes) {
-      await ctx.ensureIndicatorDataThenOverlay?.(pane);
-    }
-    for (const pane of panes) {
-      if (ctx.indicatorController?.paneHasPlotSeriesIndicators?.(pane.index)) {
-        ctx.refreshIndicatorsImmediate?.(pane.index);
+  const indicatorReload = (async () => {
+    try {
+      for (const pane of panes) {
+        await ctx.ensureIndicatorChartHistory?.(pane);
+      }
+      for (const pane of panes) {
+        await ctx.ensureIndicatorDataThenOverlay?.(pane);
+      }
+      for (const pane of panes) {
+        if (ctx.indicatorController?.paneHasPlotSeriesIndicators?.(pane.index)) {
+          ctx.refreshIndicatorsImmediate?.(pane.index);
+        }
+      }
+    } finally {
+      for (const pane of panes) {
+        delete pane._indicatorHistoryBulkLoad;
       }
     }
-  } finally {
-    for (const pane of panes) {
-      delete pane._indicatorHistoryBulkLoad;
-    }
+  })();
+  const indicatorResult = await waitForTaskOrTimeout(
+    indicatorReload,
+    INDICATOR_RELOAD_SOFT_TIMEOUT_MS,
+  );
+  if (indicatorResult.error) throw indicatorResult.error;
+  if (indicatorResult.timedOut) {
+    console.warn(
+      `[BWC] Indicator history is still loading after ${INDICATOR_RELOAD_SOFT_TIMEOUT_MS / 1000}s; showing the chart while it finishes.`,
+    );
   }
   if (ctx.opts?.replayHostControlled) {
     for (const pane of panes) {

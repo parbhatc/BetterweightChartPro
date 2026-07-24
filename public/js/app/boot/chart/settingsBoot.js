@@ -190,6 +190,7 @@ export function attachSettingsBoot(ctx) {
       pane.priceLineLabel?.requestRefresh();
       pane.bidAskLines?.requestRefresh();
     }
+    ctx.refreshNewsMarkers?.();
 
     if (sc.lockPriceToBarRatio) {
       ctx.maintainLockedRatio?.();

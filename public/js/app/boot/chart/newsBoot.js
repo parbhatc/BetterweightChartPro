@@ -92,7 +92,14 @@ export function attachNewsBoot(ctx) {
     }
     for (const pane of panes) {
       if (markerHosts.has(pane.index) || !(pane.el instanceof HTMLElement)) continue;
-      const host = mountTimeScaleMarkers({ mountEl: pane.el, chart: pane.chart });
+      const host = mountTimeScaleMarkers({
+        mountEl: pane.el,
+        chart: pane.chart,
+        coordinateForMarker: (marker) =>
+          pane._chartView?.timeAdapter?.coord?.xFromUtc?.(pane.chart, marker.utcTime) ??
+          pane.timeAdapter?.coord?.xFromUtc?.(pane.chart, marker.utcTime) ??
+          null,
+      });
       markerHosts.set(pane.index, host);
       pane.newsMarkers = host;
     }
@@ -101,12 +108,23 @@ export function attachNewsBoot(ctx) {
   function syncNewsMarkers() {
     ensureMarkerHosts();
     const settings = newsStore.get();
+    const showMarkers = ctx.settingsStore.get().canvas?.showNewsMarkers !== false;
     for (const pane of ctx.getAllChartPanes()) {
       const host = markerHosts.get(pane.index);
       if (!host) continue;
+      if (!showMarkers) {
+        host.setMarkers([]);
+        continue;
+      }
+      const view = getPaneChartView(
+        pane,
+        ctx.settingsStore,
+        pane.symbolInfo ?? ctx.symbolInfo,
+        ctx.resolutions,
+      );
       const markers = buildNewsTimeScaleMarkers({
-        bars: pane.bars,
-        timeAdapter: pane.timeAdapter,
+        bars: view.utcBars,
+        timeAdapter: view.timeAdapter,
         newsByDay: getNewsByDayForPane(pane),
         settings,
       });

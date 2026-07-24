@@ -159,6 +159,9 @@ test("appearance presets include trader-friendly gray and never enable attributi
   assert.equal(settings.get().scales.bidLabelLine, false);
   assert.equal(settings.get().scales.askLabelValue, false);
   assert.equal(settings.get().scales.askLabelLine, false);
+  assert.equal(settings.get().canvas.showNewsMarkers, true);
+  settings.set("canvas", "showNewsMarkers", false);
+  assert.equal(settings.get().canvas.showNewsMarkers, false);
 
   settings.replace({ scales: {
     bidAskDefaultsVersion: 1,
