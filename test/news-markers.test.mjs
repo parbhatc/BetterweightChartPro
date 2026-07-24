@@ -27,6 +27,8 @@ test("news markers group simultaneous events and map ET releases to chart time",
   assert.equal(markers[0].events.length, 2);
   assert.equal(markers[0].time, releaseUtc + 3600);
   assert.equal(markers[0].label, "⚡");
+  assert.equal(markers[0].impact, "high");
+  assert.equal(markers[0].color, "#f23645");
 });
 
 test("news marker filters and impact normalization handle empty and selected paths", () => {
@@ -49,6 +51,36 @@ test("news marker filters and impact normalization handle empty and selected pat
     }),
     [],
   );
+  assert.deepEqual(
+    buildNewsTimeScaleMarkers({
+      ...common,
+      settings: { enabled: true, displayCurrencies: [], displayImpacts: ["high"] },
+    }),
+    [],
+  );
+});
+
+test("news markers combine releases on one scale coordinate and use the highest impact color", () => {
+  const releaseUtc = Date.UTC(2026, 5, 11, 12, 30) / 1000;
+  const markers = buildNewsTimeScaleMarkers({
+    bars: [{ time: releaseUtc }],
+    timeAdapter: null,
+    newsByDay: {
+      "2026-06-11": {
+        events: [
+          { title: "Low release", hmEt: "08:29", timeLabel: "8:29am", impact: "Low", country: "USD" },
+          { title: "High release", hmEt: "08:30", timeLabel: "8:30am", impact: "High", country: "USD" },
+        ],
+      },
+    },
+    settings: { enabled: true, displayCurrencies: [], displayImpacts: [] },
+  });
+
+  assert.equal(markers.length, 1);
+  assert.equal(markers[0].events.length, 2);
+  assert.equal(markers[0].impact, "high");
+  assert.equal(markers[0].color, "#f23645");
+  assert.equal(markers[0].timeLabel, "8:29am, 8:30am");
 });
 
 test("demo news marker follows the final chart day and includes popup values", () => {

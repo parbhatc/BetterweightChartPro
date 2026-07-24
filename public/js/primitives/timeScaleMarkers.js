@@ -36,9 +36,7 @@ export function mountTimeScaleMarkers({ mountEl, chart }) {
   let buttons = [];
   let openButton = null;
   let frame = 0;
-  let dragStartClientX = 0;
-  let dragClientX = 0;
-  let draggingChart = false;
+  let chartPointerActive = false;
   const positioned = [];
 
   function closePopup() {
@@ -158,17 +156,6 @@ export function mountTimeScaleMarkers({ mountEl, chart }) {
     frame = requestAnimationFrame(updatePositions);
   }
 
-  function applyDragPosition() {
-    if (!draggingChart) return;
-    const deltaX = dragClientX - dragStartClientX;
-    for (const entry of buttons) {
-      if (!Number.isFinite(entry.dragStartX)) continue;
-      const x = entry.dragStartX + deltaX;
-      entry.button.hidden = x < -MARKER_SIZE || x > mountEl.clientWidth + MARKER_SIZE;
-      entry.button.style.setProperty("--marker-x", `${x}px`);
-    }
-  }
-
   function render() {
     root.replaceChildren();
     buttons = markers.map((marker) => {
@@ -196,7 +183,7 @@ export function mountTimeScaleMarkers({ mountEl, chart }) {
         openPopup(button, marker);
       });
       root.appendChild(button);
-      return { button, marker, x: 0, dragStartX: 0, lastX: null, lastY: null };
+      return { button, marker, x: 0, lastX: null, lastY: null };
     });
     schedulePosition();
   }
@@ -211,32 +198,29 @@ export function mountTimeScaleMarkers({ mountEl, chart }) {
   };
   document.addEventListener("pointerdown", onDocumentPointerDown, true);
   document.addEventListener("keydown", onKeyDown);
-  // LWC can defer its public range callback until mouse-up. Follow the actual
-  // left-drag pixel delta meanwhile, then reconcile to the authoritative scale.
+  // Always derive marker X from its event time. Pointer movement may represent
+  // a pan, crosshair inspection, or a drawing gesture; applying raw pointer
+  // deltas here would make crosshair movement drag markers off their timestamp.
   const onVisibleRangeChange = () => {
     if (!popup.hidden) closePopup();
-    if (draggingChart) return;
     schedulePosition();
   };
   const onPointerDown = (event) => {
     if (event.button !== 0 || event.isPrimary === false) return;
     if (event.target instanceof Element && event.target.closest(".tv-timescale-marker")) return;
-    draggingChart = true;
-    dragStartClientX = event.clientX;
-    dragClientX = event.clientX;
-    for (const entry of buttons) entry.dragStartX = entry.x;
+    chartPointerActive = true;
     if (!popup.hidden) closePopup();
   };
-  const onPointerMove = (event) => {
-    if (!draggingChart) return;
-    dragClientX = event.clientX;
-    // A transform-only write is cheap and must happen before mouse-up; queuing
-    // this can drop the final movement when a fast drag starts and ends in one frame.
-    applyDragPosition();
+  const onPointerMove = () => {
+    if (!chartPointerActive) return;
+    // Query after the chart processes the pointer event, keeping markers
+    // responsive during pans without confusing crosshair motion for a scale
+    // change.
+    schedulePosition();
   };
   const onPointerEnd = () => {
-    if (!draggingChart) return;
-    draggingChart = false;
+    if (!chartPointerActive) return;
+    chartPointerActive = false;
     schedulePosition();
   };
   chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);

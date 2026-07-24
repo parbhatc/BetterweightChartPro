@@ -8,6 +8,13 @@ export function newsImpactKind(raw) {
   return "low";
 }
 
+const IMPACT_RANK = { low: 0, medium: 1, high: 2 };
+const IMPACT_COLOR = {
+  high: "#f23645",
+  medium: "#ff9800",
+  low: "#2962ff",
+};
+
 /** @param {object} event @param {object} settings */
 function eventPassesMarkerFilters(event, settings) {
   const impacts = settings.displayImpacts ?? [];
@@ -80,24 +87,45 @@ export function buildNewsTimeScaleMarkers({ bars, timeAdapter, newsByDay, settin
       const utcTime = nearestBarTime(dayBars, minute);
       if (utcTime == null) continue;
       const chartTime = timeAdapter?.time?.toChart?.(utcTime) ?? utcTime;
-      const key = `${day}|${hm}|${chartTime}`;
+      // Higher-timeframe candles can contain releases with different minute
+      // labels. Group everything that lands on one scale coordinate so nearby
+      // icons do not overlap.
+      const key = `${day}|${chartTime}`;
+      const impact = newsImpactKind(event.impact ?? event.importance);
       let group = groups.get(key);
       if (!group) {
         group = {
-          id: `news:${day}:${hm}`,
+          id: `news:${day}:${chartTime}`,
           time: chartTime,
           utcTime,
           label: "⚡",
-          color: "#a855f7",
+          impact,
+          color: IMPACT_COLOR[impact],
           title: `News at ${event.timeLabel ?? hm}`,
           timeLabel: event.timeLabel ?? hm,
+          timeLabels: new Set(),
           events: [],
         };
         groups.set(key, group);
       }
+      if (IMPACT_RANK[impact] > IMPACT_RANK[group.impact]) {
+        group.impact = impact;
+        group.color = IMPACT_COLOR[impact];
+      }
+      group.timeLabels.add(event.timeLabel ?? hm);
       group.events.push(event);
     }
   }
 
-  return [...groups.values()].sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
+  return [...groups.values()]
+    .map((group) => {
+      const timeLabel = [...group.timeLabels].join(", ");
+      return {
+        ...group,
+        title: `${group.events.length} news ${group.events.length === 1 ? "event" : "events"} at ${timeLabel}`,
+        timeLabel,
+        timeLabels: undefined,
+      };
+    })
+    .sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
 }
