@@ -29,31 +29,12 @@
 }
 
 .app-loader__spinner {
-  position: relative;
-  width: 2.5rem;
-  height: 2.5rem;
-}
-
-.app-loader__spinner::before,
-.app-loader__spinner::after {
-  content: "";
-  position: absolute;
-  inset: 0;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: var(--radius-full);
-  border: 2px solid transparent;
-}
-
-.app-loader__spinner::before {
-  border-top-color: var(--tv-border-strong);
-  border-right-color: var(--tv-border-subtle);
-  animation: app-loader-spin 1s linear infinite;
-}
-
-.app-loader__spinner::after {
-  inset: 6px;
+  border: 3px solid var(--tv-border-subtle);
   border-top-color: var(--tv-accent);
-  border-right-color: var(--tv-accent-soft);
-  animation: app-loader-spin 0.7s linear infinite reverse;
+  animation: app-loader-spin 0.8s linear infinite;
 }
 
 @keyframes app-loader-spin {
