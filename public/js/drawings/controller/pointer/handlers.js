@@ -488,6 +488,21 @@ export function createPointerHandlers(api) {
       handleMobilePlacementPointerMove(ev);
     }
 
+    const ordinaryChartPan =
+      api.isCursorTool() &&
+      api.isPrimaryButtonDown(ev) &&
+      !api.isDragging() &&
+      !api.hasActiveDrag() &&
+      !api.getMeasureDragActive() &&
+      !api.getFreehandDrawing() &&
+      api.getPlacementStaged().length === 0;
+    if (ordinaryChartPan) {
+      // Native chart panning owns this gesture. Hover hit-testing and cursor
+      // DOM updates are useful while hovering, but only add work while held.
+      api.cancelLongPressIfMoved(ev.clientX, ev.clientY);
+      return;
+    }
+
     if (shouldSwallowDrawMove(ev)) {
       api.swallowChartPointer(ev);
     }

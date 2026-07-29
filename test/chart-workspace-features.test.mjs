@@ -18,6 +18,7 @@ import {
   tryRestorePaneResolutionCache,
 } from "../public/js/app/bar/resolutionCache.js";
 import {
+  bindEvents,
   TOUCH_TRACKING_CANCEL_DISTANCE,
   TOUCH_TRACKING_LONG_PRESS_MS,
   trackingCrosshairPosition,
@@ -306,6 +307,128 @@ test("mobile tracking moves both crosshair lines by gesture delta without jumpin
     ),
     { x: 0, y: 180 },
   );
+});
+
+test("plot pan input is coalesced to one chart update per animation frame", () => {
+  const listeners = new Map();
+  let rectReads = 0;
+  const root = {
+    addEventListener(type, listener) {
+      const bucket = listeners.get(type) ?? [];
+      bucket.push(listener);
+      listeners.set(type, bucket);
+    },
+    getBoundingClientRect() {
+      rectReads += 1;
+      return { left: 0, top: 0, width: 800, height: 600 };
+    },
+    setPointerCapture() {},
+  };
+  const dispatch = (type, overrides = {}) => {
+    const event = {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      buttons: type === "pointerup" ? 0 : 1,
+      clientX: 100,
+      clientY: 100,
+      preventDefault() {},
+      ...overrides,
+    };
+    for (const listener of listeners.get(type) ?? []) listener(event);
+  };
+
+  const scrollCalls = [];
+  const pricePanCalls = [];
+  const crosshairCalls = [];
+  const scale = {
+    options: { autoScale: false },
+    panByPixels(delta) {
+      pricePanCalls.push(delta);
+    },
+  };
+  const model = {
+    root,
+    width: 800,
+    height: 600,
+    _leftW: 0,
+    _rightW: 72,
+    options: {
+      timeScale: { visible: true },
+      handleScale: {
+        pinch: true,
+        axisPressedMouseMove: { time: true, price: true },
+        axisDoubleClickReset: { time: true, price: true },
+      },
+      handleScroll: {
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      kineticScroll: { mouse: false, touch: true },
+    },
+    timeScale: {
+      barSpacing: 8,
+      scrollBy(delta) {
+        scrollCalls.push(delta);
+      },
+    },
+    panes: [{ top: 0, height: 572, priceScales: new Map([["right", scale]]) }],
+    crosshair: { x: 0, y: 0, paneIndex: 0 },
+    timeAxisHeight: () => 28,
+    paneWidth: () => 728,
+    paneIndexAtY: () => 0,
+    updateCrosshair(x, y) {
+      crosshairCalls.push({ x, y });
+    },
+    clearCrosshair() {},
+    _stopKinetic() {},
+    _startKinetic() {},
+  };
+
+  const queuedFrames = new Map();
+  let nextFrameId = 1;
+  const previousRaf = globalThis.requestAnimationFrame;
+  const previousCancelRaf = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => {
+    const id = nextFrameId++;
+    queuedFrames.set(id, fn);
+    return id;
+  };
+  globalThis.cancelAnimationFrame = (id) => {
+    queuedFrames.delete(id);
+  };
+
+  try {
+    bindEvents(model);
+    dispatch("pointerdown");
+    dispatch("pointermove", { clientX: 110, clientY: 105 });
+    dispatch("pointermove", { clientX: 125, clientY: 110 });
+    dispatch("pointermove", { clientX: 130, clientY: 115 });
+
+    assert.deepEqual(scrollCalls, []);
+    assert.deepEqual(pricePanCalls, []);
+    assert.equal(crosshairCalls.length, 0);
+    assert.equal(queuedFrames.size, 1);
+
+    const frame = [...queuedFrames.values()][0];
+    queuedFrames.clear();
+    frame(performance.now());
+
+    assert.deepEqual(scrollCalls, [-30]);
+    assert.deepEqual(pricePanCalls, [-15]);
+    // Full crosshair/status fan-out stays deferred during a mouse pan.
+    assert.deepEqual(crosshairCalls, []);
+    assert.equal(rectReads, 1);
+
+    dispatch("pointerup", { clientX: 130, clientY: 115 });
+    assert.deepEqual(scrollCalls, [-30]);
+    assert.deepEqual(pricePanCalls, [-15]);
+    assert.deepEqual(crosshairCalls, [{ x: 130, y: 115 }]);
+  } finally {
+    globalThis.requestAnimationFrame = previousRaf;
+    globalThis.cancelAnimationFrame = previousCancelRaf;
+  }
 });
 
 test("mobile OHLC follows a pinned crosshair after pointer release", () => {

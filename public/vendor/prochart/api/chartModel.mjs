@@ -181,6 +181,12 @@ export class ChartModel {
 
     this.root.addEventListener("pointermove", (event) => {
       if (event.pointerType && event.pointerType !== "mouse") return;
+      // Price-axis mode buttons cannot be hovered while the pointer is held
+      // down. Avoid a forced layout read on every high-frequency pan event.
+      if (event.buttons) {
+        if (!host.hidden) setModesVisible(false);
+        return;
+      }
       const rect = this.root.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;

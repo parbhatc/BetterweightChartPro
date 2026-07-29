@@ -32,6 +32,10 @@ export function bindEvents(m) {
   let pinch = null;
   let touchCrosshairPinned = false;
   let touchTrackingTimer = null;
+  let plotPanFrame = 0;
+  let pendingPlotPan = null;
+  let deferredMouseCrosshair = null;
+  let mousePanCrosshairHidden = false;
   const pointers = new Map();
 
   const clearTouchTrackingTimer = () => {
@@ -40,13 +44,13 @@ export function bindEvents(m) {
     touchTrackingTimer = null;
   };
 
-  const rectPos = (e) => {
-    const r = el.getBoundingClientRect();
+  const rectPos = (e, cachedRect) => {
+    const r = cachedRect ?? el.getBoundingClientRect();
     return { x: e.clientX - r.left - (m._leftW || 0), y: e.clientY - r.top };
   };
 
-  const zoneAt = (e) => {
-    const r = el.getBoundingClientRect();
+  const zoneAt = (e, cachedRect) => {
+    const r = cachedRect ?? el.getBoundingClientRect();
     const cx = e.clientX - r.left;
     const cy = e.clientY - r.top;
     const rightX = m.width - (m._rightW || 0);
@@ -56,21 +60,71 @@ export function bindEvents(m) {
     return "plot";
   };
 
+  const applyPendingPlotPan = () => {
+    plotPanFrame = 0;
+    const pending = pendingPlotPan;
+    pendingPlotPan = null;
+    if (!pending) return;
+
+    const hs = m.options.handleScroll;
+    const horzOk = pending.isTouch ? hs.horzTouchDrag !== false : hs.pressedMouseMove !== false;
+    const vertOk = pending.isTouch ? hs.vertTouchDrag !== false : hs.pressedMouseMove !== false;
+    if (horzOk && pending.dx !== 0) m.timeScale.scrollBy(-pending.dx);
+    if (vertOk && pending.dy !== 0) {
+      const pane = m.panes[pending.paneIndex];
+      if (pane) {
+        for (const scale of pane.priceScales.values()) {
+          if (!scale.options.autoScale) scale.panByPixels(-pending.dy);
+        }
+      }
+    }
+
+    if (pending.isTouch) {
+      m.clearCrosshair();
+    } else {
+      deferredMouseCrosshair = { pos: pending.pos, event: pending.event };
+      if (!mousePanCrosshairHidden) {
+        mousePanCrosshairHidden = true;
+        m.clearCrosshair(false);
+      }
+    }
+  };
+
+  const flushPendingPlotPan = () => {
+    if (plotPanFrame) cancelAnimationFrame(plotPanFrame);
+    applyPendingPlotPan();
+  };
+
+  const queuePlotPan = (dx, dy, paneIndex, isTouch, pos, event) => {
+    if (pendingPlotPan) {
+      pendingPlotPan.dx += dx;
+      pendingPlotPan.dy += dy;
+      pendingPlotPan.pos = pos;
+      pendingPlotPan.event = event;
+    } else {
+      pendingPlotPan = { dx, dy, paneIndex, isTouch, pos, event };
+    }
+    if (!plotPanFrame) plotPanFrame = requestAnimationFrame(applyPendingPlotPan);
+  };
+
   el.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2 && m.options.handleScale.pinch) {
+      flushPendingPlotPan();
       clearTouchTrackingTimer();
       const pts = [...pointers.values()];
       pinch = { dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), barSpacing: m.timeScale.barSpacing };
       dragging = null;
       return;
     }
-    const zone = zoneAt(e);
-    const pos = rectPos(e);
+    const rootRect = el.getBoundingClientRect();
+    const zone = zoneAt(e, rootRect);
+    const pos = rectPos(e, rootRect);
     m._stopKinetic();
     dragging = {
       zone,
+      rootRect,
       crosshairOnly: e.pointerType === "touch" && touchCrosshairPinned,
       crosshairWasPinnedAtStart: e.pointerType === "touch" && touchCrosshairPinned,
       crosshairOriginX: m.crosshair.x,
@@ -117,7 +171,7 @@ export function bindEvents(m) {
       }
       return;
     }
-    const pos = rectPos(e);
+    const pos = rectPos(e, dragging?.rootRect);
     if (dragging) {
       const dx = e.clientX - dragging.lastX;
       const dy = e.clientY - dragging.lastY;
@@ -143,20 +197,12 @@ export function bindEvents(m) {
         return;
       }
 
-      if (dragging.zone === "plot") {
-        const hs = m.options.handleScroll;
+      if (dragging.zone === "plot" && !dragging.crosshairOnly) {
         const isTouch = e.pointerType === "touch";
-        const horzOk = isTouch ? hs.horzTouchDrag !== false : hs.pressedMouseMove !== false;
-        const vertOk = isTouch ? hs.vertTouchDrag !== false : hs.pressedMouseMove !== false;
-        if (!dragging.crosshairOnly && horzOk && dx !== 0) m.timeScale.scrollBy(-dx); // 1:1 px pan, TV-style
-        if (!dragging.crosshairOnly && vertOk && dy !== 0) {
-          const pane = m.panes[dragging.paneIndex];
-          if (pane) {
-            for (const scale of pane.priceScales.values()) {
-              if (!scale.options.autoScale) scale.panByPixels(-dy);
-            }
-          }
-        }
+        // High-polling mice can emit far more pointer events than display
+        // frames. Preserve the full 2D gesture distance, but fan out range
+        // notifications and chart work at most once per animation frame.
+        queuePlotPan(dx, dy, dragging.paneIndex, isTouch, pos, e);
       } else if (dragging.zone === "time") {
         // TV: dragging right stretches (zoom in), anchored at the right edge
         if (m.options.handleScale.axisPressedMouseMove?.time !== false && dx !== 0) {
@@ -190,15 +236,21 @@ export function bindEvents(m) {
         },
       );
       m.updateCrosshair(tracked.x, tracked.y, e);
-    } else if (e.pointerType === "touch" && dragging) {
-      // Ordinary mobile swipes pan only. Crosshair tracking is entered solely
-      // by the 240 ms long press above.
-      m.clearCrosshair();
-    } else if (zoneAt(e) === "plot" || dragging) m.updateCrosshair(pos.x, pos.y, e);
+    } else if (dragging?.zone === "plot") {
+      // Ordinary mouse plot pans hide the crosshair until release; touch pans
+      // clear it in the queued frame.
+    } else if (dragging || zoneAt(e) === "plot") m.updateCrosshair(pos.x, pos.y, e);
     else m.clearCrosshair();
   });
 
   const endPointer = (e) => {
+    flushPendingPlotPan();
+    if (deferredMouseCrosshair) {
+      const { pos, event } = deferredMouseCrosshair;
+      deferredMouseCrosshair = null;
+      mousePanCrosshairHidden = false;
+      m.updateCrosshair(pos.x, pos.y, event);
+    }
     clearTouchTrackingTimer();
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
@@ -213,7 +265,7 @@ export function bindEvents(m) {
     }
   };
   el.addEventListener("pointerup", (e) => {
-    const pos = rectPos(e);
+    const pos = rectPos(e, dragging?.rootRect);
     const wasDrag = dragging && dragging.moved;
     const wasPlot = dragging?.zone === "plot";
     const wasCrosshairOnly = Boolean(dragging?.crosshairOnly);

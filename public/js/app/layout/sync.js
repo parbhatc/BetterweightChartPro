@@ -59,6 +59,10 @@ export function createLayoutSync(deps) {
   function syncLayoutDateRangeFrom(sourceChart, liveLogicalRange) {
     const layoutManager = deps.getLayoutManager?.() ?? deps.layoutManager;
     if (!layoutManager?.getSync().dateRange) return;
+    const panes = layoutPanes();
+    // A single-pane layout has no peer to synchronize. Returning here also
+    // avoids an otherwise-empty release rAF on every pan frame.
+    if (panes.length < 2) return;
     if (dateRangeSyncSource) {
       // Ignore callbacks caused by updating a peer, but retain newer movement
       // from the chart the user is actively panning instead of dropping it.
@@ -67,7 +71,7 @@ export function createLayoutSync(deps) {
       }
       return;
     }
-    const sourcePane = layoutPanes().find((p) => p.chart === sourceChart);
+    const sourcePane = panes.find((p) => p.chart === sourceChart);
     if (!sourcePane?.bars?.length) return;
 
     const ts = sourceChart.timeScale();
@@ -107,7 +111,7 @@ export function createLayoutSync(deps) {
 
     dateRangeSyncSource = sourceChart;
     try {
-      for (const pane of layoutPanes()) {
+      for (const pane of panes) {
         if (pane.chart === sourceChart || !pane.bars?.length) continue;
         const targetTs = pane.chart.timeScale();
         try {

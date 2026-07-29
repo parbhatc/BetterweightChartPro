@@ -73,7 +73,14 @@ function wireSynchronizedVerticalPan(pane, getAllChartPanes, getDrawingHub) {
     const leftWidth = pane.chart.priceScale("left").width();
     // Preserve native price-axis dragging when only one chart should move.
     if ((rightWidth > 0 && x >= rect.width - rightWidth) || (leftWidth > 0 && x <= leftWidth)) return;
-    drag = { pointerId: ev.pointerId, startX: ev.clientX, startY: ev.clientY, lastY: ev.clientY, vertical: false };
+    drag = {
+      pointerId: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      lastY: ev.clientY,
+      height: rect.height,
+      vertical: false,
+    };
   };
 
   const onMove = (ev) => {
@@ -99,7 +106,7 @@ function wireSynchronizedVerticalPan(pane, getAllChartPanes, getDrawingHub) {
       suppressCrosshairs();
     }
 
-    const height = pane.el.getBoundingClientRect().height;
+    const height = drag.height;
     if (!height) return;
     const sourceMargins = pane.series.priceScale().options().scaleMargins ?? { top: 0.08, bottom: 0.04 };
     const requestedShift = (ev.clientY - drag.lastY) / height;
@@ -541,10 +548,13 @@ export function createPaneExtras(deps) {
     trackChartPanning(pane.el, {
       onStart: () => {
         ui.chartPanning = true;
-        for (const p of getAllChartPanes()) p._deferSeriesUpdates = true;
+        const panes = getAllChartPanes();
+        for (const p of panes) p._deferSeriesUpdates = true;
         cancelHistoryPrefetch();
         stopLiveLayoutSync();
-        liveLayoutSyncRaf = requestAnimationFrame(syncLayoutWhilePanning);
+        if (panes.length > 1) {
+          liveLayoutSyncRaf = requestAnimationFrame(syncLayoutWhilePanning);
+        }
         viewportDeps?.onChartPanStart?.();
         panFps.start("pan");
       },
