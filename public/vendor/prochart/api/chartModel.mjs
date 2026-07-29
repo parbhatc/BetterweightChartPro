@@ -426,7 +426,7 @@ export class ChartModel {
       hoveredSeries: undefined,
       hoveredObjectId: undefined,
       sourceEvent: sourceEvent
-        ? { clientX: sourceEvent.clientX, clientY: sourceEvent.clientY, pageX: sourceEvent.pageX, pageY: sourceEvent.pageY, screenX: sourceEvent.screenX, screenY: sourceEvent.screenY, localX: ch.x, localY: ch.y, ctrlKey: sourceEvent.ctrlKey, altKey: sourceEvent.altKey, shiftKey: sourceEvent.shiftKey, metaKey: sourceEvent.metaKey }
+        ? { clientX: sourceEvent.clientX, clientY: sourceEvent.clientY, pageX: sourceEvent.pageX, pageY: sourceEvent.pageY, screenX: sourceEvent.screenX, screenY: sourceEvent.screenY, localX: ch.x, localY: ch.y, pointerType: sourceEvent.pointerType, ctrlKey: sourceEvent.ctrlKey, altKey: sourceEvent.altKey, shiftKey: sourceEvent.shiftKey, metaKey: sourceEvent.metaKey }
         : undefined,
     };
     if (ch.visible && ch.logical != null) {

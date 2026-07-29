@@ -23,7 +23,10 @@ import {
   trackingCrosshairPosition,
 } from "../public/vendor/prochart/input/interactions.mjs";
 import { pointInRightPriceAxis } from "../public/vendor/prochart/api/chartModel.mjs";
-import { statusPointerSelectsHover } from "../public/js/chart/status/hover.js";
+import {
+  statusPointerRefreshesDuringPan,
+  statusPointerSelectsHover,
+} from "../public/js/chart/status/hover.js";
 
 test("resolution cache does not leak candles between chart widgets", () => {
   clearResolutionCache();
@@ -327,6 +330,37 @@ test("mobile OHLC follows a pinned crosshair after pointer release", () => {
       crosshairOverChart: true,
       crosshairOverFuture: true,
     }),
+    false,
+  );
+});
+
+test("mobile OHLC keeps refreshing while a pinned crosshair is dragged", () => {
+  const pane = {
+    crosshairOverChart: true,
+    crosshairOverFuture: false,
+  };
+  assert.equal(
+    statusPointerRefreshesDuringPan(pane, {
+      point: { x: 120, y: 80 },
+      sourceEvent: { pointerType: "touch" },
+    }),
+    true,
+  );
+  assert.equal(
+    statusPointerRefreshesDuringPan(pane, {
+      point: { x: 120, y: 80 },
+      sourceEvent: { pointerType: "mouse" },
+    }),
+    false,
+  );
+  assert.equal(
+    statusPointerRefreshesDuringPan(
+      { ...pane, crosshairOverFuture: true },
+      {
+        point: { x: 120, y: 80 },
+        sourceEvent: { pointerType: "touch" },
+      },
+    ),
     false,
   );
 });

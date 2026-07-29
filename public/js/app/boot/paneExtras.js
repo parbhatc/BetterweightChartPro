@@ -20,7 +20,10 @@ import {
 import { chartDebugCount, chartDebugTime, chartDebug, chartDebugThrottle } from "../../debug/chart/index.js";
 import { resolvePaneBackgroundColor } from "../../chart/canvas/settings.js";
 import { syncStatusLineLayout, wireStatusLineLayout } from "../../chart/status/layout.js";
-import { statusPointerSelectsHover } from "../../chart/status/hover.js";
+import {
+  statusPointerRefreshesDuringPan,
+  statusPointerSelectsHover,
+} from "../../chart/status/hover.js";
 import { isNearHistoryLeftEdge } from "../bar/loader.js";
 import {
   buildChartSeriesForPane,
@@ -438,6 +441,7 @@ export function createPaneExtras(deps) {
 
       if (ui.chartPanning) {
         chartDebugCount("crosshair", "skippedPan");
+        if (statusPointerRefreshesDuringPan(pane, param)) scheduleStatusLine(pane);
         return;
       }
       chartDebugCount("crosshair", "move");
