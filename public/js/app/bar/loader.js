@@ -129,6 +129,9 @@ export function createBarLoader(opts) {
     isChartPanning,
     getRequiredChartBarsForPane,
   } = opts;
+  // Keep timeframe snapshots local to this widget. Replay and live charts may
+  // share symbol/resolution labels while serving different candle timelines.
+  const resolutionCacheScope = {};
 
   /** @type {Map<number, string>} */
   const streamUidByPane = new Map();
@@ -199,7 +202,7 @@ export function createBarLoader(opts) {
     } else if (isNewBar) {
       chartDebugCount("tick", "append");
       pane.sessionBg?.requestRefresh();
-      publishResolutionCache(pane);
+      publishResolutionCache(pane, resolutionCacheScope);
     } else {
       chartDebugCount("tick", "update");
     }
@@ -412,7 +415,7 @@ export function createBarLoader(opts) {
       restoreViewportAfterPrepend(pane.chart, captured, capturedLogical, added);
     }
     if (pane.index === 0) setPrimaryBars(pane);
-    publishResolutionCache(pane);
+    publishResolutionCache(pane, resolutionCacheScope);
 
     const finishPrepend = () => {
       pane._historyRestorePending = false;
@@ -643,7 +646,7 @@ export function createBarLoader(opts) {
       chartDebug("data", "defer chart refresh", { pane: pane.index, bars: pane.bars.length });
     }
     subscribePane(pane);
-    publishResolutionCache(pane);
+    publishResolutionCache(pane, resolutionCacheScope);
     if (pane.index === 0) setPrimaryBars(pane);
     if (pane.index === getActivePaneIndex()) {
       setHoverState(undefined, undefined);
@@ -803,7 +806,7 @@ export function createBarLoader(opts) {
 
       /** @param {object} loadOpts */
       async function tryReplayCacheLoad(loadOpts) {
-        if (!tryRestorePaneResolutionCache(pane)) return null;
+        if (!tryRestorePaneResolutionCache(pane, resolutionCacheScope)) return null;
         if (replayCapTo != null && Number.isFinite(replayCapTo) && pane.bars.length) {
           const last = pane.bars.at(-1)?.time;
           if (last == null || last < replayCapTo) {
@@ -984,7 +987,8 @@ export function createBarLoader(opts) {
     needsMoreHistory,
     flushDeferredHistory,
     setOverlayLoaderEnabled,
-    stashPaneResolutionCache,
+    stashPaneResolutionCache: (pane, resolution) =>
+      stashPaneResolutionCache(pane, resolution, resolutionCacheScope),
     ensureIndicatorChartHistory,
   };
 }

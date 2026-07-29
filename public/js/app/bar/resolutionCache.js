@@ -36,13 +36,36 @@ function cacheTtlMs() {
 
 /** @type {Map<string, CacheEntry>} */
 const entries = new Map();
+/** @type {WeakMap<object, number>} */
+const scopeIds = new WeakMap();
+let nextScopeId = 1;
+
+/**
+ * Resolution snapshots are reusable only inside the chart widget that loaded
+ * them. A replay and live widget can use the same symbol/resolution while
+ * reading from entirely different timelines.
+ * @param {object | null | undefined} scope
+ */
+function cacheScopeId(scope) {
+  if ((typeof scope !== "object" && typeof scope !== "function") || scope === null) {
+    return "global";
+  }
+  let id = scopeIds.get(scope);
+  if (id == null) {
+    id = nextScopeId;
+    nextScopeId += 1;
+    scopeIds.set(scope, id);
+  }
+  return String(id);
+}
 
 /**
  * @param {string} symbol
  * @param {string} resolution
+ * @param {object} [scope]
  */
-export function seriesCacheKey(symbol, resolution) {
-  return `${symbol}|${resolution}`;
+export function seriesCacheKey(symbol, resolution, scope) {
+  return `${cacheScopeId(scope)}|${symbol}|${resolution}`;
 }
 
 /**
@@ -78,10 +101,9 @@ function evict(k, reason) {
   if (!entry) return;
   if (entry.timer) clearTimeout(entry.timer);
   entries.delete(k);
-  const [symbol, resolution] = k.split("|");
   chartDebug("data", "resolution cache evict", {
-    symbol,
-    resolution,
+    symbol: entry.symbol,
+    resolution: entry.resolution,
     reason,
     bars: entry.snapshot.bars.length,
   });
@@ -92,13 +114,16 @@ function evict(k, reason) {
  * @param {string} resolution
  * @param {ResolutionSnapshot} snapshot
  * @param {{ ttl?: boolean }} [opts]
+ * @param {object} [scope]
  */
-function putEntry(symbol, resolution, snapshot, opts = {}) {
-  const k = seriesCacheKey(symbol, resolution);
+function putEntry(symbol, resolution, snapshot, opts = {}, scope) {
+  const k = seriesCacheKey(symbol, resolution, scope);
   const prev = entries.get(k);
   if (prev?.timer) clearTimeout(prev.timer);
 
   const entry = {
+    symbol,
+    resolution,
     snapshot,
     updatedAt: Date.now(),
     timer: null,
@@ -115,10 +140,11 @@ function putEntry(symbol, resolution, snapshot, opts = {}) {
  * Read published bars for symbol+resolution (e.g. reuse 15m if user switched from 15m chart).
  * @param {string} symbol
  * @param {string} resolution
+ * @param {object} [scope]
  * @returns {object[] | null}
  */
-export function getResolutionCacheBars(symbol, resolution) {
-  const entry = entries.get(seriesCacheKey(symbol, resolution));
+export function getResolutionCacheBars(symbol, resolution, scope) {
+  const entry = entries.get(seriesCacheKey(symbol, resolution, scope));
   if (!entry) return null;
   const ageMs = Date.now() - entry.updatedAt;
   const ttlMs = cacheTtlMs();
@@ -129,13 +155,14 @@ export function getResolutionCacheBars(symbol, resolution) {
 /**
  * Publish loaded bars so other panes with the same symbol + interval can reuse them.
  * @param {object} pane
+ * @param {object} [scope]
  */
-export function publishResolutionCache(pane) {
+export function publishResolutionCache(pane, scope) {
   if (pane._replaySnapshot) return;
   const snapshot = snapshotFromPane(pane);
   if (!snapshot || !pane.symbol || !pane.resolution) return;
 
-  putEntry(pane.symbol, pane.resolution, snapshot, { ttl: false });
+  putEntry(pane.symbol, pane.resolution, snapshot, { ttl: false }, scope);
   chartDebug("data", "resolution cache publish", {
     pane: pane.index,
     symbol: pane.symbol,
@@ -156,15 +183,16 @@ export function clearResolutionCache() {
  * Snapshot pane bars for a resolution before switching away (starts TTL eviction).
  * @param {object} pane
  * @param {string} resolution — interval being left (not the new one)
+ * @param {object} [scope]
  */
-export function stashPaneResolutionCache(pane, resolution) {
+export function stashPaneResolutionCache(pane, resolution, scope) {
   if (pane._replaySnapshot) return;
   if (!pane.bars?.length || !pane.symbol || !resolution) return;
 
   const snapshot = snapshotFromPane(pane);
   if (!snapshot) return;
 
-  putEntry(pane.symbol, resolution, snapshot, { ttl: true });
+  putEntry(pane.symbol, resolution, snapshot, { ttl: true }, scope);
   chartDebug("data", "resolution cache stash", {
     pane: pane.index,
     symbol: pane.symbol,
@@ -177,12 +205,13 @@ export function stashPaneResolutionCache(pane, resolution) {
 /**
  * Restore pane bars from the shared cache when switching back or opening another pane.
  * @param {object} pane
+ * @param {object} [scope]
  * @returns {boolean}
  */
-export function tryRestorePaneResolutionCache(pane) {
+export function tryRestorePaneResolutionCache(pane, scope) {
   if (!pane.symbol || !pane.resolution) return false;
 
-  const k = seriesCacheKey(pane.symbol, pane.resolution);
+  const k = seriesCacheKey(pane.symbol, pane.resolution, scope);
   const entry = entries.get(k);
   if (!entry) return false;
 

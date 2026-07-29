@@ -13,11 +13,44 @@ import { chartAppearancePreset, chartThemeFallback } from "../public/js/app/boot
 import { createChartSettings } from "../public/js/ui/settings/store.js";
 import { clearResolvedPaneEmptyState } from "../public/js/app/bar/loader.js";
 import {
+  clearResolutionCache,
+  publishResolutionCache,
+  tryRestorePaneResolutionCache,
+} from "../public/js/app/bar/resolutionCache.js";
+import {
   TOUCH_TRACKING_CANCEL_DISTANCE,
   TOUCH_TRACKING_LONG_PRESS_MS,
   trackingCrosshairPosition,
 } from "../public/vendor/prochart/input/interactions.mjs";
 import { pointInRightPriceAxis } from "../public/vendor/prochart/api/chartModel.mjs";
+
+test("resolution cache does not leak candles between chart widgets", () => {
+  clearResolutionCache();
+  const replayScope = {};
+  const liveScope = {};
+  const replayPane = {
+    index: 0,
+    symbol: "NQ",
+    resolution: "30S",
+    bars: [{ time: 100, close: 20 }],
+    _historyExhausted: false,
+    _firstDataRequest: false,
+  };
+  const livePane = {
+    index: 0,
+    symbol: "NQ",
+    resolution: "30S",
+    bars: [],
+  };
+
+  publishResolutionCache(replayPane, replayScope);
+
+  assert.equal(tryRestorePaneResolutionCache(livePane, liveScope), false);
+  assert.deepEqual(livePane.bars, []);
+  assert.equal(tryRestorePaneResolutionCache(livePane, replayScope), true);
+  assert.deepEqual(livePane.bars, replayPane.bars);
+  clearResolutionCache();
+});
 
 test("workspace features are enabled by default and independently disableable", () => {
   const defaults = createFeatureFlags();
