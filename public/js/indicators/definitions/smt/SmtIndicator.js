@@ -20,7 +20,11 @@ import { compareSymbol } from "../../security/compareSymbol.js";
 import { compareSymbolInputs, compareBarsRecomputeKey, ensureCompareAligned } from "../../security/compareBars.js";
 import { pendingInit, readyInit } from "../../security/initWait.js";
 import { styleColor, styleColorWithOpacity } from "../../styleColor.js";
-import { isSmtCompareTemporarilyUnavailable, isStrictSmtDivergence } from "./divergence.js";
+import {
+  isSmtCompareTemporarilyUnavailable,
+  isStrictSmtDivergence,
+  lastSmtConfirmationIndex,
+} from "./divergence.js";
 
 class SmtIndicator extends BarScriptIndicator {
 
@@ -215,13 +219,17 @@ class SmtIndicator extends BarScriptIndicator {
     } = this.state;
 
     const lastIdx = this.bars.length - 1;
-    if (waitClose && this.index === lastIdx) return;
+    const maxDetectIdx = lastSmtConfirmationIndex(
+      lastIdx,
+      waitClose,
+      this.overlayCtx?.replayHostControlled,
+    );
+    if (this.index > maxDetectIdx) return;
 
     // Pair chart pivots only with confirmed compare-symbol pivots inside the
     // sync window. A nearby raw extreme is not enough: with left/right = 1 it
     // made a chart pivot at 8:29 borrow the compare high at 8:30, then falsely
     // draw SMT to a shared 8:33 pivot.
-    const maxDetectIdx = waitClose ? lastIdx - 1 : lastIdx;
     const sync = this.state.pivotSync ?? 0;
     const comparePivotAt = (pivotIdx, kind) => {
       let best = null;

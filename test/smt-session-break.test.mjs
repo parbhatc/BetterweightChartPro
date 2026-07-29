@@ -11,6 +11,7 @@ import {
 import {
   isSmtCompareTemporarilyUnavailable,
   isStrictSmtDivergence,
+  lastSmtConfirmationIndex,
 } from "../public/js/indicators/definitions/smt/divergence.js";
 
 const bar = (time) => ({ time });
@@ -70,6 +71,14 @@ test("SMT matches Pine's strict opposite-direction product check", () => {
   assert.equal(isStrictSmtDivergence(100, 100, 199, 200), false);
   assert.equal(isStrictSmtDivergence(101, 100, 200, 200), false);
   assert.equal(isStrictSmtDivergence(99, 100, 199, 200), false);
+});
+
+test("SMT confirms on the latest fully revealed host-replay candle", () => {
+  const lastIndex = 31;
+
+  assert.equal(lastSmtConfirmationIndex(lastIndex, true, true), 31);
+  assert.equal(lastSmtConfirmationIndex(lastIndex, true, false), 30);
+  assert.equal(lastSmtConfirmationIndex(lastIndex, false, false), 31);
 });
 
 test("SMT recognizes when compare data is temporarily unavailable", () => {

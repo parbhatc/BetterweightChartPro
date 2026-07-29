@@ -1,4 +1,5 @@
 import { isCursorTool as isCursorToolType } from "../registry/tools.js";
+import { TRADINGVIEW_KINETIC_SCROLL } from "../../../vendor/prochart/input/interactions.mjs";
 
 /** @param {import("./state.js").ControllerState} ctx */
 export function attachPointerHandling(ctx) {
@@ -41,10 +42,9 @@ export function attachPointerHandling(ctx) {
         horzTouchDrag: !blockScroll,
         vertTouchDrag: !blockScroll,
       },
-      kineticScroll: {
-        mouse: true,
-        touch: !blockScroll,
-      },
+      kineticScroll: blockScroll
+        ? { mouse: false, touch: false }
+        : TRADINGVIEW_KINETIC_SCROLL,
       handleScale: {
         mouseWheel: !blockScale,
         pinch: !blockScale,

@@ -13,6 +13,8 @@
 const WHEEL_ZOOM_BASE = 1.1;
 export const TOUCH_TRACKING_LONG_PRESS_MS = 240;
 export const TOUCH_TRACKING_CANCEL_DISTANCE = 5;
+/** TradingView desktop drags stop on pointer release; touch swipes retain momentum. */
+export const TRADINGVIEW_KINETIC_SCROLL = Object.freeze({ mouse: false, touch: true });
 
 /** Lightweight Charts tracking-mode movement: preserve the crosshair origin
  * and add only the current gesture delta on both axes. */

@@ -240,8 +240,8 @@ export class ChartModel {
       c.style.height = `${h}px`;
     }
     // Resizing a canvas clears its backing store immediately. Paint the chart
-    // background before the next animation frame so toolbar/layout width
-    // changes never expose a transparent gray flash.
+    // background now, then synchronously render the complete frame below so
+    // price axes and WebGL series never disappear for a compositor frame.
     const background = this.options.layout?.background || {};
     const resizeFill = background.color || background.bottomColor || background.topColor || "#09090B";
     this.root.style.backgroundColor = resizeFill;
@@ -254,7 +254,7 @@ export class ChartModel {
     this.glCanvas.style.width = `${w}px`;
     this.glCanvas.style.height = `${h}px`;
     for (const fn of this._sizeSubs) { try { fn({ width: w, height: h }); } catch { /* noop */ } }
-    this.invalidate();
+    renderChart(this);
     this.timeScale.notifyRangeChange();
   }
 

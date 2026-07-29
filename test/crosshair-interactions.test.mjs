@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { TimeScaleModel } from "../public/vendor/prochart/scale/timeScaleModel.mjs";
+import { TRADINGVIEW_KINETIC_SCROLL } from "../public/vendor/prochart/input/interactions.mjs";
 import { nearestBarForTooltip } from "../public/js/drawings/controller/tooltip/overlay.js";
 import { supportsValuesLongPress } from "../public/js/drawings/controller/pointer/handlers.js";
 
@@ -30,4 +31,8 @@ test("value inspector long press is desktop-only", () => {
   assert.equal(supportsValuesLongPress("mouse"), true);
   assert.equal(supportsValuesLongPress("touch"), false);
   assert.equal(supportsValuesLongPress("pen"), false);
+});
+
+test("TradingView-style panning stops immediately for mouse but keeps touch momentum", () => {
+  assert.deepEqual(TRADINGVIEW_KINETIC_SCROLL, { mouse: false, touch: true });
 });

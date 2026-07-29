@@ -13,6 +13,7 @@ import {
   ORDER_LINE_ROW_H,
   plotPaneWidth,
 } from "./rowLayout.js";
+import { TRADINGVIEW_KINETIC_SCROLL } from "../../../vendor/prochart/input/interactions.mjs";
 
 const ROW_HIT_PAD = 8;
 const CLICK_DRAG_THRESHOLD_SQ = 36;
@@ -218,7 +219,7 @@ export class OrderLineManager {
         horzTouchDrag: true,
         vertTouchDrag: true,
       },
-      kineticScroll: { mouse: true, touch: true },
+      kineticScroll: TRADINGVIEW_KINETIC_SCROLL,
       handleScale: {
         axisPressedMouseMove: { time: true, price: true },
       },

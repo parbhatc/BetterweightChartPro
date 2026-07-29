@@ -10,6 +10,7 @@ import { dateTime12h, toDate } from "../format.js";
 import { lwcPaneIndexAtY } from "../pane/studyScale.js";
 import { patchChartPrimitiveLogging } from "../primitiveLogging.js";
 import { responsiveAxisMinimums } from "./responsiveAxes.js";
+import { TRADINGVIEW_KINETIC_SCROLL } from "../../../vendor/prochart/input/interactions.mjs";
 
 const DEFAULT_VISIBLE_BARS = 96;
 /** Right offset (bars) so the chart can scroll into empty future time. */
@@ -99,10 +100,7 @@ export function createTvChart(el, themeColors) {
       horzTouchDrag: true,
       vertTouchDrag: true,
     },
-    kineticScroll: {
-      mouse: true,
-      touch: true,
-    },
+    kineticScroll: TRADINGVIEW_KINETIC_SCROLL,
     handleScale: {
       mouseWheel: true,
       pinch: true,
