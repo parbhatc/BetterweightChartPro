@@ -26,6 +26,11 @@ export class Pane {
     return s;
   }
 
+  setRequestedHeight(height) {
+    this.requestedHeight = Math.max(0, height | 0);
+    this.chart.invalidate();
+  }
+
   seriesFor(scaleModel) {
     return this.series.filter((s) => s.options.priceScaleId === scaleModel.id && s.options.visible !== false);
   }

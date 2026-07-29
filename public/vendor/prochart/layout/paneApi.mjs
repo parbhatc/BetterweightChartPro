@@ -1,36 +1,64 @@
 import { PriceScaleApi } from "../scale/price.mjs";
 
-
+/** Public facade for a chart pane. */
 export class PaneApi {
   constructor(chart, index) {
     this._chart = chart;
     this._index = index;
   }
-  paneIndex() { return this._index; }
-  getHeight() { return this._chart.panes[this._index]?.height ?? 0; }
-  setHeight(px) {
-    const pane = this._chart.panes[this._index];
-    if (!pane) return;
-    pane.requestedHeight = Math.max(0, px | 0);
-    this._chart.invalidate();
+
+  // --- Identity and sizing ---
+
+  paneIndex() {
+    return this._index;
   }
+
+  getHeight() {
+    return this._pane()?.height ?? 0;
+  }
+
+  setHeight(height) {
+    this._pane()?.setRequestedHeight(height);
+  }
+
+  getStretchFactor() {
+    return this.getHeight();
+  }
+
+  setStretchFactor(factor) {
+    this.setHeight(factor);
+  }
+
+  // --- Series and scales ---
+
   getSeries() {
-    const pane = this._chart.panes[this._index];
-    return pane ? pane.series.map((s) => this._chart.seriesApiOf(s)) : [];
+    const pane = this._pane();
+    return pane
+      ? pane.series.map((series) => this._chart.seriesApiOf(series))
+      : [];
   }
-  getStretchFactor() { return this.getHeight(); }
-  setStretchFactor(f) { this.setHeight(f); }
+
   priceScale(id) {
-    const pane = this._chart.panes[this._index];
+    const pane = this._pane();
     return pane ? new PriceScaleApi(pane.scale(id)) : null;
   }
-  attachPrimitive(p) {
-    const pane = this._chart.panes[this._index];
-    const first = pane?.series[0];
-    if (first) this._chart.seriesApiOf(first).attachPrimitive(p);
+
+  // --- Primitives ---
+
+  attachPrimitive(primitive) {
+    const firstSeries = this._pane()?.series[0];
+    if (firstSeries) {
+      this._chart.seriesApiOf(firstSeries).attachPrimitive(primitive);
+    }
   }
-  detachPrimitive(p) {
-    const pane = this._chart.panes[this._index];
-    for (const s of pane?.series ?? []) this._chart.seriesApiOf(s).detachPrimitive(p);
+
+  detachPrimitive(primitive) {
+    for (const series of this._pane()?.series ?? []) {
+      this._chart.seriesApiOf(series).detachPrimitive(primitive);
+    }
+  }
+
+  _pane() {
+    return this._chart.panes[this._index];
   }
 }

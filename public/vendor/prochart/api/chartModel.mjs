@@ -1,31 +1,26 @@
-/** Chart model: state, layout, series management, crosshair, invalidation. */
+/** Chart model: chart orchestration, layout, series management, and invalidation. */
 import { deepMerge } from "../core/utils.mjs";
-import { MismatchDirection } from "../core/enums.mjs";
 import { defaultChartOptions, normalizeChartOptions, TIME_AXIS_HEIGHT, SEPARATOR_H } from "../core/defaults.mjs";
+import { pointInRightPriceAxis } from "../utils/hitTest.mjs";
+
 import { TimeScaleModel, TimeScaleApi } from "../scale/time.mjs";
 import { PriceScaleApi } from "../scale/price.mjs";
 import { SeriesModel, SeriesApi } from "../data/series.mjs";
 import { Pane, PaneApi } from "../layout/pane.mjs";
+import { CrosshairManager } from "../crosshair/crosshairManager.mjs";
+
 import { GpuRenderer } from "../render/gpu.mjs";
 import { renderChart, renderTop } from "../render/renderer.mjs";
 import { bindEvents, startKinetic, stopKinetic } from "../input/interactions.mjs";
-
-export function pointInRightPriceAxis(width, height, rightAxisWidth, timeAxisHeight, x, y) {
-  return rightAxisWidth > 0
-    && x >= width - rightAxisWidth
-    && x < width
-    && y >= 0
-    && y < height - timeAxisHeight;
-}
 import { ChartApi } from "./chartApi.mjs";
 
+export { pointInRightPriceAxis } from "../utils/hitTest.mjs";
 
 export class ChartModel {
   constructor(container, options) {
     this.container = container;
     this.options = deepMerge(defaultChartOptions(), normalizeChartOptions(options));
     this._sizeSubs = new Set();
-    this._crosshairSubs = new Set();
     this._clickSubs = new Set();
     this._dblClickSubs = new Set();
     /** @type {Pane[]} */
@@ -36,7 +31,10 @@ export class ChartModel {
     this.timeScale = new TimeScaleModel(this);
     this.timeScale.applyOptions(this.options.timeScale);
     this.timeScaleApi = new TimeScaleApi(this.timeScale, this);
-    this.crosshair = { visible: false, x: -1, y: -1, logical: null, price: null, paneIndex: 0, external: false };
+    this._crosshairManager = new CrosshairManager(this);
+    // Compatibility aliases for renderer, input, and ChartApi consumers.
+    this.crosshair = this._crosshairManager.state;
+    this._crosshairSubs = this._crosshairManager.subscribers;
     this._raf = 0;
     this._rafTop = 0;
     this._destroyed = false;
@@ -322,6 +320,34 @@ export class ChartModel {
     return this.panes[i];
   }
 
+  addPane() {
+    const paneIndex = this.panes.length;
+    this._ensurePane(paneIndex);
+    this.invalidate();
+    return this.paneApiAt(paneIndex);
+  }
+
+  removePane(paneIndex) {
+    const pane = this.panes[paneIndex];
+    if (!pane || paneIndex === 0) return;
+
+    for (const series of [...pane.series]) {
+      this.removeSeries(this.seriesApiOf(series));
+    }
+    this.panes.splice(paneIndex, 1);
+    this._paneApis.splice(paneIndex, 1);
+    this.panes.forEach((remainingPane, index) => {
+      remainingPane.index = index;
+      for (const series of remainingPane.series) {
+        series.paneIndex = index;
+      }
+    });
+    this._paneApis.forEach((paneApi, index) => {
+      paneApi._index = index;
+    });
+    this.invalidate();
+  }
+
   paneApiAt(i) { return this._paneApis[i] ?? null; }
 
   paneIndexAtY(y) {
@@ -421,104 +447,19 @@ export class ChartModel {
   /* ----------------------------- crosshair ------------------------------ */
 
   _crosshairParam(sourceEvent) {
-    const ch = this.crosshair;
-    const ts = this.timeScale;
-    const param = {
-      point: ch.visible ? { x: ch.x, y: ch.y } : undefined,
-      logical: ch.visible && ch.logical != null ? ch.logical : undefined,
-      time: undefined,
-      paneIndex: ch.paneIndex,
-      seriesData: new Map(),
-      hoveredSeries: undefined,
-      hoveredObjectId: undefined,
-      sourceEvent: sourceEvent
-        ? { clientX: sourceEvent.clientX, clientY: sourceEvent.clientY, pageX: sourceEvent.pageX, pageY: sourceEvent.pageY, screenX: sourceEvent.screenX, screenY: sourceEvent.screenY, localX: ch.x, localY: ch.y, pointerType: sourceEvent.pointerType, ctrlKey: sourceEvent.ctrlKey, altKey: sourceEvent.altKey, shiftKey: sourceEvent.shiftKey, metaKey: sourceEvent.metaKey }
-        : undefined,
-    };
-    if (ch.visible && ch.logical != null) {
-      const rounded = Math.round(ch.logical);
-      // Whitespace has an extrapolated time too. Keeping it in the event lets
-      // synchronized and pinned crosshairs remain under the pointer in future space.
-      param.time = ts.indexToTime(rounded) ?? undefined;
-      for (const [model, api] of this.seriesApis) {
-        const item = model.dataByIndex(rounded, MismatchDirection.None);
-        if (item) param.seriesData.set(api, item);
-      }
-      const pane = this.panes[ch.paneIndex];
-      if (pane) {
-        outer: for (const s of pane.series) {
-          for (const prim of s.overlays) {
-            if (typeof prim.hitTest !== "function") continue;
-            try {
-              const hit = prim.hitTest(ch.x, ch.y - pane.top);
-              if (hit) {
-                param.hoveredObjectId = hit.externalId ?? hit;
-                break outer;
-              }
-            } catch { /* noop */ }
-          }
-        }
-      }
-    }
-    return param;
+    return this._crosshairManager.createParam(sourceEvent);
   }
 
   updateCrosshair(x, y, sourceEvent) {
-    const ts = this.timeScale;
-    this.crosshair.visible = true;
-    this.crosshair.external = false;
-    this.crosshair.x = x;
-    this.crosshair.y = y;
-    this.crosshair.logical = ts.coordinateToLogical(x);
-    this.crosshair.paneIndex = this.paneIndexAtY(y);
-    this.invalidateCrosshairOnly();
-    // Coalesce subscriber notification to one per frame: pointermove can fire at
-    // mouse polling rate (500–1000 Hz) and each notification triggers app-side
-    // DOM work (legend renders). State above is always current; only the fan-out
-    // is deferred.
-    this._pendingCrosshairEvent = sourceEvent ?? null;
-    if (this._chRaf) return;
-    this._chRaf = requestAnimationFrame(() => {
-      this._chRaf = 0;
-      if (this._destroyed) return;
-      const ev = this._pendingCrosshairEvent;
-      this._pendingCrosshairEvent = null;
-      this._fireCrosshair(ev);
-    });
+    this._crosshairManager.update(x, y, sourceEvent);
   }
 
   clearCrosshair(fire = true) {
-    if (!this.crosshair.visible) return;
-    this.crosshair.visible = false;
-    this.crosshair.logical = null;
-    this.invalidateCrosshairOnly();
-    if (fire) this._fireCrosshair(null);
+    this._crosshairManager.clear(fire);
   }
 
   setCrosshairPosition(price, time, seriesApi) {
-    const ts = this.timeScale;
-    const idx = ts.timeToIndex(time, true);
-    if (idx == null) return;
-    const model = seriesApi && seriesApi._m ? seriesApi._m : null;
-    const pane = model ? this.panes[model.paneIndex] : this.panes[0];
-    const scale = model ? this.priceScaleModelFor(model) : pane?.priceScales.get("right");
-    const yLocal = scale ? scale.priceToCoordinate(price) : 0;
-    this.crosshair.visible = true;
-    this.crosshair.external = true;
-    this.crosshair.logical = idx;
-    this.crosshair.x = ts.logicalToCoordinate(idx);
-    this.crosshair.y = (pane ? pane.top : 0) + (yLocal ?? 0);
-    this.crosshair.paneIndex = pane ? pane.index : 0;
-    this.invalidateCrosshairOnly();
-    this._fireCrosshair(null);
-  }
-
-  _fireCrosshair(sourceEvent) {
-    if (!this._crosshairSubs.size) return;
-    const param = this._crosshairParam(sourceEvent);
-    for (const fn of this._crosshairSubs) {
-      try { fn(param); } catch (e) { console.error(e); }
-    }
+    this._crosshairManager.setPosition(price, time, seriesApi);
   }
 
   /* ------------------------------- misc --------------------------------- */
@@ -556,7 +497,7 @@ export class ChartModel {
     this._destroyed = true;
     if (this._raf) cancelAnimationFrame(this._raf);
     if (this._rafTop) cancelAnimationFrame(this._rafTop);
-    if (this._chRaf) cancelAnimationFrame(this._chRaf);
+    this._crosshairManager.destroy();
     this._stopKinetic();
     this._ro?.disconnect();
     this.root.remove();

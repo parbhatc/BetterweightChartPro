@@ -1,59 +1,138 @@
-/** Public chart API facade. */
 import { clone } from "../core/utils.mjs";
-import { CandlestickSeries, LineSeries, AreaSeries, HistogramSeries } from "../core/enums.mjs";
+import {
+  AreaSeries,
+  CandlestickSeries,
+  HistogramSeries,
+  LineSeries,
+} from "../core/enums.mjs";
 import { PriceScaleApi } from "../scale/price.mjs";
 
-
+/** Public facade for chart-level operations. */
 export class ChartApi {
   constructor(model) {
     this._model = model;
   }
-  addSeries(typeToken, options, paneIndex = 0) { return this._model.addSeries(typeToken, options, paneIndex); }
-  addCandlestickSeries(o) { return this.addSeries(CandlestickSeries, o); }
-  addLineSeries(o) { return this.addSeries(LineSeries, o); }
-  addAreaSeries(o) { return this.addSeries(AreaSeries, o); }
-  addHistogramSeries(o) { return this.addSeries(HistogramSeries, o); }
-  removeSeries(api) { this._model.removeSeries(api); }
+
+  // --- Series ---
+
+  addSeries(typeToken, options, paneIndex = 0) {
+    return this._model.addSeries(typeToken, options, paneIndex);
+  }
+
+  addCandlestickSeries(options) {
+    return this.addSeries(CandlestickSeries, options);
+  }
+
+  addLineSeries(options) {
+    return this.addSeries(LineSeries, options);
+  }
+
+  addAreaSeries(options) {
+    return this.addSeries(AreaSeries, options);
+  }
+
+  addHistogramSeries(options) {
+    return this.addSeries(HistogramSeries, options);
+  }
+
+  removeSeries(seriesApi) {
+    this._model.removeSeries(seriesApi);
+  }
+
+  // --- Panes and scales ---
+
   addPane() {
-    const idx = this._model.panes.length;
-    this._model._ensurePane(idx);
-    this._model.invalidate();
-    return this._model.paneApiAt(idx);
+    return this._model.addPane();
   }
-  removePane(index) {
-    const m = this._model;
-    const pane = m.panes[index];
-    if (!pane || index === 0) return;
-    for (const s of [...pane.series]) m.removeSeries(m.seriesApiOf(s));
-    m.panes.splice(index, 1);
-    m._paneApis.splice(index, 1);
-    m.panes.forEach((p, i) => {
-      p.index = i;
-      for (const s of p.series) s.paneIndex = i;
-    });
-    m._paneApis.forEach((pa, i) => { pa._index = i; });
-    m.invalidate();
+
+  removePane(paneIndex) {
+    this._model.removePane(paneIndex);
   }
-  panes() { return this._model.panes.map((p) => this._model.paneApiAt(p.index)); }
-  paneSize(paneIndex = 0) { return this._model.paneSize(paneIndex); }
-  timeScale() { return this._model.timeScaleApi; }
+
+  panes() {
+    return this._model.panes.map(
+      (pane) => this._model.paneApiAt(pane.index),
+    );
+  }
+
+  paneSize(paneIndex = 0) {
+    return this._model.paneSize(paneIndex);
+  }
+
+  timeScale() {
+    return this._model.timeScaleApi;
+  }
+
   priceScale(id = "right", paneIndex = 0) {
     const pane = this._model._ensurePane(paneIndex);
     return new PriceScaleApi(pane.scale(id));
   }
-  applyOptions(o) { this._model.applyOptions(o); }
-  options() { return clone(this._model.options); }
-  chartElement() { return this._model.root; }
-  resize(w, h, _force) { this._model._applySize(w, h); }
-  remove() { this._model.destroy(); }
-  takeScreenshot() { return this._model.takeScreenshot(); }
-  autoSizeActive() { return Boolean(this._model.options.autoSize); }
-  subscribeCrosshairMove(fn) { this._model._crosshairSubs.add(fn); }
-  unsubscribeCrosshairMove(fn) { this._model._crosshairSubs.delete(fn); }
-  subscribeClick(fn) { this._model._clickSubs.add(fn); }
-  unsubscribeClick(fn) { this._model._clickSubs.delete(fn); }
-  subscribeDblClick(fn) { this._model._dblClickSubs.add(fn); }
-  unsubscribeDblClick(fn) { this._model._dblClickSubs.delete(fn); }
-  setCrosshairPosition(price, time, series) { this._model.setCrosshairPosition(price, time, series); }
-  clearCrosshairPosition() { this._model.clearCrosshair(true); }
+
+  // --- Options and sizing ---
+
+  applyOptions(options) {
+    this._model.applyOptions(options);
+  }
+
+  options() {
+    return clone(this._model.options);
+  }
+
+  resize(width, height, _force) {
+    this._model._applySize(width, height);
+  }
+
+  autoSizeActive() {
+    return Boolean(this._model.options.autoSize);
+  }
+
+  // --- Output and lifecycle ---
+
+  chartElement() {
+    return this._model.root;
+  }
+
+  takeScreenshot() {
+    return this._model.takeScreenshot();
+  }
+
+  remove() {
+    this._model.destroy();
+  }
+
+  // --- Pointer subscriptions ---
+
+  subscribeCrosshairMove(subscriber) {
+    this._model._crosshairSubs.add(subscriber);
+  }
+
+  unsubscribeCrosshairMove(subscriber) {
+    this._model._crosshairSubs.delete(subscriber);
+  }
+
+  subscribeClick(subscriber) {
+    this._model._clickSubs.add(subscriber);
+  }
+
+  unsubscribeClick(subscriber) {
+    this._model._clickSubs.delete(subscriber);
+  }
+
+  subscribeDblClick(subscriber) {
+    this._model._dblClickSubs.add(subscriber);
+  }
+
+  unsubscribeDblClick(subscriber) {
+    this._model._dblClickSubs.delete(subscriber);
+  }
+
+  // --- Crosshair control ---
+
+  setCrosshairPosition(price, time, series) {
+    this._model.setCrosshairPosition(price, time, series);
+  }
+
+  clearCrosshairPosition() {
+    this._model.clearCrosshair(true);
+  }
 }

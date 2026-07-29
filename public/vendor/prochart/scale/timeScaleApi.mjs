@@ -1,44 +1,121 @@
 import { clone } from "../core/utils.mjs";
 
-
+/** Public facade for chart time-scale operations. */
 export class TimeScaleApi {
   constructor(model, chart) {
     this._m = model;
     this._chart = chart;
   }
-  applyOptions(o) { this._m.applyOptions(o); }
-  options() { return clone(this._m.options); }
-  getVisibleLogicalRange() { return this._m.times.length ? this._m.visibleLogicalRange() : null; }
-  setVisibleLogicalRange(r) { this._m.setVisibleLogicalRange(r); }
-  getVisibleRange() { return this._m.visibleTimeRange(); }
-  setVisibleRange(r) {
-    if (!r) return;
-    const from = this._m.timeToIndex(r.from, true);
-    const to = this._m.timeToIndex(r.to, true);
-    if (from == null || to == null) return;
-    this._m.setVisibleLogicalRange({ from, to });
+
+  // --- Options ---
+
+  applyOptions(options) {
+    this._m.applyOptions(options);
   }
-  logicalToCoordinate(l) { return l == null ? null : this._m.logicalToCoordinate(Number(l)); }
-  coordinateToLogical(x) { return this._m.coordinateToLogical(x); }
-  timeToCoordinate(t) { return this._m.timeToCoordinate(t); }
-  coordinateToTime(x) { return this._m.coordinateToTime(x); }
-  timeToIndex(t, findNearest = true) { return this._m.timeToIndex(t, findNearest); }
-  scrollPosition() { return this._m.rightOffset; }
-  scrollToPosition(pos, _animated) {
-    this._m.rightEdge = this._m.baseIndex + pos;
-    this._chart.invalidate();
-    this._m.notifyRangeChange();
+
+  options() {
+    return clone(this._m.options);
   }
-  scrollToRealTime() { this.scrollToPosition(this._m._defaultRightOffset, false); }
-  resetTimeScale() { this._m.reset(); }
-  fitContent() { this._m.fitContent(); }
-  width() { return this._chart.paneWidth(); }
-  height() { return this._chart.timeAxisHeight(); }
-  subscribeVisibleLogicalRangeChange(fn) { this._m._rangeSubs.add(fn); }
-  unsubscribeVisibleLogicalRangeChange(fn) { this._m._rangeSubs.delete(fn); }
-  subscribeVisibleTimeRangeChange(fn) { this._m._timeRangeSubs.add(fn); }
-  unsubscribeVisibleTimeRangeChange(fn) { this._m._timeRangeSubs.delete(fn); }
-  subscribeSizeChange(fn) { this._chart._sizeSubs.add(fn); }
-  unsubscribeSizeChange(fn) { this._chart._sizeSubs.delete(fn); }
-  barSpacing() { return this._m.barSpacing; }
+
+  // --- Visibility ---
+
+  getVisibleLogicalRange() {
+    return this._m.times.length ? this._m.visibleLogicalRange() : null;
+  }
+
+  setVisibleLogicalRange(range) {
+    this._m.setVisibleLogicalRange(range);
+  }
+
+  getVisibleRange() {
+    return this._m.visibleTimeRange();
+  }
+
+  setVisibleRange(range) {
+    this._m.setVisibleTimeRange(range);
+  }
+
+  // --- Coordinate conversion ---
+
+  logicalToCoordinate(logical) {
+    return logical == null ? null : this._m.logicalToCoordinate(Number(logical));
+  }
+
+  coordinateToLogical(coordinate) {
+    return this._m.coordinateToLogical(coordinate);
+  }
+
+  timeToCoordinate(time) {
+    return this._m.timeToCoordinate(time);
+  }
+
+  coordinateToTime(coordinate) {
+    return this._m.coordinateToTime(coordinate);
+  }
+
+  timeToIndex(time, findNearest = true) {
+    return this._m.timeToIndex(time, findNearest);
+  }
+
+  // --- Navigation ---
+
+  scrollPosition() {
+    return this._m.rightOffset;
+  }
+
+  scrollToPosition(position, _animated) {
+    this._m.scrollToPosition(position);
+  }
+
+  scrollToRealTime() {
+    this._m.scrollToPosition(this._m._defaultRightOffset);
+  }
+
+  resetTimeScale() {
+    this._m.reset();
+  }
+
+  fitContent() {
+    this._m.fitContent();
+  }
+
+  // --- Dimensions ---
+
+  width() {
+    return this._chart.paneWidth();
+  }
+
+  height() {
+    return this._chart.timeAxisHeight();
+  }
+
+  barSpacing() {
+    return this._m.barSpacing;
+  }
+
+  // --- Subscriptions ---
+
+  subscribeVisibleLogicalRangeChange(subscriber) {
+    this._m._rangeSubs.add(subscriber);
+  }
+
+  unsubscribeVisibleLogicalRangeChange(subscriber) {
+    this._m._rangeSubs.delete(subscriber);
+  }
+
+  subscribeVisibleTimeRangeChange(subscriber) {
+    this._m._timeRangeSubs.add(subscriber);
+  }
+
+  unsubscribeVisibleTimeRangeChange(subscriber) {
+    this._m._timeRangeSubs.delete(subscriber);
+  }
+
+  subscribeSizeChange(subscriber) {
+    this._chart._sizeSubs.add(subscriber);
+  }
+
+  unsubscribeSizeChange(subscriber) {
+    this._chart._sizeSubs.delete(subscriber);
+  }
 }

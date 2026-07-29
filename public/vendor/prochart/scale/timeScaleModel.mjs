@@ -130,6 +130,15 @@ export class TimeScaleModel {
     this.notifyRangeChange();
   }
 
+  setVisibleTimeRange(range) {
+    if (!range) return;
+
+    const from = this.timeToIndex(range.from, true);
+    const to = this.timeToIndex(range.to, true);
+    if (from == null || to == null) return;
+    this.setVisibleLogicalRange({ from, to });
+  }
+
   logicalToCoordinate(logical) {
     const r = this.visibleLogicalRange();
     return (logical - r.from) * this.barSpacing;
@@ -190,6 +199,12 @@ export class TimeScaleModel {
   scrollBy(pixels) {
     this.rightEdge += pixels / this.barSpacing;
     this._applyEdgeLimits();
+    this._chart.invalidate();
+    this.notifyRangeChange();
+  }
+
+  scrollToPosition(position) {
+    this.rightEdge = this.baseIndex + position;
     this._chart.invalidate();
     this.notifyRangeChange();
   }

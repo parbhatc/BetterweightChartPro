@@ -1,7 +1,8 @@
-import { clone, deepMerge, toSec, lowerBound } from "../core/utils.mjs";
+import { deepMerge, toSec, lowerBound } from "../core/utils.mjs";
 import { MismatchDirection } from "../core/enums.mjs";
 import { defaultSeriesOptions } from "../core/defaults.mjs";
 import { makePriceFormatter } from "../core/format.mjs";
+import { normalizeSeriesOptions } from "./seriesOptions.mjs";
 
 let nextSeriesId = 1;
 
@@ -38,6 +39,30 @@ export class SeriesModel {
     const n = normalizeSeriesOptions(o);
     deepMerge(this.options, n);
     if (n && n.priceFormat) this._fmt = null;
+    this._chart.invalidate();
+  }
+
+  attachPrimitive(primitive, seriesApi) {
+    this.overlays.add(primitive);
+    if (typeof primitive.attached === "function") {
+      primitive.attached({
+        chart: this._chart.api,
+        series: seriesApi,
+        requestUpdate: () => this._chart.invalidate(),
+      });
+    }
+    this._chart.invalidate();
+  }
+
+  detachPrimitive(primitive) {
+    if (!this.overlays.delete(primitive)) return;
+    if (typeof primitive.detached === "function") {
+      try {
+        primitive.detached();
+      } catch {
+        // Primitive cleanup must not prevent chart invalidation.
+      }
+    }
     this._chart.invalidate();
   }
 
@@ -167,6 +192,23 @@ export class SeriesModel {
     return { a, b };
   }
 
+  barsInLogicalRange(range) {
+    if (!range || !this.times.length) return null;
+
+    const fromIndex = Math.max(0, this.localNearestLeft(Math.floor(range.from)));
+    let toIndex = this.localNearestLeft(Math.ceil(range.to));
+    if (toIndex < 0) toIndex = 0;
+    const firstLogical = this.indices ? this.indices[0] : 0;
+    const lastLogical = this.indices ? this.indices[this.times.length - 1] : 0;
+
+    return {
+      from: this.times[fromIndex],
+      to: this.times[toIndex],
+      barsBefore: range.from - firstLogical,
+      barsAfter: lastLogical - range.to,
+    };
+  }
+
   autoscaleRange() {
     if (!this.options.visible) return null;
     const compute = () => {
@@ -259,13 +301,4 @@ export class SeriesModel {
       try { fn(scope); } catch (e) { console.error(e); }
     }
   }
-}
-
-export function normalizeSeriesOptions(o) {
-  if (!o) return {};
-  const n = clone(o);
-  // candle color aliases
-  if (n.borderColor && n.borderUpColor === undefined) { n.borderUpColor = n.borderColor; n.borderDownColor = n.borderColor; }
-  if (n.wickColor && n.wickUpColor === undefined) { n.wickUpColor = n.wickColor; n.wickDownColor = n.wickColor; }
-  return n;
 }
