@@ -186,6 +186,11 @@ export function createRefresh(deps) {
     pane._studyLegendOverlay?.render?.();
   }
 
+  /** Refresh hover-selected values without re-running study-pane layout. */
+  function refreshStudyPaneLegendValues(pane) {
+    pane._studyLegendOverlay?.refreshValues?.();
+  }
+
   /** @param {object} pane @param {object} overlay */
   function attachStudyLegendOverlay(pane, overlay) {
     pane._studyLegendOverlay = overlay;
@@ -206,6 +211,7 @@ export function createRefresh(deps) {
     resyncStudyPaneScales,
     resyncStudyPaneHeights,
     refreshStudyPaneLegends,
+    refreshStudyPaneLegendValues,
     attachStudyLegendOverlay,
   };
 }

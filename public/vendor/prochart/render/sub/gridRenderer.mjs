@@ -18,13 +18,20 @@ export function renderBackground(model, context) {
 }
 
 /** Paint gridlines for one pane, clipped to its plot region. */
-export function renderPaneGrid(model, context, pane, plotX, plotWidth) {
+export function renderPaneGrid(
+  model,
+  context,
+  pane,
+  plotX,
+  plotWidth,
+  tickCache,
+) {
   context.save();
   context.beginPath();
   context.rect(plotX, pane.top, plotWidth, pane.height);
   context.clip();
   context.translate(plotX, pane.top);
-  renderGrid(model, context, pane, plotWidth);
+  renderGrid(model, context, pane, plotWidth, tickCache);
   context.restore();
 }
 
@@ -43,7 +50,7 @@ export function renderPaneSeparators(model, context) {
   }
 }
 
-function renderGrid(model, context, pane, plotWidth) {
+function renderGrid(model, context, pane, plotWidth, tickCache) {
   const grid = model.options.grid;
   if (grid.vertLines?.visible !== false) {
     context.strokeStyle = grid.vertLines.color;
@@ -54,7 +61,9 @@ function renderGrid(model, context, pane, plotWidth) {
       1,
     );
     context.beginPath();
-    for (const tick of timeTicks(model, plotWidth)) {
+    const ticks = tickCache?.timeTicks(plotWidth)
+      ?? timeTicks(model, plotWidth);
+    for (const tick of ticks) {
       const x = Math.round(tick.x) + 0.5;
       context.moveTo(x, 0);
       context.lineTo(x, pane.height);
@@ -74,7 +83,8 @@ function renderGrid(model, context, pane, plotWidth) {
         1,
       );
       context.beginPath();
-      for (const tick of scale.ticks()) {
+      const ticks = tickCache?.priceTicks(scale) ?? scale.ticks();
+      for (const tick of ticks) {
         const y = Math.round(tick.y) + 0.5;
         context.moveTo(0, y);
         context.lineTo(plotWidth, y);

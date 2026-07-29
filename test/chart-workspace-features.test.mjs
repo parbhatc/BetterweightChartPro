@@ -318,6 +318,13 @@ test("plot pan input is coalesced to one chart update per animation frame", () =
       bucket.push(listener);
       listeners.set(type, bucket);
     },
+    removeEventListener(type, listener) {
+      const bucket = listeners.get(type) ?? [];
+      listeners.set(
+        type,
+        bucket.filter((candidate) => candidate !== listener),
+      );
+    },
     getBoundingClientRect() {
       rectReads += 1;
       return { left: 0, top: 0, width: 800, height: 600 };
@@ -375,6 +382,10 @@ test("plot pan input is coalesced to one chart update per animation frame", () =
     },
     panes: [{ top: 0, height: 572, priceScales: new Map([["right", scale]]) }],
     crosshair: { x: 0, y: 0, paneIndex: 0 },
+    inputRootRect() {
+      this._testInputRootRect ??= root.getBoundingClientRect();
+      return this._testInputRootRect;
+    },
     timeAxisHeight: () => 28,
     paneWidth: () => 728,
     paneIndexAtY: () => 0,
@@ -400,7 +411,7 @@ test("plot pan input is coalesced to one chart update per animation frame", () =
   };
 
   try {
-    bindEvents(model);
+    const disposeEvents = bindEvents(model);
     dispatch("pointerdown");
     dispatch("pointermove", { clientX: 110, clientY: 105 });
     dispatch("pointermove", { clientX: 125, clientY: 110 });
@@ -425,9 +436,105 @@ test("plot pan input is coalesced to one chart update per animation frame", () =
     assert.deepEqual(scrollCalls, [-30]);
     assert.deepEqual(pricePanCalls, [-15]);
     assert.deepEqual(crosshairCalls, [{ x: 130, y: 115 }]);
+
+    dispatch("pointerdown");
+    dispatch("pointermove", { clientX: 140, clientY: 120 });
+    assert.equal(queuedFrames.size, 1);
+
+    disposeEvents();
+    disposeEvents();
+    assert.equal(queuedFrames.size, 0);
+    assert.ok([...listeners.values()].every((bucket) => bucket.length === 0));
   } finally {
     globalThis.requestAnimationFrame = previousRaf;
     globalThis.cancelAnimationFrame = previousCancelRaf;
+  }
+});
+
+test("input disposer cancels a pending touch tracking timer", () => {
+  const listeners = new Map();
+  const root = {
+    addEventListener(type, listener) {
+      const bucket = listeners.get(type) ?? [];
+      bucket.push(listener);
+      listeners.set(type, bucket);
+    },
+    removeEventListener(type, listener) {
+      const bucket = listeners.get(type) ?? [];
+      listeners.set(
+        type,
+        bucket.filter((candidate) => candidate !== listener),
+      );
+    },
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 800, height: 600 };
+    },
+    setPointerCapture() {},
+  };
+  const model = {
+    root,
+    width: 800,
+    height: 600,
+    _leftW: 0,
+    _rightW: 72,
+    options: {
+      timeScale: { visible: true },
+      handleScale: {
+        pinch: true,
+        axisPressedMouseMove: { time: true, price: true },
+        axisDoubleClickReset: { time: true, price: true },
+      },
+      handleScroll: {
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      kineticScroll: { mouse: false, touch: true },
+    },
+    timeScale: { barSpacing: 8 },
+    panes: [],
+    crosshair: { x: 0, y: 0, paneIndex: 0 },
+    timeAxisHeight: () => 28,
+    paneIndexAtY: () => 0,
+    _stopKinetic() {},
+    updateCrosshair() {
+      throw new Error("disposed long-press callback ran");
+    },
+  };
+
+  const timers = new Map();
+  let nextTimerId = 1;
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousClearTimeout = globalThis.clearTimeout;
+  globalThis.setTimeout = (callback) => {
+    const id = nextTimerId++;
+    timers.set(id, callback);
+    return id;
+  };
+  globalThis.clearTimeout = (id) => timers.delete(id);
+
+  try {
+    const disposeEvents = bindEvents(model);
+    const pointerDown = listeners.get("pointerdown")[0];
+    pointerDown({
+      pointerId: 1,
+      pointerType: "touch",
+      button: 0,
+      buttons: 1,
+      clientX: 100,
+      clientY: 100,
+    });
+
+    assert.equal(timers.size, 1);
+    const pendingLongPress = [...timers.values()][0];
+    disposeEvents();
+
+    assert.equal(timers.size, 0);
+    assert.ok([...listeners.values()].every((bucket) => bucket.length === 0));
+    assert.doesNotThrow(() => pendingLongPress());
+  } finally {
+    globalThis.setTimeout = previousSetTimeout;
+    globalThis.clearTimeout = previousClearTimeout;
   }
 });
 

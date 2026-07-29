@@ -5,60 +5,18 @@ import {
   resolveOrderLineFontSize,
   resolveOrderLineFontWeight,
   DEFAULT_ORDER_LINE_PILL_OFFSET,
-  drawOrderLineRow,
-  layoutOrderLineGeometry,
 } from "./rowLayout.js";
-
-function orderLineDrawState(options) {
-  const pills = options?.pills ?? {};
-  const body = pills.body ?? {};
-  const quantity = pills.quantity ?? {};
-  const cancel = pills.cancel ?? {};
-  return {
-    id: String(options?.id ?? ""), price: Number(options?.price), lineColor: options?.color,
-    pillSide: pills.side === "left" ? "left" : "right",
-    pillOffset: Number(pills.offset) || DEFAULT_ORDER_LINE_PILL_OFFSET,
-    isMoving: Boolean(pills.moving), text: String(body.text ?? ""),
-    bodyBackgroundColor: body.backgroundColor, bodyTextColor: body.textColor,
-    bodyBorderColor: body.borderColor, bodyFontSize: body.fontSize,
-    bodyFontWeight: body.fontWeight, bodyFontFamily: body.fontFamily,
-    quantity: String(quantity.text ?? ""), quantityBackgroundColor: quantity.backgroundColor,
-    quantityTextColor: quantity.textColor, quantityBorderColor: quantity.borderColor,
-    quantityFontSize: quantity.fontSize, quantityFontWeight: quantity.fontWeight,
-    quantityFontFamily: quantity.fontFamily, cancelButtonBackgroundColor: cancel.backgroundColor,
-    cancelButtonBorderColor: cancel.borderColor, cancelButtonIconColor: cancel.iconColor,
-  };
-}
-
-class OrderLinePillPrimitive {
-  constructor(priceLine) {
-    this._priceLine = priceLine;
-    this._chart = null;
-    this._series = null;
-    this._requestUpdate = null;
-    this._view = { zOrder: () => "top", renderer: () => ({ draw: (target) => this._draw(target) }) };
-  }
-  attached(param) { this._chart = param.chart; this._series = param.series; this._requestUpdate = param.requestUpdate; }
-  detached() { this._chart = null; this._series = null; this._requestUpdate = null; }
-  paneViews() { return [this._view]; }
-  requestRefresh() { this._requestUpdate?.(); }
-  _draw(target) {
-    const options = this._priceLine.options();
-    if (options?.pills?.visible === false || !this._chart || !this._series) return;
-    const y = this._series.priceToCoordinate(Number(options.price));
-    if (y == null || !Number.isFinite(y)) return;
-    const state = orderLineDrawState(options);
-    const { rowLeft } = layoutOrderLineGeometry(state, this._chart.paneSize().width, 0);
-    target.useMediaCoordinateSpace(({ context }) => drawOrderLineRow(context, state, rowLeft, y));
-  }
-}
+import { OrderLinePillPrimitive } from "./OrderLinePillPrimitive.js";
 
 function createCompatOrderLine(series, options) {
   const priceLine = series.createPriceLine(options);
-  const primitive = new OrderLinePillPrimitive(priceLine);
+  const primitive = new OrderLinePillPrimitive(options);
   series.attachPrimitive(primitive);
   return {
-    applyOptions(patch) { priceLine.applyOptions(patch); primitive.requestRefresh(); },
+    applyOptions(patch) {
+      priceLine.applyOptions(patch);
+      primitive.applyOptions(patch);
+    },
     options() { return priceLine.options(); },
     _remove() { series.detachPrimitive(primitive); series.removePriceLine(priceLine); },
   };

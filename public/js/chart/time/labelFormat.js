@@ -1,5 +1,24 @@
 import { toDate } from "../format.js";
 
+const DATE_TIME_FORMATTER_CACHE_LIMIT = 128;
+const CHART_TIME_LABEL_CACHE_LIMIT = 1024;
+/** @type {Map<string, Intl.DateTimeFormat>} */
+const dateTimeFormatters = new Map();
+/** @type {Map<string, string>} */
+const chartTimeLabels = new Map();
+
+/** @param {string} key @param {() => Intl.DateTimeFormatOptions} options */
+function dateTimeFormatter(key, options) {
+  const cached = dateTimeFormatters.get(key);
+  if (cached) return cached;
+  if (dateTimeFormatters.size >= DATE_TIME_FORMATTER_CACHE_LIMIT) {
+    dateTimeFormatters.clear();
+  }
+  const formatter = new Intl.DateTimeFormat("en-US", options());
+  dateTimeFormatters.set(key, formatter);
+  return formatter;
+}
+
 /** @param {string | undefined} format */
 export function normalizeDateFormat(format) {
   switch (format) {
@@ -17,17 +36,23 @@ export function normalizeDateFormat(format) {
 
 /** @param {Date} d @param {string} timeZone */
 function weekdayShort(d, timeZone) {
-  return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(d);
+  return dateTimeFormatter(
+    `weekday|${timeZone}`,
+    () => ({ timeZone, weekday: "short" }),
+  ).format(d);
 }
 
 /** @param {Date} d @param {string} timeZone */
 function dateParts(d, timeZone) {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  const fmt = dateTimeFormatter(
+    `named-date|${timeZone}`,
+    () => ({
+      timeZone,
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }),
+  );
   /** @type {Record<string, string>} */
   const out = {};
   for (const p of fmt.formatToParts(d)) {
@@ -38,12 +63,15 @@ function dateParts(d, timeZone) {
 
 /** @param {Date} d @param {string} timeZone */
 function numericParts(d, timeZone) {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  const fmt = dateTimeFormatter(
+    `numeric-date|${timeZone}`,
+    () => ({
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }),
+  );
   /** @type {Record<string, string>} */
   const out = {};
   for (const p of fmt.formatToParts(d)) {
@@ -60,7 +88,10 @@ function shortYear(year) {
 /** @param {Date} d @param {string} timeZone */
 function quarterLabel(d, timeZone) {
   const month = Number(
-    new Intl.DateTimeFormat("en-US", { timeZone, month: "numeric" }).format(d),
+    dateTimeFormatter(
+      `quarter-month|${timeZone}`,
+      () => ({ timeZone, month: "numeric" }),
+    ).format(d),
   );
   return `Q${Math.floor((month - 1) / 3) + 1}`;
 }
@@ -157,22 +188,20 @@ export function formatAxisMonthTick(t, _scales, timeZone) {
  */
 export function formatAxisTimeTick(d, timeZone, scales = {}, withSeconds = false) {
   const hour12 = scales.timeHoursFormat !== "24-hours";
-  if (!hour12) {
-    return new Intl.DateTimeFormat("en-US", {
+  const formatter = dateTimeFormatter(
+    `axis-time|${timeZone}|${hour12 ? 1 : 0}|${withSeconds ? 1 : 0}`,
+    () => ({
       timeZone,
       hour: "2-digit",
       minute: "2-digit",
       second: withSeconds ? "2-digit" : undefined,
-      hour12: false,
-    }).format(d);
+      hour12,
+    }),
+  );
+  if (!hour12) {
+    return formatter.format(d);
   }
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: withSeconds ? "2-digit" : undefined,
-    hour12: true,
-  }).formatToParts(d);
+  const parts = formatter.formatToParts(d);
   const hour = parts.find((p) => p.type === "hour")?.value ?? "";
   const minute = parts.find((p) => p.type === "minute")?.value ?? "";
   const second = withSeconds ? parts.find((p) => p.type === "second")?.value ?? "" : "";
@@ -182,14 +211,18 @@ export function formatAxisTimeTick(d, timeZone, scales = {}, withSeconds = false
 }
 
 export function formatTimePart(d, timeZone, hour12, withSeconds = false) {
-  if (hour12) {
-    const parts = new Intl.DateTimeFormat("en-US", {
+  const formatter = dateTimeFormatter(
+    `time-part|${timeZone}|${hour12 ? 1 : 0}|${withSeconds ? 1 : 0}`,
+    () => ({
       timeZone,
-      hour: "numeric",
+      hour: hour12 ? "numeric" : "2-digit",
       minute: "2-digit",
       second: withSeconds ? "2-digit" : undefined,
-      hour12: true,
-    }).formatToParts(d);
+      hour12,
+    }),
+  );
+  if (hour12) {
+    const parts = formatter.formatToParts(d);
     const hour = parts.find((p) => p.type === "hour")?.value ?? "";
     const minute = parts.find((p) => p.type === "minute")?.value ?? "";
     const second = withSeconds ? parts.find((p) => p.type === "second")?.value ?? "" : "";
@@ -197,13 +230,7 @@ export function formatTimePart(d, timeZone, hour12, withSeconds = false) {
     if (withSeconds) return `${hour}:${minute}:${second}${period}`;
     return `${hour}:${minute}${period}`;
   }
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: withSeconds ? "2-digit" : undefined,
-    hour12: false,
-  }).format(d);
+  return formatter.format(d);
 }
 
 /**
@@ -215,16 +242,19 @@ export function formatTimePart(d, timeZone, hour12, withSeconds = false) {
 /** TradingView replay cut label: `Re: Thu 18 Jun '26 03:17 PM` */
 export function formatReplayCutTimeLabel(utcSec, timeZone) {
   const d = new Date(utcSec * 1000);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).formatToParts(d);
+  const parts = dateTimeFormatter(
+    `replay-cut|${timeZone}`,
+    () => ({
+      timeZone,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }),
+  ).formatToParts(d);
   /** @param {string} type */
   const pick = (type) => parts.find((p) => p.type === type)?.value ?? "";
   const year = pick("year");
@@ -233,12 +263,40 @@ export function formatReplayCutTimeLabel(utcSec, timeZone) {
 }
 
 export function formatChartTimeLabel(t, scales, timeZone, opts = {}) {
+  const timeKey =
+    typeof t === "number"
+      ? String(t)
+      : `${t?.year ?? ""}-${t?.month ?? ""}-${t?.day ?? ""}`;
+  const cacheKey = [
+    timeKey,
+    timeZone,
+    scales.dayOfWeekOnLabels !== false ? 1 : 0,
+    scales.dateFormat ?? "",
+    scales.timeHoursFormat ?? "",
+    opts.includeTime ? 1 : 0,
+    opts.withSeconds ? 1 : 0,
+  ].join("\0");
+  const cached = chartTimeLabels.get(cacheKey);
+  if (cached != null) return cached;
+
   const d = toDate(t);
   const showDow = scales.dayOfWeekOnLabels !== false;
   const dow = showDow ? `${weekdayShort(d, timeZone)} ` : "";
   const datePart = formatDateBody(d, scales.dateFormat, timeZone);
-  if (!opts.includeTime) return `${dow}${datePart}`;
-  const hour12 = scales.timeHoursFormat !== "24-hours";
-  const timePart = formatTimePart(d, timeZone, hour12, Boolean(opts.withSeconds));
-  return `${dow}${datePart} ${timePart}`;
+  let label = `${dow}${datePart}`;
+  if (opts.includeTime) {
+    const hour12 = scales.timeHoursFormat !== "24-hours";
+    const timePart = formatTimePart(
+      d,
+      timeZone,
+      hour12,
+      Boolean(opts.withSeconds),
+    );
+    label = `${label} ${timePart}`;
+  }
+  if (chartTimeLabels.size >= CHART_TIME_LABEL_CACHE_LIMIT) {
+    chartTimeLabels.clear();
+  }
+  chartTimeLabels.set(cacheKey, label);
+  return label;
 }

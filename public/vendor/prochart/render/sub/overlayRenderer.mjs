@@ -13,6 +13,7 @@ export function renderPaneBottomOverlays(
   plotX,
   plotWidth,
   dpr,
+  primitiveViewGroups = createPanePrimitiveViewGroups(model, pane),
 ) {
   withPanePlot(
     context,
@@ -20,12 +21,11 @@ export function renderPaneBottomOverlays(
     plotX,
     plotWidth,
     () => renderPrimitiveViews(
-      model,
       context,
       pane,
       plotWidth,
       dpr,
-      "bottom",
+      primitiveViewGroups.bottom,
     ),
   );
 }
@@ -38,6 +38,7 @@ export function renderPaneSeriesOverlays(
   plotX,
   plotWidth,
   dpr,
+  primitiveViewGroups = createPanePrimitiveViewGroups(model, pane),
 ) {
   withPanePlot(context, pane, plotX, plotWidth, () => {
     for (const series of pane.series) {
@@ -49,42 +50,33 @@ export function renderPaneSeriesOverlays(
     }
 
     renderPrimitiveViews(
-      model,
       context,
       pane,
       plotWidth,
       dpr,
-      "normal",
+      primitiveViewGroups.normal,
     );
     renderPrimitiveViews(
-      model,
       context,
       pane,
       plotWidth,
       dpr,
-      "top",
+      primitiveViewGroups.top,
     );
   });
 }
 
-function withPanePlot(context, pane, plotX, plotWidth, render) {
-  context.save();
-  context.beginPath();
-  context.rect(plotX, pane.top, plotWidth, pane.height);
-  context.clip();
-  context.translate(plotX, pane.top);
-  render();
-  context.restore();
-}
+/**
+ * Classify primitive pane views once so every overlay pass in a frame can
+ * consume the same stable view snapshot.
+ */
+export function createPanePrimitiveViewGroups(model, pane) {
+  const groups = {
+    bottom: [],
+    normal: [],
+    top: [],
+  };
 
-function renderPrimitiveViews(
-  model,
-  context,
-  pane,
-  plotWidth,
-  dpr,
-  zone,
-) {
   for (const series of pane.series) {
     for (const primitive of series.overlays) {
       if (primitive.__pcFrame !== model._frameId) {
@@ -105,22 +97,52 @@ function renderPrimitiveViews(
           : typeof primitive.zOrder === "function"
             ? primitive.zOrder()
             : "normal";
-        if ((zOrder || "normal") !== zone) continue;
-
-        const renderer = view.renderer?.();
-        if (!renderer || typeof renderer.draw !== "function") continue;
-        const target = new RenderTarget(
-          context,
-          plotWidth,
-          pane.height,
-          dpr,
-        );
-        try {
-          renderer.draw(target, false);
-        } catch (error) {
-          console.error("[prochart] overlay draw error", error);
+        const zone = zOrder || "normal";
+        if (
+          zone === "bottom"
+          || zone === "normal"
+          || zone === "top"
+        ) {
+          groups[zone].push(view);
         }
       }
+    }
+  }
+
+  return groups;
+}
+
+function withPanePlot(context, pane, plotX, plotWidth, render) {
+  context.save();
+  context.beginPath();
+  context.rect(plotX, pane.top, plotWidth, pane.height);
+  context.clip();
+  context.translate(plotX, pane.top);
+  render();
+  context.restore();
+}
+
+function renderPrimitiveViews(
+  context,
+  pane,
+  plotWidth,
+  dpr,
+  views,
+) {
+  const target = new RenderTarget(
+    context,
+    plotWidth,
+    pane.height,
+    dpr,
+  );
+
+  for (const view of views) {
+    const renderer = view.renderer?.();
+    if (!renderer || typeof renderer.draw !== "function") continue;
+    try {
+      renderer.draw(target, false);
+    } catch (error) {
+      console.error("[prochart] overlay draw error", error);
     }
   }
 }

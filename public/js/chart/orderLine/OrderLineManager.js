@@ -58,6 +58,13 @@ export class OrderLineManager {
     this._scrollLocked = false;
     /** @type {number} */
     this._refreshRaf = 0;
+    /** @type {number} */
+    this._hoverRaf = 0;
+    /** @type {{ clientX: number, clientY: number } | null} */
+    this._pendingHoverPoint = null;
+    /** @type {DOMRect | null} */
+    this._paneRect = null;
+    this._hoverCursor = "";
     /** @type {ResizeObserver | null} */
     this._resizeObs = null;
     this._onPointerDown = this._onPointerDown.bind(this);
@@ -65,6 +72,7 @@ export class OrderLineManager {
     this._onPointerUp = this._onPointerUp.bind(this);
     this._onPointerLeave = this._onPointerLeave.bind(this);
     this._onContextMenu = this._onContextMenu.bind(this);
+    this._invalidatePaneRect = this._invalidatePaneRect.bind(this);
 
     this._priceLineSync = createOrderLinePriceLineSync(getActivePane);
     this._settingsStore?.onChange?.(() => this.requestRefresh());
@@ -97,7 +105,10 @@ export class OrderLineManager {
     if (typeof ResizeObserver === "undefined") return;
     const mount = pane.el?.closest(".tv-chart-wrap__stage") ?? pane.el;
     if (!(mount instanceof HTMLElement)) return;
-    this._resizeObs = new ResizeObserver(() => this.requestRefresh());
+    this._resizeObs = new ResizeObserver(() => {
+      this._invalidatePaneRect();
+      this.requestRefresh();
+    });
     this._resizeObs.observe(mount);
   }
 
@@ -111,16 +122,24 @@ export class OrderLineManager {
   }
 
   _removeListeners() {
+    this._cancelHoverUpdate();
     if (!this._listenersBound || !(this._mountEl instanceof HTMLElement)) return;
     const mount = this._mountEl;
+    // The manager owns the temporary resize/default cursor while mounted.
+    // Restore the chart cursor before dropping the element reference.
+    mount.style.cursor = "";
+    this._hoverCursor = "";
     mount.removeEventListener("pointerdown", this._onPointerDown, true);
     mount.removeEventListener("pointermove", this._onPointerMove, true);
     mount.removeEventListener("pointerup", this._onPointerUp, true);
     mount.removeEventListener("pointercancel", this._onPointerUp, true);
     mount.removeEventListener("pointerleave", this._onPointerLeave, true);
     mount.removeEventListener("contextmenu", this._onContextMenu, true);
+    globalThis.window?.removeEventListener?.("resize", this._invalidatePaneRect);
+    globalThis.window?.removeEventListener?.("scroll", this._invalidatePaneRect, true);
     this._listenersBound = false;
     this._mountEl = null;
+    this._paneRect = null;
   }
 
   /** @param {object} pane */
@@ -134,8 +153,15 @@ export class OrderLineManager {
     mount.addEventListener("pointercancel", this._onPointerUp, true);
     mount.addEventListener("pointerleave", this._onPointerLeave, true);
     mount.addEventListener("contextmenu", this._onContextMenu, true);
+    globalThis.window?.addEventListener?.("resize", this._invalidatePaneRect, { passive: true });
+    globalThis.window?.addEventListener?.("scroll", this._invalidatePaneRect, {
+      capture: true,
+      passive: true,
+    });
     this._listenersBound = true;
     this._mountEl = mount;
+    this._paneRect = null;
+    this._hoverCursor = mount.style.cursor;
   }
 
   /** TradingView createOrderLine — async for Auren compatibility. */
@@ -232,8 +258,12 @@ export class OrderLineManager {
   _clientToPane(ev) {
     const pane = this._paneRef ?? this._getActivePane();
     if (!pane?.el) return null;
-    const rect = pane.el.getBoundingClientRect();
+    const rect = this._paneRect ?? (this._paneRect = pane.el.getBoundingClientRect());
     return { pane, x: ev.clientX - rect.left, y: ev.clientY - rect.top, rect };
+  }
+
+  _invalidatePaneRect() {
+    this._paneRect = null;
   }
 
   /**
@@ -249,6 +279,11 @@ export class OrderLineManager {
     if (y == null) return null;
 
     const centerY = orderLineCenterY(y);
+    const halfHitHeight = ORDER_LINE_ROW_H / 2 + ROW_HIT_PAD;
+    if (py < centerY - halfHitHeight || py > centerY + halfHitHeight) {
+      return null;
+    }
+
     const plotW = plotPaneWidth(pane.chart, pane.el);
     const { totalW, rowLeft } = layoutOrderLineGeometry(orderLineOverlayState(state), plotW, scaleW);
     const top = centerY - ORDER_LINE_ROW_H / 2;
@@ -274,9 +309,15 @@ export class OrderLineManager {
   /** @param {PointerEvent} ev */
   _onPointerDown(ev) {
     if (ev.button !== 0) return;
+    this._cancelHoverUpdate();
 
     const hit = this._hitTest(ev);
-    if (!hit?.adapter) return;
+    if (!hit?.adapter) {
+      // A queued off-pill hover may have just been cancelled by this press.
+      // Clear its previously painted resize cursor before chart panning starts.
+      this._setHoverCursor("");
+      return;
+    }
 
     if (hit.kind === "cancel") {
       ev.preventDefault();
@@ -347,7 +388,18 @@ export class OrderLineManager {
       return;
     }
 
-    this._updateHoverCursor(ev);
+    this._pendingHoverPoint = {
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+    };
+    if (!this._hoverRaf) {
+      this._hoverRaf = requestAnimationFrame(() => {
+        this._hoverRaf = 0;
+        const point = this._pendingHoverPoint;
+        this._pendingHoverPoint = null;
+        if (point) this._updateHoverCursor(point);
+      });
+    }
   }
 
   /** @param {PointerEvent} ev */
@@ -364,32 +416,53 @@ export class OrderLineManager {
       this._unlockChartScroll();
     }
 
-    if (!this._drag) return;
-    const adapter = this._drag.adapter;
-    adapter.isMoving = false;
-    adapter._state.isMoving = false;
-    this._drag = null;
-    this._unlockChartScroll();
-    applyNativeOrderLinePatch(adapter._state, { pills: { moving: false } });
-    adapter._handlers.move?.();
+    if (this._drag) {
+      const adapter = this._drag.adapter;
+      adapter.isMoving = false;
+      adapter._state.isMoving = false;
+      this._drag = null;
+      this._unlockChartScroll();
+      applyNativeOrderLinePatch(adapter._state, { pills: { moving: false } });
+      adapter._handlers.move?.();
+    }
+
+    if (ev.type === "pointercancel" || (ev.pointerType && ev.pointerType !== "mouse")) {
+      this._setHoverCursor("");
+    } else {
+      // Reconcile the cursor once at the release point. Pressed pointer moves
+      // intentionally skip hover hit testing so chart pans stay inexpensive.
+      this._updateHoverCursor(ev);
+    }
   }
 
   /** @param {PointerEvent} ev */
   _onPointerLeave(ev) {
     if (this._drag || this._pendingModify) return;
-    if (this._mountEl) this._mountEl.style.cursor = "";
+    this._cancelHoverUpdate();
+    this._setHoverCursor("");
   }
 
   /** @param {PointerEvent | MouseEvent} ev */
   _updateHoverCursor(ev) {
-    const mount = this._mountEl;
-    if (!mount) return;
     const hit = this._hitTest(ev);
-    if (!hit) {
-      mount.style.cursor = "";
-      return;
-    }
-    mount.style.cursor = hit.kind === "pill" ? "ns-resize" : "default";
+    this._setHoverCursor(
+      hit ? (hit.kind === "pill" ? "ns-resize" : "default") : "",
+    );
+  }
+
+  _cancelHoverUpdate() {
+    this._pendingHoverPoint = null;
+    if (!this._hoverRaf) return;
+    cancelAnimationFrame(this._hoverRaf);
+    this._hoverRaf = 0;
+  }
+
+  /** @param {string} cursor */
+  _setHoverCursor(cursor) {
+    const mount = this._mountEl;
+    if (!mount || cursor === this._hoverCursor) return;
+    this._hoverCursor = cursor;
+    mount.style.cursor = cursor;
   }
 
   /** @param {MouseEvent} ev */

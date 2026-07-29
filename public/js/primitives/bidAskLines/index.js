@@ -11,6 +11,8 @@ import { LineStyle } from "prochart";
 export function attachBidAskLinesPrimitive(opts) {
   /** @type {Map<QuoteSide, import("prochart").IPriceLine>} */
   const lines = new Map();
+  /** @type {Map<QuoteSide, string>} */
+  const lineOptionsKeys = new Map();
 
   /** @param {QuoteSide} side */
   function removeSide(side) {
@@ -22,6 +24,7 @@ export function attachBidAskLinesPrimitive(opts) {
       /* ignore */
     }
     lines.delete(side);
+    lineOptionsKeys.delete(side);
   }
 
   function sync() {
@@ -67,12 +70,15 @@ export function attachBidAskLinesPrimitive(opts) {
         title,
       };
 
+      const nextOptionsKey = JSON.stringify(lineOptions);
       const existing = lines.get(side);
       if (existing) {
+        if (lineOptionsKeys.get(side) === nextOptionsKey) continue;
         existing.applyOptions(lineOptions);
       } else {
         lines.set(side, opts.series.createPriceLine(lineOptions));
       }
+      lineOptionsKeys.set(side, nextOptionsKey);
     }
   }
 

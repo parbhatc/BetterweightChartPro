@@ -101,6 +101,10 @@ function tagAllowed(category) {
   return tags.has(category.toLowerCase());
 }
 
+function instrumentationAllowed(category) {
+  return tagAllowed(category) || tagAllowed("perf");
+}
+
 /**
  * @param {object} [opts]
  * @param {boolean} [opts.force]
@@ -224,7 +228,7 @@ export function chartDebugThrottle(category, key, message, detail, intervalMs = 
 }
 
 export function chartDebugCount(category, label = "tick") {
-  if (!enabled) return;
+  if (!instrumentationAllowed(category)) return;
   const key = `${category}:${label}`;
   counters[key] = (counters[key] ?? 0) + 1;
   if (verbose && tagAllowed(category)) {
@@ -240,7 +244,7 @@ export function chartDebugCount(category, label = "tick") {
  * @template T
  */
 export function chartDebugTime(category, label, fn) {
-  if (!enabled) return fn();
+  if (!instrumentationAllowed(category)) return fn();
   const t0 = performance.now();
   try {
     return fn();
@@ -259,7 +263,7 @@ export function chartDebugTime(category, label, fn) {
  * @template T
  */
 export async function chartDebugTimeAsync(category, label, fn) {
-  if (!enabled) return fn();
+  if (!instrumentationAllowed(category)) return fn();
   const t0 = performance.now();
   try {
     return await fn();
@@ -291,6 +295,13 @@ export function createPanFpsMonitor(opts = {}) {
   const samples = [];
   /** @type {Set<string>} */
   const activeModes = new Set();
+
+  function modeAllowed(mode) {
+    return (
+      instrumentationAllowed(mode === "zoom" ? "zoom" : "pan") ||
+      tagAllowed("viewport")
+    );
+  }
 
   function fpsNow(now) {
     const elapsed = now - windowStart;
@@ -355,9 +366,9 @@ export function createPanFpsMonitor(opts = {}) {
    * @param {string} [mode] pan | zoom
    */
   function start(mode = "pan") {
+    if (!modeAllowed(mode)) return;
     const wasEmpty = activeModes.size === 0;
     activeModes.add(mode);
-    if (!enabled) return;
     ensureRaf();
     if (wasEmpty) {
       onSample?.({ fps: 0, avgFps: 0, panning: activeModes.has("pan"), zooming: activeModes.has("zoom"), modes: [...activeModes] });

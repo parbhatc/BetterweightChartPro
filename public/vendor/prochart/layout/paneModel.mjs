@@ -27,7 +27,9 @@ export class Pane {
   }
 
   setRequestedHeight(height) {
-    this.requestedHeight = Math.max(0, height | 0);
+    const nextHeight = Math.max(0, height | 0);
+    if (nextHeight === this.requestedHeight) return;
+    this.requestedHeight = nextHeight;
     this.chart.invalidate();
   }
 

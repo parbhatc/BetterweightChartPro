@@ -22,6 +22,17 @@ export const DEFAULT_BRACKET_PILL_OFFSET = 96;
 export const DEFAULT_ORDER_LINE_FONT_WEIGHT = 600;
 export const DEFAULT_ORDER_LINE_FONT_SIZE = 12;
 export const DEFAULT_ORDER_LINE_FONT_FAMILY = ORDER_LINE_FONT;
+const MEASUREMENT_CACHE_LIMIT = 128;
+
+/** @type {CanvasRenderingContext2D | null} */
+let sharedMeasurementContext = null;
+/** @type {Map<string, ReturnType<typeof createOrderLineMeasurement>>} */
+const measurementCache = new Map();
+
+/** Drop cached widths after a web font becomes available. */
+export function clearOrderLineMeasurementCache() {
+  measurementCache.clear();
+}
 
 /** @param {string | undefined} family */
 export function resolveOrderLineFontFamily(family) {
@@ -65,17 +76,42 @@ function measureTextWidth(
   return ctx.measureText(text).width;
 }
 
+function getSharedMeasurementContext() {
+  if (sharedMeasurementContext || typeof document === "undefined") {
+    return sharedMeasurementContext;
+  }
+  sharedMeasurementContext = document.createElement("canvas").getContext("2d");
+  return sharedMeasurementContext;
+}
+
+/** @param {import("./types.js").OrderLineState} state */
+function measurementCacheKey(state) {
+  return [
+    state.text?.trim() || "",
+    state.quantity?.trim() || "",
+    resolveOrderLineFontWeight(state.bodyFontWeight),
+    resolveOrderLineFontSize(state.bodyFontSize),
+    resolveOrderLineFontFamily(state.bodyFontFamily),
+    resolveOrderLineFontWeight(state.quantityFontWeight),
+    resolveOrderLineFontSize(state.quantityFontSize),
+    resolveOrderLineFontFamily(state.quantityFontFamily),
+  ].join("\u0000");
+}
+
+function rememberMeasurement(key, measurement) {
+  if (measurementCache.has(key)) measurementCache.delete(key);
+  measurementCache.set(key, measurement);
+  if (measurementCache.size > MEASUREMENT_CACHE_LIMIT) {
+    measurementCache.delete(measurementCache.keys().next().value);
+  }
+  return measurement;
+}
+
 /**
  * @param {import("./types.js").OrderLineState} state
- * @param {CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null} [ctx]
+ * @param {CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null} ctx
  */
-export function measureOrderLineRow(state, ctx = null) {
-  const paintCtx =
-    ctx ??
-    (typeof document !== "undefined"
-      ? document.createElement("canvas").getContext("2d")
-      : null);
-
+function createOrderLineMeasurement(state, ctx) {
   const rawBody = state.text?.trim() || "";
   const bodyText = rawBody || " ";
   const qtyText = state.quantity?.trim() || "";
@@ -86,9 +122,9 @@ export function measureOrderLineRow(state, ctx = null) {
   const bodyFamily = resolveOrderLineFontFamily(state.bodyFontFamily);
   const qtyFamily = resolveOrderLineFontFamily(state.quantityFontFamily);
 
-  const bodyInner = measureTextWidth(paintCtx, bodyText, bodyWeight, bodySize, bodyFamily);
+  const bodyInner = measureTextWidth(ctx, bodyText, bodyWeight, bodySize, bodyFamily);
   const qtyInner = qtyText
-    ? measureTextWidth(paintCtx, qtyText, qtyWeight, qtySize, qtyFamily)
+    ? measureTextWidth(ctx, qtyText, qtyWeight, qtySize, qtyFamily)
     : 0;
 
   const bodyW = rawBody
@@ -104,11 +140,32 @@ export function measureOrderLineRow(state, ctx = null) {
 
 /**
  * @param {import("./types.js").OrderLineState} state
+ * @param {CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null} [ctx]
+ */
+export function measureOrderLineRow(state, ctx = null) {
+  if (ctx) return createOrderLineMeasurement(state, ctx);
+
+  const key = measurementCacheKey(state);
+  const cached = measurementCache.get(key);
+  if (cached) {
+    measurementCache.delete(key);
+    measurementCache.set(key, cached);
+    return cached;
+  }
+  return rememberMeasurement(
+    key,
+    createOrderLineMeasurement(state, getSharedMeasurementContext()),
+  );
+}
+
+/**
+ * @param {import("./types.js").OrderLineState} state
  * @param {number} paneW
  * @param {number} scaleW
+ * @param {ReturnType<typeof measureOrderLineRow>} [measurement]
  */
-export function layoutOrderLineGeometry(state, paneW, _scaleW) {
-  const { totalW } = measureOrderLineRow(state);
+export function layoutOrderLineGeometry(state, paneW, _scaleW, measurement) {
+  const { totalW } = measurement ?? measureOrderLineRow(state);
   const plotRight = paneW;
   const offset = Math.max(0, Number(state.pillOffset) || 0);
   const rowLeft =
@@ -309,9 +366,11 @@ function fillBoldText(ctx, text, x, y) {
  * @param {import("./types.js").OrderLineState} state
  * @param {number} left
  * @param {number} y
+ * @param {ReturnType<typeof measureOrderLineRow>} [measurement]
  */
-export function drawOrderLineRow(ctx, state, left, y) {
-  const { bodyText, qtyText, bodyW, qtyW, totalW } = measureOrderLineRow(state, ctx);
+export function drawOrderLineRow(ctx, state, left, y, measurement) {
+  const { bodyText, qtyText, bodyW, qtyW, totalW } =
+    measurement ?? measureOrderLineRow(state, ctx);
   const top = Math.round(y - ORDER_LINE_ROW_H / 2);
   const x = Math.round(left);
   const accent = state.lineColor || state.bodyBackgroundColor;

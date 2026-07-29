@@ -28,6 +28,8 @@ export function trackingCrosshairPosition(origin, gestureStart, current, bounds 
 
 export function bindEvents(m) {
   const el = m.root;
+  const eventBindings = [];
+  let disposed = false;
   let dragging = null;
   let pinch = null;
   let touchCrosshairPinned = false;
@@ -37,6 +39,19 @@ export function bindEvents(m) {
   let deferredMouseCrosshair = null;
   let mousePanCrosshairHidden = false;
   const pointers = new Map();
+  const inputRootRect = () => m.inputRootRect?.() ?? el.getBoundingClientRect();
+  const inputPoint = (event) => {
+    if (typeof m.inputPoint === "function") return m.inputPoint(event);
+    const rect = inputRootRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  };
+  const listen = (type, listener, options) => {
+    el.addEventListener(type, listener, options);
+    eventBindings.push({ type, listener, options });
+  };
 
   const clearTouchTrackingTimer = () => {
     if (touchTrackingTimer == null) return;
@@ -44,15 +59,15 @@ export function bindEvents(m) {
     touchTrackingTimer = null;
   };
 
-  const rectPos = (e, cachedRect) => {
-    const r = cachedRect ?? el.getBoundingClientRect();
-    return { x: e.clientX - r.left - (m._leftW || 0), y: e.clientY - r.top };
+  const rectPos = (event, cachedPoint) => {
+    const point = cachedPoint ?? inputPoint(event);
+    return { x: point.x - (m._leftW || 0), y: point.y };
   };
 
-  const zoneAt = (e, cachedRect) => {
-    const r = cachedRect ?? el.getBoundingClientRect();
-    const cx = e.clientX - r.left;
-    const cy = e.clientY - r.top;
+  const zoneAt = (event, cachedPoint) => {
+    const point = cachedPoint ?? inputPoint(event);
+    const cx = point.x;
+    const cy = point.y;
     const rightX = m.width - (m._rightW || 0);
     if (m.options.timeScale.visible && cy >= m.height - m.timeAxisHeight()) return "time";
     if ((m._rightW || 0) > 0 && cx >= rightX) return "right";
@@ -107,7 +122,7 @@ export function bindEvents(m) {
     if (!plotPanFrame) plotPanFrame = requestAnimationFrame(applyPendingPlotPan);
   };
 
-  el.addEventListener("pointerdown", (e) => {
+  listen("pointerdown", (e) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2 && m.options.handleScale.pinch) {
@@ -118,13 +133,12 @@ export function bindEvents(m) {
       dragging = null;
       return;
     }
-    const rootRect = el.getBoundingClientRect();
-    const zone = zoneAt(e, rootRect);
-    const pos = rectPos(e, rootRect);
+    const point = inputPoint(e);
+    const zone = zoneAt(e, point);
+    const pos = rectPos(e, point);
     m._stopKinetic();
     dragging = {
       zone,
-      rootRect,
       crosshairOnly: e.pointerType === "touch" && touchCrosshairPinned,
       crosshairWasPinnedAtStart: e.pointerType === "touch" && touchCrosshairPinned,
       crosshairOriginX: m.crosshair.x,
@@ -157,7 +171,7 @@ export function bindEvents(m) {
     try { el.setPointerCapture(e.pointerId); } catch { /* noop */ }
   });
 
-  el.addEventListener("pointermove", (e) => {
+  listen("pointermove", (e) => {
     if (e.pointerType === "mouse") touchCrosshairPinned = false;
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && pointers.size === 2) {
@@ -171,7 +185,8 @@ export function bindEvents(m) {
       }
       return;
     }
-    const pos = rectPos(e, dragging?.rootRect);
+    const point = inputPoint(e);
+    const pos = rectPos(e, point);
     if (dragging) {
       const dx = e.clientX - dragging.lastX;
       const dy = e.clientY - dragging.lastY;
@@ -239,7 +254,7 @@ export function bindEvents(m) {
     } else if (dragging?.zone === "plot") {
       // Ordinary mouse plot pans hide the crosshair until release; touch pans
       // clear it in the queued frame.
-    } else if (dragging || zoneAt(e) === "plot") m.updateCrosshair(pos.x, pos.y, e);
+    } else if (dragging || zoneAt(e, point) === "plot") m.updateCrosshair(pos.x, pos.y, e);
     else m.clearCrosshair();
   });
 
@@ -264,8 +279,9 @@ export function bindEvents(m) {
       dragging = null;
     }
   };
-  el.addEventListener("pointerup", (e) => {
-    const pos = rectPos(e, dragging?.rootRect);
+  listen("pointerup", (e) => {
+    const point = inputPoint(e);
+    const pos = rectPos(e, point);
     const wasDrag = dragging && dragging.moved;
     const wasPlot = dragging?.zone === "plot";
     const wasCrosshairOnly = Boolean(dragging?.crosshairOnly);
@@ -299,18 +315,19 @@ export function bindEvents(m) {
       }
       return;
     }
-    if (!wasDrag && zoneAt(e) === "plot") {
+    if (!wasDrag && zoneAt(e, point) === "plot") {
       m.updateCrosshair(pos.x, pos.y, e);
       const param = m._crosshairParam(e);
       for (const fn of m._clickSubs) { try { fn(param); } catch (err) { console.error(err); } }
     }
   });
-  el.addEventListener("pointercancel", endPointer);
-  el.addEventListener("pointerleave", (e) => {
+  listen("pointercancel", endPointer);
+  listen("pointerleave", (e) => {
+    m.invalidateInputRootRect?.();
     if (!dragging && !(e.pointerType === "touch" && touchCrosshairPinned)) m.clearCrosshair();
   });
 
-  el.addEventListener("dblclick", (e) => {
+  listen("dblclick", (e) => {
     const zone = zoneAt(e);
     const reset = m.options.handleScale.axisDoubleClickReset;
     if (zone === "time" && reset?.time !== false) m.timeScale.reset();
@@ -323,7 +340,7 @@ export function bindEvents(m) {
     for (const fn of m._dblClickSubs) { try { fn(param); } catch (err) { console.error(err); } }
   });
 
-  el.addEventListener(
+  listen(
     "wheel",
     (e) => {
       const zone = zoneAt(e);
@@ -348,6 +365,25 @@ export function bindEvents(m) {
     },
     { passive: false },
   );
+
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    clearTouchTrackingTimer();
+    if (plotPanFrame) {
+      cancelAnimationFrame(plotPanFrame);
+      plotPanFrame = 0;
+    }
+    pendingPlotPan = null;
+    deferredMouseCrosshair = null;
+    dragging = null;
+    pinch = null;
+    pointers.clear();
+    for (const { type, listener, options } of eventBindings) {
+      el.removeEventListener(type, listener, options);
+    }
+    eventBindings.length = 0;
+  };
 }
 
 /** time-based kinetic scroll — identical feel at any refresh rate */

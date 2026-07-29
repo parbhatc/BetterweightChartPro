@@ -2,6 +2,25 @@ import { getMarketStatusDetails, renderMarketStatusIcons } from "../market/statu
 import { barPriceClass, candleValueColor, isBarUp, barChangeFromPrevClose } from "../bar/style.js";
 import { precisionFromSettings } from "../timezone/list.js";
 import { resolutionShortLabel } from "../resolutionFormat.js";
+import { formatDisplayPrice } from "../format.js";
+
+/** @type {WeakMap<HTMLElement, string>} */
+const statusLineAppearanceKeys = new WeakMap();
+/** @type {WeakMap<HTMLElement, {
+ *   structureKey: string,
+ *   root: Element | null,
+ *   values: Map<string, HTMLElement>,
+ *   coloredValues: HTMLElement[],
+ *   changePair: HTMLElement | null,
+ *   priceClass: string,
+ *   priceColor: string,
+ *   changeClass: string,
+ * }>} */
+const statusLineViews = new WeakMap();
+/** @type {WeakMap<object, { minute: number, status: ReturnType<typeof getMarketStatusDetails> }>} */
+const marketStatusBySymbol = new WeakMap();
+/** @type {{ minute: number, status: ReturnType<typeof getMarketStatusDetails> } | null} */
+let anonymousMarketStatus = null;
 
 /** @deprecated use getMarketStatusDetails */
 export function getMarketStatus(symbolInfo, nowMs = Date.now()) {
@@ -10,10 +29,7 @@ export function getMarketStatus(symbolInfo, nowMs = Date.now()) {
 }
 
 function fmtNum(n, precision = 2) {
-  return Number(n).toLocaleString(undefined, {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
-  });
+  return formatDisplayPrice(Number(n), precision);
 }
 
 function fmtVol(n) {
@@ -52,12 +68,73 @@ function resolveTitleSettings(sl) {
   return { showTitle, titleSource };
 }
 
+/** Market status changes at minute boundaries, not when the hovered candle changes. */
+function cachedMarketStatus(symbolInfo) {
+  const minute = Math.floor(Date.now() / 60_000);
+  if (symbolInfo && typeof symbolInfo === "object") {
+    const cached = marketStatusBySymbol.get(symbolInfo);
+    if (cached?.minute === minute) return cached.status;
+    const status = getMarketStatusDetails(symbolInfo);
+    marketStatusBySymbol.set(symbolInfo, { minute, status });
+    return status;
+  }
+  if (anonymousMarketStatus?.minute === minute) return anonymousMarketStatus.status;
+  const status = getMarketStatusDetails(symbolInfo);
+  anonymousMarketStatus = { minute, status };
+  return status;
+}
+
+/** @param {HTMLElement | undefined} node @param {string} value */
+function patchStatusText(node, value) {
+  if (node && node.textContent !== value) node.textContent = value;
+}
+
+/**
+ * @param {HTMLElement} mainEl
+ * @param {string} structureKey
+ * @param {string} priceClass
+ * @param {string} priceColor
+ * @param {string} changeClass
+ */
+function captureStatusLineView(mainEl, structureKey, priceClass, priceColor, changeClass) {
+  /** @type {Map<string, HTMLElement>} */
+  const values = new Map();
+  /** @type {HTMLElement[]} */
+  const coloredValues = [];
+  for (const node of mainEl.querySelectorAll("[data-status-value]")) {
+    if (!(node instanceof HTMLElement)) continue;
+    const field = node.dataset.statusValue;
+    if (field) values.set(field, node);
+    if (node.dataset.statusColored === "1") coloredValues.push(node);
+  }
+  const changePair = mainEl.querySelector("[data-status-change-pair]");
+  const view = {
+    structureKey,
+    root: mainEl.firstElementChild,
+    values,
+    coloredValues,
+    changePair: changePair instanceof HTMLElement ? changePair : null,
+    priceClass,
+    priceColor,
+    changeClass,
+  };
+  statusLineViews.set(mainEl, view);
+  return view;
+}
+
 /** @param {HTMLElement} el @param {object} settings */
 export function applyStatusLineAppearance(el, settings) {
   const sl = settings?.statusLine ?? {};
+  const showBackground = Boolean(sl.showBackground);
+  const pct = showBackground
+    ? Math.max(0, Math.min(100, Number(sl.backgroundOpacity) || 0))
+    : 0;
+  const appearanceKey = `${showBackground ? 1 : 0}|${pct}`;
+  if (statusLineAppearanceKeys.get(el) === appearanceKey) return;
+  statusLineAppearanceKeys.set(el, appearanceKey);
+
   el.style.boxShadow = "none";
-  if (sl.showBackground) {
-    const pct = Math.max(0, Math.min(100, Number(sl.backgroundOpacity) || 0));
+  if (showBackground) {
     const mix = Math.round(100 - pct * 0.82);
     el.style.setProperty("--status-line-bg", `color-mix(in srgb, var(--tv-bg) ${mix}%, transparent)`);
     el.style.setProperty(
@@ -112,12 +189,12 @@ export function renderStatusLine(el, opts) {
   }
 
   if (!bar) {
-    mainEl.innerHTML = "";
+    if (mainEl.hasChildNodes()) mainEl.replaceChildren();
+    statusLineViews.delete(mainEl);
     return;
   }
 
-  const parts = [];
-  const market = getMarketStatusDetails(symbolInfo);
+  const market = cachedMarketStatus(symbolInfo);
   const { showTitle, titleSource } = resolveTitleSettings(sl);
   const ticker = statusLineTicker(symbol, symbolInfo);
 
@@ -147,60 +224,120 @@ export function renderStatusLine(el, opts) {
     }
   }
 
-  const metaParts = [];
-  if (head) metaParts.push(`<span class="status-line__head">${head}</span>`);
-  if (sl.showMarketStatus) metaParts.push(renderMarketStatusIcons(market));
-
   const sym = settings.symbol ?? {};
   const colorOnPrev = Boolean(sym.colorBarsOnPrevClose);
   const barUp = isBarUp(bar, prevBar, colorOnPrev);
   const priceCls = barPriceClass(barUp);
   const priceColor = candleValueColor(sym, barUp);
 
-  const pair = (lbl, val, { colored = false, extraPairCls = "", minor = false } = {}) => {
-    const minorCls = minor ? " status-line__pair--minor" : "";
-    const pairCls = extraPairCls ? ` status-line__pair ${extraPairCls}${minorCls}` : ` status-line__pair${minorCls}`;
-    const valHtml = colored
-      ? `<span class="status-line__val ${priceCls}" style="color:${priceColor}">${val}</span>`
-      : `<span class="status-line__val">${val}</span>`;
-    return `<span class="${pairCls.trim()}"><span class="status-line__lbl">${lbl}</span>${valHtml}</span>`;
+  const formatted = {
+    open: sl.showOHLC ? fmtNum(bar.open, precision) : "",
+    high: sl.showOHLC ? fmtNum(bar.high, precision) : "",
+    low: sl.showOHLC ? fmtNum(bar.low, precision) : "",
+    close: sl.showOHLC ? fmtNum(bar.close, precision) : "",
+    volume: sl.showVolume !== false ? fmtVol(bar.volume) : "",
+    change: "",
   };
-
-  const valueParts = [];
-
-  if (sl.showOHLC) {
-    valueParts.push(
-      pair("O", fmtNum(bar.open, precision), { colored: true, minor: true }),
-      pair("H", fmtNum(bar.high, precision), { colored: true, minor: true }),
-      pair("L", fmtNum(bar.low, precision), { colored: true, minor: true }),
-      pair("C", fmtNum(bar.close, precision), { colored: true }),
-    );
-  }
-
+  let changeClass = "";
   if (sl.showBarChange) {
     const { change: barChg, pct: barPct } = barChangeFromPrevClose(bar, prevBar);
     const sign = barChg >= 0 ? "+" : "−";
     const pctSign = barPct >= 0 ? "+" : "−";
-    const chgUp = isBarUp(bar, prevBar, colorOnPrev);
-    const chgCls = barPriceClass(chgUp);
-    const chgColor = candleValueColor(sym, chgUp);
-    valueParts.push(
-      `<span class="status-line__pair status-line__chg status-line__chg--${chgUp ? "up" : "down"}"><span class="status-line__val ${chgCls}" style="color:${chgColor}">${sign}${fmtNum(Math.abs(barChg), precision)} (${pctSign}${Math.abs(barPct).toFixed(2)}%)</span></span>`,
-    );
+    formatted.change = `${sign}${fmtNum(Math.abs(barChg), precision)} (${pctSign}${Math.abs(barPct).toFixed(2)}%)`;
+    changeClass = `status-line__chg--${barUp ? "up" : "down"}`;
   }
 
-  if (sl.showVolume !== false) {
-    valueParts.push(pair("Vol", fmtVol(bar.volume), { colored: true, extraPairCls: "status-line__vol" }));
+  const marketStructure = sl.showMarketStatus
+    ? `${market.open ? 1 : 0}|${market.delayed ? 1 : 0}|${market.delayMinutes}|${market.title}`
+    : "";
+  const structureKey = [
+    head,
+    marketStructure,
+    sl.showOHLC ? 1 : 0,
+    sl.showBarChange ? 1 : 0,
+    sl.showVolume !== false ? 1 : 0,
+  ].join("||");
+
+  let view = statusLineViews.get(mainEl);
+  if (
+    !view ||
+    view.structureKey !== structureKey ||
+    view.root !== mainEl.firstElementChild
+  ) {
+    const pair = (
+      lbl,
+      val,
+      field,
+      { colored = false, extraPairCls = "", minor = false } = {},
+    ) => {
+      const minorCls = minor ? " status-line__pair--minor" : "";
+      const pairCls = extraPairCls
+        ? ` status-line__pair ${extraPairCls}${minorCls}`
+        : ` status-line__pair${minorCls}`;
+      const fieldAttr = field ? ` data-status-value="${field}"` : "";
+      const coloredAttr = colored ? ' data-status-colored="1"' : "";
+      const valHtml = colored
+        ? `<span class="status-line__val ${priceCls}" style="color:${priceColor}"${fieldAttr}${coloredAttr}>${val}</span>`
+        : `<span class="status-line__val"${fieldAttr}>${val}</span>`;
+      return `<span class="${pairCls.trim()}"><span class="status-line__lbl">${lbl}</span>${valHtml}</span>`;
+    };
+
+    const metaParts = [];
+    if (head) metaParts.push(`<span class="status-line__head">${head}</span>`);
+    if (sl.showMarketStatus) metaParts.push(renderMarketStatusIcons(market));
+
+    const valueParts = [];
+    if (sl.showOHLC) {
+      valueParts.push(
+        pair("O", formatted.open, "open", { colored: true, minor: true }),
+        pair("H", formatted.high, "high", { colored: true, minor: true }),
+        pair("L", formatted.low, "low", { colored: true, minor: true }),
+        pair("C", formatted.close, "close", { colored: true }),
+      );
+    }
+    if (sl.showBarChange) {
+      valueParts.push(
+        `<span class="status-line__pair status-line__chg ${changeClass}" data-status-change-pair="1"><span class="status-line__val ${priceCls}" style="color:${priceColor}" data-status-value="change" data-status-colored="1">${formatted.change}</span></span>`,
+      );
+    }
+    if (sl.showVolume !== false) {
+      valueParts.push(
+        pair("Vol", formatted.volume, "volume", {
+          colored: true,
+          extraPairCls: "status-line__vol",
+        }),
+      );
+    }
+
+    let html = "";
+    if (metaParts.length || valueParts.length) {
+      const meta = metaParts.length ? `<span class="status-line__meta">${metaParts.join("")}</span>` : "";
+      html = `<div class="status-line__item status-line__item--series"><div class="status-line__flow">${meta}${valueParts.join("")}</div></div>`;
+    }
+    mainEl.innerHTML = html;
+    view = captureStatusLineView(mainEl, structureKey, priceCls, priceColor, changeClass);
+  } else {
+    patchStatusText(view.values.get("open"), formatted.open);
+    patchStatusText(view.values.get("high"), formatted.high);
+    patchStatusText(view.values.get("low"), formatted.low);
+    patchStatusText(view.values.get("close"), formatted.close);
+    patchStatusText(view.values.get("change"), formatted.change);
+    patchStatusText(view.values.get("volume"), formatted.volume);
+
+    if (view.priceClass !== priceCls || view.priceColor !== priceColor) {
+      const valueClass = `status-line__val ${priceCls}`;
+      for (const value of view.coloredValues) {
+        if (value.className !== valueClass) value.className = valueClass;
+        if (value.style.color !== priceColor) value.style.color = priceColor;
+      }
+      view.priceClass = priceCls;
+      view.priceColor = priceColor;
+    }
+    if (view.changePair && view.changeClass !== changeClass) {
+      view.changePair.className = `status-line__pair status-line__chg ${changeClass}`;
+      view.changeClass = changeClass;
+    }
   }
 
-  if (metaParts.length || valueParts.length) {
-    const meta = metaParts.length ? `<span class="status-line__meta">${metaParts.join("")}</span>` : "";
-    const flow = `${meta}${valueParts.join("")}`;
-    parts.push(
-      `<div class="status-line__item status-line__item--series"><div class="status-line__flow">${flow}</div></div>`,
-    );
-  }
-
-  mainEl.innerHTML = parts.join("");
   applyStatusLineAppearance(el, settings);
 }

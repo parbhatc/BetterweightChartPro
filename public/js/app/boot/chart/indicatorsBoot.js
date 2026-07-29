@@ -4,6 +4,7 @@ import { createIndicatorsLibraryDialog } from "../../../indicators/ui/libraryDia
 import { loadIndicatorFavorites } from "../../../indicators/ui/favorites.js";
 import { createIndicatorSettingsDialog } from "../../../indicators/ui/settingsDialog.js";
 import { mountIndicatorLegend } from "../../../indicators/ui/legend.js";
+import { IndicatorPaneUiLifecycle } from "../../../indicators/ui/indicatorPaneUiLifecycle.js";
 import { attachStudyScaleLabelsPrimitive } from "../../../indicators/primitives/scaleLabels.js";
 import { attachIndicatorBandFillPrimitive } from "../../../indicators/primitives/bandFill.js";
 import { attachStudyPaneLegendOverlay } from "../../../indicators/ui/studyPaneLegendOverlay.js";
@@ -12,6 +13,7 @@ import { getPaneChartView } from "../../../chart/pane/viewCache.js";
 import { replayBarIndexForUtcTime } from "../../../replay/persist.js";
 import { precisionFromSettings } from "../../../chart/timezone/list.js";
 import { listIndicators, getIndicatorClass } from "../../../indicators/catalog.js";
+import { wireIndicatorLegendCrosshair } from "../../../indicators/crosshairLegend.js";
 import { createIndicatorDataLoader } from "./indicatorDataLoader.js";
 import { createSecurityContext } from "../../bar/requestSecurity.js";
 import { symbolLabelAnchorsForPane } from "../../../chart/scale/symbolLabelAnchors.js";
@@ -228,9 +230,6 @@ export function attachIndicatorsBoot(ctx) {
     };
   }
 
-  /** @type {Map<number, ReturnType<typeof mountIndicatorLegend>>} */
-  const legends = new Map();
-
   function symbolLabelAnchors(pane) {
     return symbolLabelAnchorsForPane(pane, ctx.settingsStore, pane.symbolInfo ?? ctx.symbolInfo);
   }
@@ -294,27 +293,27 @@ export function attachIndicatorsBoot(ctx) {
     ensureStudyScaleLabels(pane)?.requestRefresh();
   }
 
+  function createPaneLegend(pane) {
+    return mountIndicatorLegend(pane.statusEl, {
+      getStudies: () => {
+        const precision = precisionFromSettings(ctx.settingsStore.get(), pane.symbolInfo ?? ctx.symbolInfo);
+        const visible = pane.bars ?? [];
+        const rawBar = pane.hoverBar ?? visible.at(-1) ?? null;
+        const bar =
+          rawBar?.time != null
+            ? (pane.timeAdapter?.index?.utcBarByUtcTime?.(rawBar.time) ?? rawBar)
+            : rawBar;
+        return controller.legendStateForPane(pane, bar, precision);
+      },
+      ...studyLegendActions(),
+      ...legendCollapseOpts(),
+    });
+  }
+
+  const paneUiLifecycle = new IndicatorPaneUiLifecycle(createPaneLegend);
+
   function ensureLegend(pane) {
-    if (!pane.statusEl) return null;
-    let legend = legends.get(pane.index);
-    if (!legend) {
-      legend = mountIndicatorLegend(pane.statusEl, {
-        getStudies: () => {
-          const precision = precisionFromSettings(ctx.settingsStore.get(), pane.symbolInfo ?? ctx.symbolInfo);
-          const visible = pane.bars ?? [];
-          const rawBar = pane.hoverBar ?? visible.at(-1) ?? null;
-          const bar =
-            rawBar?.time != null
-              ? (pane.timeAdapter?.index?.utcBarByUtcTime?.(rawBar.time) ?? rawBar)
-              : rawBar;
-          return controller.legendStateForPane(pane, bar, precision);
-        },
-        ...studyLegendActions(),
-        ...legendCollapseOpts(),
-      });
-      legends.set(pane.index, legend);
-    }
-    return legend;
+    return paneUiLifecycle.ensureLegend(pane);
   }
 
   function refreshAllLegends() {
@@ -324,6 +323,7 @@ export function attachIndicatorsBoot(ctx) {
   }
 
   ctx.refreshIndicatorLegends = refreshAllLegends;
+  ctx.teardownIndicatorPane = (pane) => paneUiLifecycle.destroyPane(pane);
   ctx.refreshIndicators = (paneIndex) => {
     controller.refreshPane(paneIndex);
     refreshIndicatorUi(paneIndex);
@@ -570,8 +570,9 @@ export function attachIndicatorsBoot(ctx) {
   const origRefreshPaneStatusLine = ctx.refreshPaneStatusLine;
   ctx.refreshPaneStatusLine = (pane) => {
     origRefreshPaneStatusLine?.(pane);
+    if (controller.getCountForPane(pane.index) === 0) return;
     ensureLegend(pane)?.render();
-    controller.refreshStudyPaneLegends(pane);
+    controller.refreshStudyPaneLegendValues(pane);
   };
 
   const origSetupPaneExtras = ctx.setupPaneExtras;
@@ -586,11 +587,10 @@ export function attachIndicatorsBoot(ctx) {
 
   /** @param {object} pane */
   function wirePaneLegendCrosshair(pane) {
-    if (pane._legendCrosshairSub) return;
-    pane._legendCrosshairSub = true;
-    pane.chart.subscribeCrosshairMove(() => {
-      ensureLegend(pane)?.render();
-      controller.refreshStudyPaneLegends(pane);
+    wireIndicatorLegendCrosshair(pane, {
+      hasIndicators: () => controller.getCountForPane(pane.index) > 0,
+      refreshMainLegend: () => ensureLegend(pane)?.render(),
+      refreshStudyLegendValues: () => controller.refreshStudyPaneLegendValues(pane),
     });
   }
 

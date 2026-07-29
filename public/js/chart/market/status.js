@@ -10,6 +10,19 @@ const EXCHANGES = {
   FOREX: { full: "Forex", tz: "America/New_York", city: "New York" },
   CRYPTO: { full: "Crypto", tz: "Etc/UTC", city: "UTC" },
 };
+const DAY_BY_SHORT_NAME = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+/** @type {Map<string, Intl.DateTimeFormat>} */
+const zonedPartFormatters = new Map();
+/** @type {Map<string, Intl.DateTimeFormat>} */
+const timezoneOffsetFormatters = new Map();
 
 const ICON_MARKET_OPEN = `<svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M9 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8"></path></svg>`;
 const ICON_MARKET_CLOSED = `<svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M9 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8" opacity="0.45"></path></svg>`;
@@ -18,23 +31,26 @@ const ICON_DELAYED = `<svg viewBox="0 0 18 18" width="18" height="18" aria-hidde
 /** @param {string} tz @param {number} [nowMs] */
 function zonedParts(tz, nowMs = Date.now()) {
   const d = new Date(nowMs);
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    weekday: "short",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-    hour12: false,
-  });
+  let fmt = zonedPartFormatters.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      hour12: false,
+    });
+    zonedPartFormatters.set(tz, fmt);
+  }
   const parts = fmt.formatToParts(d);
   const get = (type) => parts.find((p) => p.type === type)?.value ?? "";
   const hour = Number(get("hour") === "24" ? 0 : get("hour"));
   const minute = Number(get("minute"));
   const weekday = get("weekday");
-  const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   return {
     weekday,
-    day: dayMap[weekday] ?? 0,
+    day: DAY_BY_SHORT_NAME[weekday] ?? 0,
     mins: hour * 60 + minute,
     hour,
     minute,
@@ -60,10 +76,15 @@ function segmentPct(startMin, endMin) {
 
 /** @param {string} tz @param {string} city @param {number} [nowMs] */
 function exchangeTzLabel(tz, city, nowMs = Date.now()) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    timeZoneName: "shortOffset",
-  }).formatToParts(new Date(nowMs));
+  let formatter = timezoneOffsetFormatters.get(tz);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    });
+    timezoneOffsetFormatters.set(tz, formatter);
+  }
+  const parts = formatter.formatToParts(new Date(nowMs));
   const off = parts.find((p) => p.type === "timeZoneName")?.value?.replace("GMT", "UTC") ?? "UTC";
   return `Exchange timezone: ${city} (${off})`;
 }

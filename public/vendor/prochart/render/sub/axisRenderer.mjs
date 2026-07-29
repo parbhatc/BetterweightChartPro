@@ -4,6 +4,9 @@ import { TIME_AXIS_HEIGHT } from "../../core/defaults.mjs";
 import { RenderTarget } from "../target.mjs";
 import { seriesLastValueColor } from "./seriesRenderer.mjs";
 
+/** @type {WeakMap<object, string>} */
+const axisCornerSignatures = new WeakMap();
+
 /** Paint the interactive bottom-right axis corner. */
 export function renderAxisCorner(model) {
   const host = model.axisCornerHost;
@@ -14,11 +17,35 @@ export function renderAxisCorner(model) {
   const visible = width > 0 && height > 0;
   if (!host || !canvas || !context) return;
 
+  const dpr = model.dpr || 1;
+  const layout = model.options.layout;
+  const backgroundOptions = layout.background || {};
+  const background = backgroundOptions.color
+    || backgroundOptions.bottomColor
+    || backgroundOptions.topColor
+    || "#09090B";
+  const borderColor = model.options.timeScale.borderColor
+    || model.options.rightPriceScale.borderColor
+    || "#27272A";
+  const textColor = layout.textColor || "#A1A1AA";
+  const signature = [
+    visible,
+    width,
+    height,
+    dpr,
+    background,
+    borderColor,
+    textColor,
+    model.priceAxisAutoButton?.getAttribute?.("aria-pressed") ?? "",
+    model.priceAxisLogButton?.getAttribute?.("aria-pressed") ?? "",
+  ].join("\0");
+  if (axisCornerSignatures.get(model) === signature) return;
+  axisCornerSignatures.set(model, signature);
+
   host.hidden = !visible;
   updatePriceAxisControls(model, height);
   if (!visible) return;
 
-  const dpr = model.dpr || 1;
   const bitmapWidth = Math.max(1, Math.round(width * dpr));
   const bitmapHeight = Math.max(1, Math.round(height * dpr));
   host.style.width = `${width}px`;
@@ -30,17 +57,9 @@ export function renderAxisCorner(model) {
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, width, height);
-  const layout = model.options.layout;
-  const background = layout.background || {};
-  context.fillStyle = background.color
-    || background.bottomColor
-    || background.topColor
-    || "#09090B";
+  context.fillStyle = background;
   context.fillRect(0, 0, width, height);
 
-  const borderColor = model.options.timeScale.borderColor
-    || model.options.rightPriceScale.borderColor
-    || "#27272A";
   context.strokeStyle = borderColor;
   context.lineWidth = 1;
   context.beginPath();
@@ -53,7 +72,7 @@ export function renderAxisCorner(model) {
   const centerX = Math.round(width / 2);
   const centerY = Math.round(height / 2) + 1;
   const radius = 8;
-  context.strokeStyle = layout.textColor || "#A1A1AA";
+  context.strokeStyle = textColor;
   context.lineWidth = 1.25;
   context.lineJoin = "round";
   context.beginPath();
@@ -156,7 +175,13 @@ export function tickDate(_model, seconds, provider) {
   return new Date(shifted * 1000);
 }
 
-export function renderTimeAxis(model, context, plotX, plotWidth) {
+export function renderTimeAxis(
+  model,
+  context,
+  plotX,
+  plotWidth,
+  tickCache,
+) {
   const timeScaleOptions = model.options.timeScale;
   if (!timeScaleOptions.visible) return;
 
@@ -175,7 +200,9 @@ export function renderTimeAxis(model, context, plotX, plotWidth) {
   context.textAlign = "center";
   context.textBaseline = "middle";
   const y = top + TIME_AXIS_HEIGHT / 2 + 1;
-  for (const tick of timeTicks(model, plotWidth)) {
+  const ticks = tickCache?.timeTicks(plotWidth)
+    ?? timeTicks(model, plotWidth);
+  for (const tick of ticks) {
     const label = formatTick(model, tick);
     if (!label) continue;
 
@@ -224,7 +251,7 @@ function formatTick(model, tick) {
   }
 }
 
-export function renderPriceAxes(model, context) {
+export function renderPriceAxes(model, context, tickCache) {
   const layout = model.options.layout;
   for (const pane of model.panes) {
     if (pane.height <= 0) continue;
@@ -250,6 +277,7 @@ export function renderPriceAxes(model, context) {
           x,
           width,
           layout,
+          tickCache,
         );
       }
       renderPriceAxisPrimitiveViews(
@@ -274,6 +302,7 @@ function renderPriceScale(
   x,
   width,
   layout,
+  tickCache,
 ) {
   const pendingLabels = [];
   const formatter = scale.formatterForAxis();
@@ -291,7 +320,8 @@ function renderPriceScale(
   context.textBaseline = "middle";
   context.textAlign = side === "left" ? "right" : "left";
   const textX = side === "left" ? x + width - 8 : x + 8;
-  for (const tick of scale.ticks()) {
+  const ticks = tickCache?.priceTicks(scale) ?? scale.ticks();
+  for (const tick of ticks) {
     const y = pane.top + tick.y;
     const halfText = layout.fontSize * 0.6;
     if (tick.y < halfText || tick.y > pane.height - halfText) continue;

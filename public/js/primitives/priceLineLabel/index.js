@@ -27,6 +27,7 @@ export function symbolPriceLabelHeight(showCountdown = false) {
 export function attachPriceLineLabelPrimitive(opts) {
   /** @type {import("prochart").IPriceLine | null} */
   let symbolLine = null;
+  let lineOptionsKey = "";
   /** @type {ReturnType<typeof setInterval> | null} */
   let tickTimer = null;
 
@@ -45,6 +46,7 @@ export function attachPriceLineLabelPrimitive(opts) {
       if (symbolLine) {
         opts.series.removePriceLine(symbolLine);
         symbolLine = null;
+        lineOptionsKey = "";
       }
       return;
     }
@@ -54,6 +56,7 @@ export function attachPriceLineLabelPrimitive(opts) {
       if (symbolLine) {
         opts.series.removePriceLine(symbolLine);
         symbolLine = null;
+        lineOptionsKey = "";
       }
       return;
     }
@@ -71,6 +74,7 @@ export function attachPriceLineLabelPrimitive(opts) {
       if (symbolLine) {
         opts.series.removePriceLine(symbolLine);
         symbolLine = null;
+        lineOptionsKey = "";
       }
       return;
     }
@@ -90,11 +94,15 @@ export function attachPriceLineLabelPrimitive(opts) {
       lineStyle: state.lineStyle ?? SYMBOL_PRICE_LINE_STYLE,
     };
 
+    const nextOptionsKey = JSON.stringify(lineOptions);
+    if (symbolLine && nextOptionsKey === lineOptionsKey) return;
+
     if (symbolLine) {
       symbolLine.applyOptions(lineOptions);
     } else {
       symbolLine = opts.series.createPriceLine(lineOptions);
     }
+    lineOptionsKey = nextOptionsKey;
   }
 
   sync();
@@ -116,6 +124,7 @@ export function attachPriceLineLabelPrimitive(opts) {
           /* ignore */
         }
         symbolLine = null;
+        lineOptionsKey = "";
       }
     },
   };

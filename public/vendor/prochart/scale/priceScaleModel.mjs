@@ -179,14 +179,15 @@ export class PriceScaleModel {
     return this._width;
   }
 
-  measureWidth(ctx) {
+  measureWidth(ctx, tickSnapshot) {
     if (!this.options.visible || this.isOverlay()) { this._width = 0; return 0; }
     const fmt = this.formatterForAxis();
     const layout = this._chart.options.layout;
     ctx.font = `${layout.fontSize}px ${layout.fontFamily}`;
     let maxW = 0;
     if (this.priceRange) {
-      for (const t of this.ticks()) {
+      const ticks = tickSnapshot ?? this.ticks();
+      for (const t of ticks) {
         const w = ctx.measureText(String(fmt(t.price))).width;
         if (w > maxW) maxW = w;
       }

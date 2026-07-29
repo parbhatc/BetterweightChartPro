@@ -64,6 +64,33 @@ export function createPointerHandlers(api) {
   let mobilePlacementPointerId = null;
   /** @type {{ startClientX: number, startClientY: number, mediaX: number, mediaY: number } | null} */
   let crosshairScrollAnchor = null;
+  /** @type {number} */
+  let hoverFrame = 0;
+  /** @type {{ x: number, y: number } | null} */
+  let pendingHoverPoint = null;
+
+  function cancelPendingDrawingHover() {
+    pendingHoverPoint = null;
+    if (!hoverFrame) return;
+    cancelAnimationFrame(hoverFrame);
+    hoverFrame = 0;
+  }
+
+  function scheduleDrawingHover(clientX, clientY) {
+    if (api.getDrawings?.().length === 0) {
+      cancelPendingDrawingHover();
+      api.setHoveredDrawing(null);
+      return;
+    }
+    pendingHoverPoint = { x: clientX, y: clientY };
+    if (hoverFrame) return;
+    hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = 0;
+      const point = pendingHoverPoint;
+      pendingHoverPoint = null;
+      if (point) api.updateDrawingHover(point.x, point.y);
+    });
+  }
 
   function resetMobilePlacementGesture() {
     if (mobilePlacementPointerId != null && api.container instanceof HTMLElement) {
@@ -518,7 +545,20 @@ export function createPointerHandlers(api) {
     }
     api.updateCursorMark(ev.clientX, ev.clientY);
     api.cancelLongPressIfMoved(ev.clientX, ev.clientY);
-    api.updateDrawingHover(ev.clientX, ev.clientY);
+    const passiveDrawingHover =
+      api.isCursorTool() &&
+      !api.isPrimaryButtonDown(ev) &&
+      !api.isDragging() &&
+      !api.hasActiveDrag() &&
+      !api.getMeasureDragActive() &&
+      !api.getFreehandDrawing() &&
+      api.getPlacementStaged().length === 0;
+    if (passiveDrawingHover) {
+      scheduleDrawingHover(ev.clientX, ev.clientY);
+    } else {
+      cancelPendingDrawingHover();
+      api.updateDrawingHover(ev.clientX, ev.clientY);
+    }
 
     if (api.getMeasureDragActive() && api.isPrimaryButtonDown(ev)) {
       const point = api.resolvePoint(ev.clientX, ev.clientY);
@@ -678,6 +718,7 @@ export function createPointerHandlers(api) {
   }
 
   function onPointerLeave(ev) {
+    cancelPendingDrawingHover();
     api.clearLongPress();
     if (!api.isValuesTooltipPinned?.()) activeLongPressPointer = null;
     if (!api.isValuesTooltipPinned?.()) api.hideValuesTooltip();
@@ -710,6 +751,7 @@ export function createPointerHandlers(api) {
     if (ev.type === "mousedown") return;
     if (ev.target.closest(api.DRAWING_UI_SELECTOR)) return;
     if (shouldIgnoreChartPointerDown(ev)) return;
+    cancelPendingDrawingHover();
     lastChartPointerDownAt = ev.timeStamp || performance.now();
     lastChartPointerId = ev.pointerId ?? null;
     onPointerDown(ev);
@@ -789,7 +831,6 @@ export function createPointerHandlers(api) {
     api.container.addEventListener("pointerup", onChartPointerUpForDoubleTap, true);
     api.container.addEventListener("lostpointercapture", onLostPointerCapture);
     api.overlayRoot.addEventListener("pointermove", onPointerMove);
-    api.container.addEventListener("pointermove", onPointerMove);
     api.container.addEventListener("pointerup", onPointerUp);
     api.container.addEventListener("pointercancel", onPointerUp);
     api.overlayRoot.addEventListener("pointerleave", onPointerLeave);
@@ -799,12 +840,12 @@ export function createPointerHandlers(api) {
   }
 
   function unbindChartListeners() {
+    cancelPendingDrawingHover();
     api.container.removeEventListener("pointerdown", onChartPointerDown, true);
     api.container.removeEventListener("dblclick", onChartDoubleClick, true);
     api.container.removeEventListener("pointerup", onChartPointerUpForDoubleTap, true);
     api.container.removeEventListener("lostpointercapture", onLostPointerCapture);
     api.overlayRoot.removeEventListener("pointermove", onPointerMove);
-    api.container.removeEventListener("pointermove", onPointerMove);
     api.container.removeEventListener("pointerup", onPointerUp);
     api.container.removeEventListener("pointercancel", onPointerUp);
     api.overlayRoot.removeEventListener("pointerleave", onPointerLeave);

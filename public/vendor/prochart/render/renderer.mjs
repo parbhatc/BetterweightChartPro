@@ -20,10 +20,12 @@ import {
   renderTimeAxis,
 } from "./sub/axisRenderer.mjs";
 import {
+  createPanePrimitiveViewGroups,
   renderPaneBottomOverlays,
   renderPaneSeriesOverlays,
   renderTop as renderOverlayTop,
 } from "./sub/overlayRenderer.mjs";
+import { RenderFrameTickCache } from "./frameTickCache.mjs";
 
 export {
   renderSeries2d,
@@ -44,7 +46,8 @@ export function renderChart(model) {
   const mainContext = model.mainCtx;
   if (model.lineEndPulseHost) model.lineEndPulseHost.hidden = true;
 
-  prepareLayout(model, mainContext, dpr);
+  const tickCache = new RenderFrameTickCache(model);
+  prepareLayout(model, mainContext, dpr, tickCache);
   clearLayer(model.baseCanvas, baseContext, dpr);
   clearLayer(model.mainCanvas, mainContext, dpr);
   renderBackground(model, baseContext);
@@ -61,7 +64,15 @@ export function renderChart(model) {
   for (const pane of model.panes) {
     if (pane.height <= 0) continue;
 
-    renderPaneGrid(model, baseContext, pane, plotX, plotWidth);
+    renderPaneGrid(
+      model,
+      baseContext,
+      pane,
+      plotX,
+      plotWidth,
+      tickCache,
+    );
+    const primitiveViewGroups = createPanePrimitiveViewGroups(model, pane);
     renderPaneBottomOverlays(
       model,
       baseContext,
@@ -69,6 +80,7 @@ export function renderChart(model) {
       plotX,
       plotWidth,
       dpr,
+      primitiveViewGroups,
     );
     renderPaneSeries(
       model,
@@ -86,12 +98,13 @@ export function renderChart(model) {
       plotX,
       plotWidth,
       dpr,
+      primitiveViewGroups,
     );
   }
 
   renderPaneSeparators(model, baseContext);
-  renderPriceAxes(model, mainContext);
-  renderTimeAxis(model, mainContext, plotX, plotWidth);
+  renderPriceAxes(model, mainContext, tickCache);
+  renderTimeAxis(model, mainContext, plotX, plotWidth, tickCache);
   renderAxisCorner(model);
   renderTop(model);
 }
@@ -101,7 +114,7 @@ export function renderTop(model) {
   renderOverlayTop(model);
 }
 
-function prepareLayout(model, context, dpr) {
+function prepareLayout(model, context, dpr, tickCache) {
   model._layoutPanes();
   for (const pane of model.panes) {
     for (const scale of pane.priceScales.values()) {
@@ -118,13 +131,19 @@ function prepareLayout(model, context, dpr) {
     if (rightScale) {
       rightWidth = Math.max(
         rightWidth,
-        rightScale.measureWidth(context),
+        rightScale.measureWidth(
+          context,
+          tickCache.priceTicks(rightScale),
+        ),
       );
     }
     if (leftScale) {
       leftWidth = Math.max(
         leftWidth,
-        leftScale.measureWidth(context),
+        leftScale.measureWidth(
+          context,
+          tickCache.priceTicks(leftScale),
+        ),
       );
     }
   }

@@ -79,6 +79,7 @@ export function attachStudyPaneLegendOverlay(opts) {
     }
     for (const [idx, entry] of [...byPane]) {
       if (!active.has(idx)) {
+        entry.legend.destroy?.();
         entry.wrap.remove();
         byPane.delete(idx);
       }
@@ -86,17 +87,34 @@ export function attachStudyPaneLegendOverlay(opts) {
     reposition();
   }
 
+  function refreshValues() {
+    for (const { legend } of byPane.values()) {
+      legend.render();
+    }
+  }
+
   const onResize = () => reposition();
+  const timeScale = chart.timeScale();
+  let destroyed = false;
   window.addEventListener("resize", onResize);
-  chart.timeScale().subscribeVisibleLogicalRangeChange(onResize);
+  timeScale.subscribeVisibleLogicalRangeChange(onResize);
+
+  function destroy() {
+    if (destroyed) return;
+    destroyed = true;
+    window.removeEventListener("resize", onResize);
+    timeScale.unsubscribeVisibleLogicalRangeChange(onResize);
+    for (const { legend } of byPane.values()) {
+      legend.destroy?.();
+    }
+    root.remove();
+    byPane.clear();
+  }
 
   return {
     render,
+    refreshValues,
     reposition,
-    destroy: () => {
-      window.removeEventListener("resize", onResize);
-      root.remove();
-      byPane.clear();
-    },
+    destroy,
   };
 }

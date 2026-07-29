@@ -1,3 +1,13 @@
+/** @type {Map<number, Intl.NumberFormat>} */
+const priceFormatters = new Map();
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
 /** @param {number | { year: number, month: number, day: number }} t */
 export function toDate(t) {
   if (typeof t === "number") return new Date(t * 1000);
@@ -11,21 +21,20 @@ export function toDate(t) {
 export function formatDisplayPrice(price, precision) {
   if (price == null || !Number.isFinite(price)) return "";
   const p = Math.max(0, Number(precision) || 0);
-  return Number(price).toLocaleString(undefined, {
-    minimumFractionDigits: p,
-    maximumFractionDigits: p,
-  });
+  let formatter = priceFormatters.get(p);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: p,
+      maximumFractionDigits: p,
+    });
+    priceFormatters.set(p, formatter);
+  }
+  return formatter.format(Number(price));
 }
 
 /** @param {Date} d */
 export function dateTime12h(d) {
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  return dateTimeFormatter.format(d);
 }
 
 /** @param {{ time: number }} bar */

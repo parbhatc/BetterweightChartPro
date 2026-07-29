@@ -67,6 +67,7 @@ export function createSecondaryPaneFactory(ctx) {
       bars: [],
       index: paneIndex,
       destroy: () => {
+        ctx.teardownIndicatorPane?.(paneState);
         paneState.newsMarkers?.destroy();
         paneState.priceLineLabel?.destroy();
         paneState.studyScaleLabels?.destroy();

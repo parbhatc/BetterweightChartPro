@@ -121,20 +121,26 @@ export function mountTimeScaleMarkers({ mountEl, chart, coordinateForMarker }) {
 
   function updatePositions() {
     frame = 0;
-    const axisHeight = typeof chart.timeScale().height === "function" ? chart.timeScale().height() : 26;
+    const timeScale = chart.timeScale();
+    const axisHeight = typeof timeScale.height === "function" ? timeScale.height() : 26;
+    const maxVisibleX = mountEl.clientWidth + MARKER_SIZE;
     positioned.length = 0;
     for (const entry of buttons) {
       const customX = coordinateForMarker?.(entry.marker);
       const x =
         customX != null && Number.isFinite(customX)
           ? customX
-          : chart.timeScale().timeToCoordinate(entry.marker.time);
+          : timeScale.timeToCoordinate(entry.marker.time);
       entry.x = x;
-      if (x == null || !Number.isFinite(x) || x < -MARKER_SIZE || x > mountEl.clientWidth + MARKER_SIZE) {
-        entry.button.hidden = true;
+      const hidden =
+        x == null
+        || !Number.isFinite(x)
+        || x < -MARKER_SIZE
+        || x > maxVisibleX;
+      if (entry.button.hidden !== hidden) entry.button.hidden = hidden;
+      if (hidden) {
         continue;
       }
-      entry.button.hidden = false;
       positioned.push(entry);
     }
     positioned.sort((a, b) => a.x - b.x);

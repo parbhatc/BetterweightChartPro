@@ -37,12 +37,25 @@ export class ChartModel {
     this._crosshairSubs = this._crosshairManager.subscribers;
     this._raf = 0;
     this._rafTop = 0;
+    this._priceAxisHoverFrame = 0;
+    this._pendingPriceAxisHover = null;
+    this._inputRootRect = null;
+    this._inputRootRectFrame = 0;
+    this._inputPointCache = new WeakMap();
+    this._onRootGeometryChange = () => {
+      this.invalidateInputRootRect();
+    };
     this._destroyed = false;
     this._kinetic = null;
 
     this._buildDom();
+    globalThis.window?.addEventListener?.("resize", this._onRootGeometryChange, { passive: true });
+    globalThis.window?.addEventListener?.("scroll", this._onRootGeometryChange, {
+      capture: true,
+      passive: true,
+    });
     this._ensurePane(0);
-    bindEvents(this);
+    this._disposeInputEvents = bindEvents(this);
 
     this.width = 0;
     this.height = 0;
@@ -53,6 +66,7 @@ export class ChartModel {
     if (this.options.autoSize && typeof ResizeObserver !== "undefined") {
       this._ro = new ResizeObserver((entries) => {
         for (const e of entries) {
+          this.invalidateInputRootRect();
           const r = e.contentRect;
           if (r.width > 0 && r.height > 0) this._applySize(r.width, r.height);
         }
@@ -177,47 +191,66 @@ export class ChartModel {
       }
     };
 
-    this.root.addEventListener("pointermove", (event) => {
-      if (event.pointerType && event.pointerType !== "mouse") return;
-      // Price-axis mode buttons cannot be hovered while the pointer is held
-      // down. Avoid a forced layout read on every high-frequency pan event.
-      if (event.buttons) {
-        if (!host.hidden) setModesVisible(false);
-        return;
-      }
-      const rect = this.root.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+    const cancelPriceAxisHover = () => {
+      this._pendingPriceAxisHover = null;
+      if (!this._priceAxisHoverFrame) return;
+      cancelAnimationFrame(this._priceAxisHoverFrame);
+      this._priceAxisHoverFrame = 0;
+    };
+
+    const flushPriceAxisHover = () => {
+      this._priceAxisHoverFrame = 0;
+      const point = this._pendingPriceAxisHover;
+      this._pendingPriceAxisHover = null;
+      if (!point || this._destroyed) return;
+
       const onRightPriceAxis = pointInRightPriceAxis(
         this.width,
         this.height,
         this._rightW || 0,
         this.timeAxisHeight(),
-        x,
-        y,
+        point.x,
+        point.y,
       );
       if (onRightPriceAxis && host.hidden) {
         setModesVisible(true);
       } else if (!onRightPriceAxis && !host.hidden) {
         setModesVisible(false);
       }
+    };
+
+    this.root.addEventListener("pointermove", (event) => {
+      if (event.pointerType && event.pointerType !== "mouse") return;
+      // Price-axis mode buttons cannot be hovered while the pointer is held
+      // down. Avoid a forced layout read on every high-frequency pan event.
+      if (event.buttons) {
+        cancelPriceAxisHover();
+        if (!host.hidden) setModesVisible(false);
+        return;
+      }
+      this._pendingPriceAxisHover = this.inputPoint(event);
+      if (!this._priceAxisHoverFrame) {
+        this._priceAxisHoverFrame = requestAnimationFrame(flushPriceAxisHover);
+      }
     });
     this.root.addEventListener("pointerup", (event) => {
       if (event.pointerType === "mouse") return;
       if (event.target instanceof Element && event.target.closest("[data-prochart-price-axis-modes] button")) return;
-      const rect = this.root.getBoundingClientRect();
+      const point = this.inputPoint(event);
       const onRightPriceAxis = pointInRightPriceAxis(
         this.width,
         this.height,
         this._rightW || 0,
         this.timeAxisHeight(),
-        event.clientX - rect.left,
-        event.clientY - rect.top,
+        point.x,
+        point.y,
       );
       if (onRightPriceAxis) setModesVisible(host.hidden);
     });
     this.root.addEventListener("pointerleave", (event) => {
       if (event.pointerType && event.pointerType !== "mouse") return;
+      this.invalidateInputRootRect();
+      cancelPriceAxisHover();
       setModesVisible(false);
     });
   }
@@ -229,9 +262,58 @@ export class ChartModel {
     return c;
   }
 
+  inputRootRect() {
+    if (!this._inputRootRect) {
+      this._inputRootRect = this.root.getBoundingClientRect();
+    }
+    if (!this._inputRootRectFrame) {
+      this._inputRootRectFrame = requestAnimationFrame(() => {
+        this._inputRootRectFrame = 0;
+        this._inputRootRect = null;
+      });
+    }
+    return this._inputRootRect;
+  }
+
+  inputPoint(event) {
+    const cached = this._inputPointCache?.get(event);
+    if (cached) return cached;
+
+    const target = event.target;
+    const directSurface =
+      target === this.root
+      || target === this.baseCanvas
+      || target === this.glCanvas
+      || target === this.mainCanvas
+      || target === this.topCanvas;
+    let point;
+    if (
+      directSurface
+      && Number.isFinite(event.offsetX)
+      && Number.isFinite(event.offsetY)
+    ) {
+      point = { x: event.offsetX, y: event.offsetY };
+    } else {
+      const rect = this.inputRootRect();
+      point = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+    }
+
+    this._inputPointCache ??= new WeakMap();
+    this._inputPointCache.set(event, point);
+    return point;
+  }
+
+  invalidateInputRootRect() {
+    this._inputRootRect = null;
+  }
+
   _applySize(w, h) {
     w = Math.max(1, Math.floor(w));
     h = Math.max(1, Math.floor(h));
+    this.invalidateInputRootRect();
     if (w === this.width && h === this.height) return;
     this.width = w;
     this.height = h;
@@ -497,9 +579,23 @@ export class ChartModel {
     this._destroyed = true;
     if (this._raf) cancelAnimationFrame(this._raf);
     if (this._rafTop) cancelAnimationFrame(this._rafTop);
+    if (this._priceAxisHoverFrame) {
+      cancelAnimationFrame(this._priceAxisHoverFrame);
+      this._priceAxisHoverFrame = 0;
+    }
+    if (this._inputRootRectFrame) {
+      cancelAnimationFrame(this._inputRootRectFrame);
+      this._inputRootRectFrame = 0;
+    }
+    this._inputRootRect = null;
+    this._pendingPriceAxisHover = null;
+    this._disposeInputEvents?.();
+    this._disposeInputEvents = null;
     this._crosshairManager.destroy();
     this._stopKinetic();
     this._ro?.disconnect();
+    globalThis.window?.removeEventListener?.("resize", this._onRootGeometryChange);
+    globalThis.window?.removeEventListener?.("scroll", this._onRootGeometryChange, true);
     this.root.remove();
     this.panes.length = 0;
     this.seriesApis.clear();

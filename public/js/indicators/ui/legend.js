@@ -89,6 +89,7 @@ export function mountIndicatorLegend(statusEl, opts) {
   /** @type {string | null} */
   let hoverId = null;
   let suppressClickUntil = 0;
+  let destroyed = false;
 
   function isLegendCollapsed() {
     return getLegendCollapsed?.() ?? false;
@@ -239,6 +240,7 @@ export function mountIndicatorLegend(statusEl, opts) {
   }
 
   function render() {
+    if (destroyed) return;
     const { studiesEl, legendEl, togglerEl } = ensureStudiesShell();
     const studies = getStudies();
     if (!studies.length) {
@@ -279,27 +281,26 @@ export function mountIndicatorLegend(statusEl, opts) {
     syncExpandedClass(legendEl);
   }
 
-  statusEl.addEventListener(
-    "mouseenter",
-    (ev) => {
-      if (!useHoverLegendExpand()) return;
-      const item = ev.target instanceof Element ? ev.target.closest(".study-legend__item") : null;
-      if (!(item instanceof HTMLElement) || !item.dataset.id) return;
-      if (hoverId === item.dataset.id) return;
-      hoverId = item.dataset.id;
-      syncExpandedClass(ensureStudiesShell().legendEl);
-    },
-    true,
-  );
+  function handleMouseEnter(ev) {
+    if (!useHoverLegendExpand()) return;
+    const item = ev.target instanceof Element ? ev.target.closest(".study-legend__item") : null;
+    if (!(item instanceof HTMLElement) || !item.dataset.id) return;
+    if (hoverId === item.dataset.id) return;
+    hoverId = item.dataset.id;
+    syncExpandedClass(ensureStudiesShell().legendEl);
+  }
 
-  statusEl.addEventListener("mouseleave", (ev) => {
+  function handleMouseLeave(ev) {
     if (!useHoverLegendExpand()) return;
     const related = ev.relatedTarget;
     if (related instanceof Node && statusEl.contains(related)) return;
     if (hoverId == null) return;
     hoverId = null;
     syncExpandedClass(ensureStudiesShell().legendEl);
-  });
+  }
+
+  statusEl.addEventListener("mouseenter", handleMouseEnter, true);
+  statusEl.addEventListener("mouseleave", handleMouseLeave);
 
   /** @param {EventTarget | null} target */
   function findActionBtn(target) {
@@ -332,7 +333,8 @@ export function mountIndicatorLegend(statusEl, opts) {
     if (changed) syncExpandedClass(ensureStudiesShell().legendEl);
   }
 
-  mobileLegendRoots.add({ statusEl, dismiss: dismissMobile });
+  const mobileLegendEntry = { statusEl, dismiss: dismissMobile };
+  mobileLegendRoots.add(mobileLegendEntry);
 
   /** @param {HTMLElement} actionBtn */
   function runLegendAction(actionBtn) {
@@ -350,87 +352,109 @@ export function mountIndicatorLegend(statusEl, opts) {
     else if (action === "remove") onRemove(id);
   }
 
-  if (!statusEl.dataset.legendWired) {
-    statusEl.dataset.legendWired = "1";
+  function handleClick(ev) {
+    if (Date.now() < suppressClickUntil) return;
+    const actionBtn = findActionBtn(ev.target);
+    if (actionBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      runLegendAction(actionBtn);
+      return;
+    }
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
+    if (!target.closest(".status-line__studies")) return;
+    if (target.closest(".study-legend-toggler")) return;
+    const item = target.closest(".study-legend__item");
+    if (item instanceof HTMLElement && item.dataset.id) {
+      onSelect(item.dataset.id);
+      render();
+    }
+  }
 
-    statusEl.addEventListener("click", (ev) => {
-      if (Date.now() < suppressClickUntil) return;
-      const actionBtn = findActionBtn(ev.target);
-      if (actionBtn) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        runLegendAction(actionBtn);
-        return;
-      }
-      const target = ev.target;
-      if (!(target instanceof Element)) return;
-      if (!target.closest(".status-line__studies")) return;
-      if (target.closest(".study-legend-toggler")) return;
-      const item = target.closest(".study-legend__item");
-      if (item instanceof HTMLElement && item.dataset.id) {
-        onSelect(item.dataset.id);
-        render();
-      }
-    });
+  function handlePointerDown(ev) {
+    if (ev.pointerType === "mouse") return;
+    const actionBtn = findActionBtn(ev.target);
+    if (actionBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      suppressClickUntil = Date.now() + 500;
+      runLegendAction(actionBtn);
+      return;
+    }
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
+    if (!target.closest(".status-line__studies")) return;
+    if (target.closest(".study-legend-toggler")) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      suppressClickUntil = Date.now() + 500;
+      toggleLegendCollapsed();
+      return;
+    }
+    const item = target.closest(".study-legend__item");
+    if (item instanceof HTMLElement && item.dataset.id) {
+      ev.stopPropagation();
+      suppressClickUntil = Date.now() + 500;
+      onSelect(item.dataset.id);
+      render();
+    }
+  }
+
+  function handleTouchEnd(ev) {
+    const touch = ev.changedTouches[0];
+    if (!touch) return;
+    const hit = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (hit instanceof Element && hit.closest(".study-legend-toggler") && statusEl.contains(hit)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      suppressClickUntil = Date.now() + 500;
+      toggleLegendCollapsed();
+      return;
+    }
+    const actionBtn = findActionBtn(hit);
+    if (!actionBtn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    suppressClickUntil = Date.now() + 500;
+    runLegendAction(actionBtn);
+  }
+
+  let ownsEventWiring = false;
+  if (!statusEl.dataset.legendWired) {
+    ownsEventWiring = true;
+    statusEl.dataset.legendWired = "1";
+    statusEl.addEventListener("click", handleClick);
 
     /** Touch: handle on pointerdown before chart pan steals the gesture. */
     statusEl.addEventListener(
       "pointerdown",
-      (ev) => {
-        if (ev.pointerType === "mouse") return;
-        const actionBtn = findActionBtn(ev.target);
-        if (actionBtn) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          suppressClickUntil = Date.now() + 500;
-          runLegendAction(actionBtn);
-          return;
-        }
-        const target = ev.target;
-        if (!(target instanceof Element)) return;
-        if (!target.closest(".status-line__studies")) return;
-        if (target.closest(".study-legend-toggler")) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          suppressClickUntil = Date.now() + 500;
-          toggleLegendCollapsed();
-          return;
-        }
-        const item = target.closest(".study-legend__item");
-        if (item instanceof HTMLElement && item.dataset.id) {
-          ev.stopPropagation();
-          suppressClickUntil = Date.now() + 500;
-          onSelect(item.dataset.id);
-          render();
-        }
-      },
+      handlePointerDown,
       { capture: true, passive: false },
     );
 
     /** Fallback when pointerdown target differs from the lifted finger. */
     statusEl.addEventListener(
       "touchend",
-      (ev) => {
-        const touch = ev.changedTouches[0];
-        if (!touch) return;
-        const hit = document.elementFromPoint(touch.clientX, touch.clientY);
-        if (hit instanceof Element && hit.closest(".study-legend-toggler") && statusEl.contains(hit)) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          suppressClickUntil = Date.now() + 500;
-          toggleLegendCollapsed();
-          return;
-        }
-        const actionBtn = findActionBtn(hit);
-        if (!actionBtn) return;
-        ev.preventDefault();
-        ev.stopPropagation();
-        suppressClickUntil = Date.now() + 500;
-        runLegendAction(actionBtn);
-      },
+      handleTouchEnd,
       { capture: true, passive: false },
     );
   }
 
-  return { render };
+  function destroy() {
+    if (destroyed) return;
+    destroyed = true;
+    mobileLegendRoots.delete(mobileLegendEntry);
+    statusEl.removeEventListener("mouseenter", handleMouseEnter, true);
+    statusEl.removeEventListener("mouseleave", handleMouseLeave);
+    if (ownsEventWiring) {
+      statusEl.removeEventListener("click", handleClick);
+      statusEl.removeEventListener("pointerdown", handlePointerDown, true);
+      statusEl.removeEventListener("touchend", handleTouchEnd, true);
+      delete statusEl.dataset.legendWired;
+    }
+    statusEl.querySelector(".status-line__studies")?.remove();
+  }
+
+  return { render, destroy };
 }

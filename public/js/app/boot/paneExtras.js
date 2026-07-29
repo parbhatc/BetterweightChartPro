@@ -5,7 +5,12 @@ import { formatDisplayPrice } from "../../chart/format.js";
 import { resolvePriceScalePlacement } from "../../chart/scale/settings.js";
 import { rafThrottle, trackChartPanning, trackChartZoom, viewportSnapshot } from "../../chart/pan/perf.js";
 import { timeToBarIndex } from "../../chart/coords/timeScale.js";
-import { nearestBarIndex, normalizeHoverBar, resolveUtcBarTime } from "../../chart/pane/hoverBar.js";
+import {
+  barAtTime,
+  nearestBarIndex,
+  normalizeHoverBar,
+  resolveUtcBarTime,
+} from "../../chart/pane/hoverBar.js";
 import {
   SessionBackgroundPrimitive,
   createElectronicSessionHighlighter,
@@ -173,7 +178,6 @@ export function createPaneExtras(deps) {
     getAllChartPanes,
     panFps,
     syncLayoutCrosshairFrom,
-    applySymbolLineStyleLocal,
     getDrawingHub,
     ui,
     viewportDeps,
@@ -187,13 +191,16 @@ export function createPaneExtras(deps) {
 
   /** @param {object} pane @param {number} utcTime */
   function statusBarAtTime(pane, utcTime) {
-    return pane.timeAdapter?.index.utcBarByUtcTime(utcTime) ?? barsForPane(pane).find((b) => b.time === utcTime);
+    return (
+      pane.timeAdapter?.index.utcBarByUtcTime(utcTime) ??
+      barAtTime(barsForPane(pane), utcTime)
+    );
   }
 
   /** Prefer live `pane.bars` so forming-candle OHLC stays current on ticks. */
   function liveBarAtTime(pane, utcTime) {
     if (utcTime == null) return undefined;
-    return pane.bars.find((b) => b.time === utcTime) ?? statusBarAtTime(pane, utcTime);
+    return barAtTime(pane.bars, utcTime) ?? statusBarAtTime(pane, utcTime);
   }
 
   /** @param {object} pane */
@@ -207,6 +214,7 @@ export function createPaneExtras(deps) {
   /** @param {object} pane @param {object | undefined} bar @param {number} idx */
   function setPaneHoverBar(pane, bar, idx, isActive) {
     if (!bar) {
+      const barChanged = pane.hoverBar !== undefined;
       pane.hoverBar = undefined;
       pane.hoverPrev = undefined;
       pane.hoverBarIndex = undefined;
@@ -214,7 +222,7 @@ export function createPaneExtras(deps) {
         ui.hoverBar = undefined;
         ui.hoverPrev = undefined;
       }
-      return false;
+      return barChanged;
     }
     const normalized = normalizeHoverBar(pane, bar, barsForPane) ?? bar;
     const bars = barsForPane(pane);
@@ -227,7 +235,6 @@ export function createPaneExtras(deps) {
     if (isActive) {
       ui.hoverBar = pane.hoverBar;
       ui.hoverPrev = pane.hoverPrev;
-      if (barChanged) applySymbolLineStyleLocal();
     }
     return barChanged;
   }
@@ -399,24 +406,31 @@ export function createPaneExtras(deps) {
 
   /** @param {object} pane @param {import("prochart").MouseEventParams} param @param {boolean} isActive @returns {boolean} */
   function applyCrosshairBar(pane, param, isActive) {
-    pane.crosshairOverFuture = isCrosshairOverFuture(pane, param);
+    const previousTime = pane.lastCrosshairChartTime;
+    const previousFuture = pane.crosshairOverFuture;
+    const nextFuture = isCrosshairOverFuture(pane, param);
+    pane.crosshairOverFuture = nextFuture;
 
     if (!param?.time || !param?.point) {
       pane.lastCrosshairChartTime = undefined;
-      if (isActive) applySymbolLineStyleLocal();
       return setPaneHoverBar(pane, undefined, -1, isActive);
     }
 
     pane.lastCrosshairChartTime = param.time;
+    if (
+      previousTime === param.time &&
+      previousFuture === nextFuture &&
+      (nextFuture || pane.hoverBar)
+    ) {
+      return false;
+    }
 
-    if (pane.crosshairOverFuture) {
-      if (isActive) applySymbolLineStyleLocal();
+    if (nextFuture) {
       return setPaneHoverBar(pane, undefined, -1, isActive);
     }
 
     const { bar: nextBar, idx } = barFromCrosshairParam(pane, param);
     if (!nextBar) {
-      if (isActive) applySymbolLineStyleLocal();
       return setPaneHoverBar(pane, undefined, -1, isActive);
     }
     return setPaneHoverBar(pane, nextBar, idx, isActive);
@@ -444,7 +458,7 @@ export function createPaneExtras(deps) {
       const isActive = pane.index === (getLayoutManager()?.getActivePaneIndex() ?? 0);
 
       pane.crosshairOverChart = Boolean(param?.point);
-      applyCrosshairBar(pane, param, isActive);
+      const hoverChanged = applyCrosshairBar(pane, param, isActive);
 
       if (ui.chartPanning) {
         chartDebugCount("crosshair", "skippedPan");
@@ -481,7 +495,7 @@ export function createPaneExtras(deps) {
         }
       }
 
-      scheduleStatusLine(pane);
+      if (hoverChanged) scheduleStatusLine(pane);
     });
   }
 

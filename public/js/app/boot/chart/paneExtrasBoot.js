@@ -15,10 +15,6 @@ export function attachPaneExtrasBoot(ctx) {
       getAllChartPanes: ctx.getAllChartPanes,
       symbolInfo: ctx.symbolInfo,
     });
-    for (const pane of ctx.getAllChartPanes()) {
-      pane.priceLineLabel?.requestRefresh();
-      pane.bidAskLines?.requestRefresh();
-    }
   }
   ctx.applySymbolLineStyleLocal = applySymbolLineStyleLocal;
 
@@ -45,7 +41,6 @@ export function attachPaneExtrasBoot(ctx) {
     getAllChartPanes: ctx.getAllChartPanes,
     panFps: ctx.panFps,
     syncLayoutCrosshairFrom: ctx.syncLayoutCrosshairFrom,
-    applySymbolLineStyleLocal,
     getDrawingHub: () => ctx.drawingHub,
     ui: ctx.ui,
     viewportDeps: ctx.viewportDeps,

@@ -67,7 +67,10 @@
   border: 1px solid transparent;
 }
 
-@media (max-width: 840px) {
+/* The full-width bottom sheet is a touch affordance. A narrow desktop window
+   still has precise hover input, so keep its compact side popover from covering
+   the chart and making candles appear to disappear. */
+@media (max-width: 840px) and (hover: none) and (pointer: coarse) {
   .draw-tools__flyout:not([hidden]) {
     left: var(--space-2) !important;
     right: var(--space-2) !important;

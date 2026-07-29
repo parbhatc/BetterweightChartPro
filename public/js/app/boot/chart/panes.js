@@ -9,6 +9,7 @@ import {
 import { buildCandleSeriesData } from "../../../chart/bar/data.js";
 import { isElectronicSession } from "../../../primitives/session/background.js";
 import { resolveTimezone } from "../../../chart/timezone/list.js";
+import { syncActivePaneHoverState } from "../../../chart/pane/activeHoverState.js";
 import { createLayoutSync } from "../../layout/sync.js";
 import {
   resetPaneChartViewport,
@@ -142,6 +143,7 @@ export function attachPaneHelpers(ctx) {
     ctx.resolution = pane.resolution;
     ctx.symbolInfo = pane.symbolInfo;
     ctx.bars = pane.bars;
+    syncActivePaneHoverState(ctx.ui, pane);
 
     ctx.symbolSearchUi?.setSymbol(pane.symbol);
     ctx.tfPickerUi?.setResolution(pane.resolution);

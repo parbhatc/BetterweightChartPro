@@ -137,6 +137,7 @@ export function createIndicatorController(opts) {
     bandFillsForPane: legend.bandFillsForPane,
     scaleLabelsForPane: legend.scaleLabelsForPane,
     refreshStudyPaneLegends: refresh.refreshStudyPaneLegends,
+    refreshStudyPaneLegendValues: refresh.refreshStudyPaneLegendValues,
     resyncStudyPaneHeights: refresh.resyncStudyPaneHeights,
     resyncStudyPaneScales: refresh.resyncStudyPaneScales,
     attachStudyLegendOverlay: refresh.attachStudyLegendOverlay,

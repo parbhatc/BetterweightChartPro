@@ -97,6 +97,7 @@ function getChartShellById(el, id) {
  * @property {() => void} refreshWatermark
  * @property {() => void} refreshStatusLine
  * @property {(pane: object) => void} scheduleStatusLine
+ * @property {(pane: object) => void} [teardownIndicatorPane]
  * @property {() => void} applySymbolLineStyleLocal
  * @property {() => import("./types.js").ChartPane | undefined} getActivePane
  * @property {() => import("./types.js").ChartPane[]} getAllChartPanes

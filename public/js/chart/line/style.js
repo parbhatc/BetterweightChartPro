@@ -1,4 +1,4 @@
-import { LineStyle } from "prochart";
+import { LineStyle } from "../../../vendor/prochart/core/enums.mjs";
 
 /** Same dash patterns as lightweight-charts getDashPattern(). */
 export function lineStyleDashPattern(style, lineWidth) {

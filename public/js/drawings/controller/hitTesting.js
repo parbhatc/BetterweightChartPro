@@ -80,6 +80,7 @@ export function attachHitTesting(ctx) {
 
   function updateDrawingHover(clientX, clientY) {
     if (
+      ctx.drawings.length === 0 ||
       !ctx.isCursorTool(ctx.activeTool) ||
       ctx.drag?.isDragging?.() ||
       ctx.placementStaged.length > 0 ||

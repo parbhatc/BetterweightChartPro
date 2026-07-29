@@ -11,20 +11,43 @@ export function resolveUtcBarTime(ta, time) {
 }
 
 /** @param {{ time: number }[]} bars @param {number} utcTime */
+export function barIndexAtTime(bars, utcTime) {
+  let low = 0;
+  let high = bars?.length ?? 0;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (bars[middle].time < utcTime) low = middle + 1;
+    else high = middle;
+  }
+  return low < (bars?.length ?? 0) && bars[low].time === utcTime ? low : -1;
+}
+
+/** @param {{ time: number }[]} bars @param {number} utcTime */
+export function barAtTime(bars, utcTime) {
+  const index = barIndexAtTime(bars, utcTime);
+  return index >= 0 ? bars[index] : undefined;
+}
+
+/** @param {{ time: number }[]} bars @param {number} utcTime */
 export function nearestBarIndex(bars, utcTime) {
   if (!bars?.length || utcTime == null || !Number.isFinite(utcTime)) {
     return Math.max(0, (bars?.length ?? 1) - 1);
   }
-  let bestIdx = 0;
-  let bestDist = Math.abs(bars[0].time - utcTime);
-  for (let i = 1; i < bars.length; i += 1) {
-    const dist = Math.abs(bars[i].time - utcTime);
-    if (dist < bestDist) {
-      bestIdx = i;
-      bestDist = dist;
-    }
+
+  let low = 0;
+  let high = bars.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (bars[middle].time < utcTime) low = middle + 1;
+    else high = middle;
   }
-  return bestIdx;
+
+  if (low === 0) return 0;
+  if (low === bars.length) return bars.length - 1;
+  const before = low - 1;
+  return utcTime - bars[before].time <= bars[low].time - utcTime
+    ? before
+    : low;
 }
 
 /**
@@ -54,7 +77,7 @@ export function barIndexForHover(pane, bar, utcBars, barsForPane) {
   const normalized = bar ? normalizeHoverBar(pane, bar, barsForPane) : null;
   const utcTime = normalized?.time ?? bar?.time;
   if (utcTime == null) return utcBars.length - 1;
-  const exact = utcBars.findIndex((b) => b.time === utcTime);
+  const exact = barIndexAtTime(utcBars, utcTime);
   if (exact >= 0) return exact;
   return nearestBarIndex(utcBars, utcTime);
 }
