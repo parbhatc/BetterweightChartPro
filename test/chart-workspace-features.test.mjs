@@ -23,6 +23,7 @@ import {
   trackingCrosshairPosition,
 } from "../public/vendor/prochart/input/interactions.mjs";
 import { pointInRightPriceAxis } from "../public/vendor/prochart/api/chartModel.mjs";
+import { statusPointerSelectsHover } from "../public/js/chart/status/hover.js";
 
 test("resolution cache does not leak candles between chart widgets", () => {
   clearResolutionCache();
@@ -301,6 +302,32 @@ test("mobile tracking moves both crosshair lines by gesture delta without jumpin
       { minX: 0, maxX: 300, minY: 20, maxY: 180 },
     ),
     { x: 0, y: 180 },
+  );
+});
+
+test("mobile OHLC follows a pinned crosshair after pointer release", () => {
+  assert.equal(
+    statusPointerSelectsHover({
+      crosshairOverChart: true,
+      crosshairOverFuture: false,
+      crosshairPointerActive: false,
+      _statusPointerType: "touch",
+    }),
+    true,
+  );
+  assert.equal(
+    statusPointerSelectsHover({
+      crosshairOverChart: false,
+      crosshairOverFuture: false,
+    }),
+    false,
+  );
+  assert.equal(
+    statusPointerSelectsHover({
+      crosshairOverChart: true,
+      crosshairOverFuture: true,
+    }),
+    false,
   );
 });
 

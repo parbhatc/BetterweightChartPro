@@ -20,6 +20,7 @@ import {
 import { chartDebugCount, chartDebugTime, chartDebug, chartDebugThrottle } from "../../debug/chart/index.js";
 import { resolvePaneBackgroundColor } from "../../chart/canvas/settings.js";
 import { syncStatusLineLayout, wireStatusLineLayout } from "../../chart/status/layout.js";
+import { statusPointerSelectsHover } from "../../chart/status/hover.js";
 import { isNearHistoryLeftEdge } from "../bar/loader.js";
 import {
   buildChartSeriesForPane,
@@ -230,16 +231,6 @@ export function createPaneExtras(deps) {
     return logical >= realCount - 0.5;
   }
 
-  /** Touch devices: only while finger is down; mouse/hover devices: active crosshair position. */
-  function statusPointerSelectsHover(pane) {
-    if (!pane.crosshairOverChart || pane.crosshairOverFuture) return false;
-    const pt = pane._statusPointerType;
-    const touchLike =
-      pt === "touch" || (pt !== "mouse" && window.matchMedia?.("(hover: none)")?.matches);
-    if (touchLike) return Boolean(pane.crosshairPointerActive);
-    return true;
-  }
-
   /** @param {object} pane @returns {object | null | undefined} */
   function statusHoverBarForPane(pane) {
     const activeIdx = getLayoutManager()?.getActivePaneIndex() ?? 0;
@@ -435,28 +426,6 @@ export function createPaneExtras(deps) {
     const bar = ta.index.utcBar(idx);
     if (!bar) return;
     setPaneHoverBar(pane, bar, idx, isActive);
-  }
-
-  /** @param {object} pane */
-  function wirePaneStatusCrosshairPointer(pane) {
-    if (pane._statusCrosshairPointerWired) return;
-    pane._statusCrosshairPointerWired = true;
-
-    const onDown = (ev) => {
-      if (ev.button != null && ev.button !== 0) return;
-      pane._statusPointerType = ev.pointerType;
-      pane.crosshairPointerActive = true;
-    };
-
-    const onUp = () => {
-      if (!pane.crosshairPointerActive) return;
-      pane.crosshairPointerActive = false;
-      scheduleStatusLine(pane);
-    };
-
-    pane.el.addEventListener("pointerdown", onDown, { capture: true });
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
   }
 
   /** @param {object} pane */
@@ -751,7 +720,6 @@ export function createPaneExtras(deps) {
     attachBidAskLines(pane);
     wirePanePanPerf(pane);
     wirePaneCrosshair(pane);
-    wirePaneStatusCrosshairPointer(pane);
     wirePaneViewportHandlers(pane);
   }
 
