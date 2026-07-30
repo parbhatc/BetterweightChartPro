@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createOrderLineAdapter } from "../public/js/chart/orderLine/createOrderLineAdapter.js";
 import { createOrderLinePriceLineSync } from "../public/js/chart/orderLine/orderLinePriceLineSync.js";
 import { OrderLineManager } from "../public/js/chart/orderLine/OrderLineManager.js";
 import { OrderLinePillPrimitive } from "../public/js/chart/orderLine/OrderLinePillPrimitive.js";
@@ -65,7 +66,7 @@ test("order lines fall back to ProChart price lines and primitives", () => {
   };
   const sync = createOrderLinePriceLineSync(() => ({ series }));
   sync.sync([{ id: "position", price: 100, text: "Long", quantity: "1", lineColor: "#10b981" }]);
-  assert.equal(priceLines.size, 1);
+  assert.equal(priceLines.size, 0, "compat order lines stay off the main chart canvas");
   assert.equal(primitives.size, 1);
 
   const primitive = [...primitives][0];
@@ -186,4 +187,76 @@ test("order-line pill placement uses the primitive render target width", () => {
     "right-side cancel pill should be inset 10px from the 320px render target",
   );
   primitive.detached();
+});
+
+test("order-line pill text updates invalidate only the lightweight top layer", () => {
+  let fullUpdates = 0;
+  let topLayerUpdates = 0;
+  const primitive = new OrderLinePillPrimitive({
+    id: "position",
+    price: 100,
+    pills: {
+      body: { text: "$1.00" },
+    },
+  });
+  primitive.attached({
+    chart: {},
+    series: {
+      priceToCoordinate() {
+        return 50;
+      },
+    },
+    requestUpdate() {
+      fullUpdates += 1;
+    },
+    requestTopLayerUpdate() {
+      topLayerUpdates += 1;
+    },
+  });
+
+  primitive.applyOptions({
+    pills: {
+      body: { text: "$1.25" },
+    },
+  });
+
+  assert.equal(primitive.paneViews()[0].useTopCanvas, true);
+  assert.equal(topLayerUpdates, 1);
+  assert.equal(fullUpdates, 0);
+  primitive.detached();
+});
+
+test("live PnL appearance patches never invalidate the price-line stroke", () => {
+  const nativePatches = [];
+  const adapter = createOrderLineAdapter({ requestRefresh() {} }, "position");
+  adapter._state._nativeLine = {
+    applyOptions(patch) {
+      nativePatches.push(structuredClone(patch));
+    },
+  };
+
+  adapter.applyAppearance({
+    text: "+$25.00",
+    quantityText: "2",
+    fill: "#10b981",
+    quantityFill: "#2563eb",
+    textColor: "#ffffff",
+  });
+
+  assert.deepEqual(nativePatches, [{
+    pills: {
+      body: {
+        text: "+$25.00",
+        backgroundColor: "#10b981",
+        textColor: "#ffffff",
+      },
+      quantity: {
+        backgroundColor: "#2563eb",
+        text: "2",
+        visible: true,
+        textColor: "#ffffff",
+      },
+    },
+  }]);
+  assert.equal(adapter._state.lineColor, "#089981");
 });

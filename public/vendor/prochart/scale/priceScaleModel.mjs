@@ -23,7 +23,29 @@ export class PriceScaleModel {
   applyOptions(o) {
     if (!o) return;
     const hadAuto = this.options.autoScale;
+    const modeChanged = o.mode !== undefined && o.mode !== this.options.mode;
+    const visiblePriceRange = modeChanged && this.priceRange
+      ? {
+          min: this.fromScale(this.priceRange.min),
+          max: this.fromScale(this.priceRange.max),
+        }
+      : null;
     deepMerge(this.options, o);
+    if (visiblePriceRange) {
+      const min = this.toScale(visiblePriceRange.min);
+      const max = this.toScale(visiblePriceRange.max);
+      if (Number.isFinite(min) && Number.isFinite(max) && min !== max) {
+        this.priceRange = {
+          min: Math.min(min, max),
+          max: Math.max(min, max),
+        };
+      } else {
+        // Let the next render fit the data if a mode cannot represent the
+        // previous range (for example, a non-positive logarithmic range).
+        this.priceRange = null;
+        this._manual = false;
+      }
+    }
     if (this.isOverlay()) this.options.visible = false;
     if (o.autoScale === true) this._manual = false;
     if (o.autoScale === false && hadAuto) this._manual = this.priceRange != null;

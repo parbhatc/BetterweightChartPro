@@ -686,18 +686,17 @@ export function createPositionOverlay(widget) {
     position.lastText = text;
     position.lastProfit = profit;
 
-    const patch = {
-      text,
-      quantityText: String(Math.abs(position.qty)),
-      fill: colors.fill,
-      quantityFill: sideColor,
-      textColor: getPositionTextColor(),
-    };
+    const patch = { text };
+    if (profitChanged) {
+      patch.quantityText = String(Math.abs(position.qty));
+      patch.fill = colors.fill;
+      patch.quantityFill = sideColor;
+      patch.textColor = getPositionTextColor();
+    }
 
     try {
       if (typeof position.line.applyAppearance === "function") {
         position.line.applyAppearance(patch);
-        position.line.setLineColor(sideColor);
         return;
       }
       position.line.setText(text);

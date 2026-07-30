@@ -23,6 +23,7 @@ import {
   createPanePrimitiveViewGroups,
   renderPaneBottomOverlays,
   renderPaneSeriesOverlays,
+  renderPaneTopCanvasOverlays,
   renderTop as renderOverlayTop,
 } from "./sub/overlayRenderer.mjs";
 import { RenderFrameTickCache } from "./frameTickCache.mjs";
@@ -106,6 +107,36 @@ export function renderChart(model) {
 
 /** Render only the isolated crosshair layer. */
 export function renderTop(model) {
+  const plotX = model._leftW || 0;
+  const plotWidth = model.paneWidth();
+  const dpr = model.dpr || 1;
+  const topGroups = model.panes.map((pane) =>
+    createPanePrimitiveViewGroups(model, pane)
+  );
+  const hasTopCanvasOverlays = topGroups.some((groups) => groups.topCanvas.length > 0);
+  const hadTopCanvasOverlays = Boolean(model._hasTopCanvasOverlays);
+  model._hasTopCanvasOverlays = hasTopCanvasOverlays;
+
+  if (hasTopCanvasOverlays || hadTopCanvasOverlays) {
+    clearLayer(model.topCanvas, model.topCtx, dpr);
+  }
+  if (hasTopCanvasOverlays) {
+    for (let i = 0; i < model.panes.length; i += 1) {
+      const pane = model.panes[i];
+      if (pane.height <= 0) continue;
+      renderPaneTopCanvasOverlays(
+        model,
+        model.topCtx,
+        pane,
+        plotX,
+        plotWidth,
+        dpr,
+        topGroups[i],
+      );
+    }
+    model._topDirtyRegions = [];
+  }
+
   renderOverlayTop(model);
 }
 

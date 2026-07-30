@@ -522,10 +522,13 @@ export function createBarLoader(opts) {
    * @param {number} [chunk]
    */
   async function prependHistory(pane, chunk = historyChunk, opts = {}) {
+    const shouldContinue =
+      typeof opts.shouldContinue === "function" ? opts.shouldContinue : () => true;
+    if (!shouldContinue()) return false;
     if (pane._historyFetchInFlight || pane._loadingHistory || !pane.bars.length) return false;
     if (pane._historyErrorUntil && Date.now() < pane._historyErrorUntil) return false;
     await ensurePaneSymbolInfo(pane);
-    if (!pane.symbolInfo) return false;
+    if (!shouldContinue() || !pane.symbolInfo) return false;
     if (trySyncHistoryFromPeer(pane)) return true;
 
     const requestSymbol = pane.symbol;
@@ -547,6 +550,7 @@ export function createBarLoader(opts) {
       const result = await chartDebugTimeAsync("data", `prependHistory pane ${pane.index}`, () =>
         datafeed.getBars(pane.symbolInfo, pane.resolution, periodParams),
       );
+      if (!shouldContinue()) return false;
       if (pane.symbol !== requestSymbol || pane.resolution !== requestResolution) {
         chartDebug("data", "prependHistory stale response dropped", {
           pane: pane.index,
@@ -597,6 +601,7 @@ export function createBarLoader(opts) {
       clearHistoryRetry(pane);
       return true;
     } catch (err) {
+      if (!shouldContinue()) return false;
       if (pane.symbol !== requestSymbol || pane.resolution !== requestResolution) {
         chartDebug("data", "prependHistory stale failure ignored", {
           pane: pane.index,
@@ -707,6 +712,9 @@ export function createBarLoader(opts) {
   }
 
   async function ensureIndicatorChartHistory(pane, opts = {}) {
+    const shouldContinue =
+      typeof opts.shouldContinue === "function" ? opts.shouldContinue : () => true;
+    if (!shouldContinue()) return;
     const want = Math.max(0, Number(getRequiredChartBarsForPane?.(pane)) || 0);
     if (!want || pane.bars.length >= want) return;
     if (pane._historyExhausted) return;
@@ -716,14 +724,15 @@ export function createBarLoader(opts) {
     try {
       let guard = 0;
       while (pane.bars.length < want && !pane._historyExhausted && guard < 16) {
-        if (isPanning()) return;
+        if (!shouldContinue() || isPanning()) return;
         const got = await prependHistory(pane, historyChunk, opts);
-        if (!got) break;
+        if (!shouldContinue() || !got) break;
         await waitHistoryRestoreSettled(pane);
+        if (!shouldContinue()) return;
         guard += 1;
       }
     } finally {
-      if (restoreSuppress) pane._suppressHistoryPrefetch = true;
+      if (restoreSuppress && shouldContinue()) pane._suppressHistoryPrefetch = true;
     }
   }
 
@@ -844,8 +853,9 @@ export function createBarLoader(opts) {
 
       if (!pane.symbolInfo) pane.symbolInfo = await datafeed.resolveSymbol(pane.symbol);
       const barSec = getBarSecForPane?.(pane) ?? 60;
-      const indicatorBars = getRequiredChartBarsForPane?.(pane) ?? 0;
-      let requestCountBack = estimateInitialCountBack(pane, countBack, indicatorBars);
+      // Match TradingView: fill the viewport first, then let
+      // ensureIndicatorChartHistory page older bars without blocking candles.
+      let requestCountBack = estimateInitialCountBack(pane, countBack);
       let loadTo = replayCapTo ?? undefined;
       if (replayCtx) {
         const end =

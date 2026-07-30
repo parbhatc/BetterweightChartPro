@@ -49,9 +49,14 @@ export class SeriesModel {
         chart: this._chart.api,
         series: seriesApi,
         requestUpdate: () => this._chart.invalidate(),
+        requestTopLayerUpdate: () => this._chart.invalidateCrosshairOnly(),
       });
     }
-    this._chart.invalidate();
+    if (primitive?.useTopCanvas === true) {
+      this._chart.invalidateCrosshairOnly();
+    } else {
+      this._chart.invalidate();
+    }
   }
 
   detachPrimitive(primitive) {
@@ -63,7 +68,11 @@ export class SeriesModel {
         // Primitive cleanup must not prevent chart invalidation.
       }
     }
-    this._chart.invalidate();
+    if (primitive?.useTopCanvas === true) {
+      this._chart.invalidateCrosshairOnly();
+    } else {
+      this._chart.invalidate();
+    }
   }
 
   setData(items) {

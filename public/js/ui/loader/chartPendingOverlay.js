@@ -35,3 +35,17 @@ export async function showChartPendingOverlay(ctx, panes) {
 export async function hideChartPendingOverlay(ctx) {
   await ctx.chartOverlayLoader.hide();
 }
+
+/**
+ * Balance every overlay show, including superseded chart changes. Only the
+ * newest change runs its completion callback, but every change owns a pending
+ * loader reference that must be hidden when its request settles.
+ *
+ * @param {{ chartOverlayLoader: { hide: () => void | Promise<void> } }} ctx
+ * @param {boolean} isCurrent
+ * @param {() => void} onCurrent
+ */
+export async function settleChartPendingOverlay(ctx, isCurrent, onCurrent) {
+  if (isCurrent) onCurrent();
+  await hideChartPendingOverlay(ctx);
+}

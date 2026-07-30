@@ -66,6 +66,31 @@ export function renderPaneSeriesOverlays(
   });
 }
 
+/** Paint primitives that opt into the lightweight top canvas. */
+export function renderPaneTopCanvasOverlays(
+  model,
+  context,
+  pane,
+  plotX,
+  plotWidth,
+  dpr,
+  primitiveViewGroups = createPanePrimitiveViewGroups(model, pane),
+) {
+  withPanePlot(
+    context,
+    pane,
+    plotX,
+    plotWidth,
+    () => renderPrimitiveViews(
+      context,
+      pane,
+      plotWidth,
+      dpr,
+      primitiveViewGroups.topCanvas,
+    ),
+  );
+}
+
 /**
  * Classify primitive pane views once so every overlay pass in a frame can
  * consume the same stable view snapshot.
@@ -75,6 +100,7 @@ export function createPanePrimitiveViewGroups(model, pane) {
     bottom: [],
     normal: [],
     top: [],
+    topCanvas: [],
   };
 
   for (const series of pane.series) {
@@ -92,6 +118,10 @@ export function createPanePrimitiveViewGroups(model, pane) {
         ? primitive.paneViews()
         : [];
       for (const view of views || []) {
+        if (view?.useTopCanvas === true) {
+          groups.topCanvas.push(view);
+          continue;
+        }
         const zOrder = typeof view.zOrder === "function"
           ? view.zOrder()
           : typeof primitive.zOrder === "function"
@@ -274,15 +304,19 @@ function markerY(series, scale, marker, local, size) {
 export function renderTop(model) {
   const context = model.topCtx;
   const dpr = model.dpr || 1;
-  clearPreviousCrosshairFrame(model, context, dpr);
+  const hasTopCanvasOverlays = Boolean(model._hasTopCanvasOverlays);
+  if (!hasTopCanvasOverlays) {
+    clearPreviousCrosshairFrame(model, context, dpr);
+  }
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const crosshair = model.crosshair;
   const options = model.options.crosshair;
   const visible = crosshair.visible && options.mode !== 2;
-  if (model._topLayerActive !== visible) {
-    model._topLayerActive = visible;
-    model.topCanvas.style.display = visible ? "" : "none";
+  const layerVisible = visible || hasTopCanvasOverlays;
+  if (model._topLayerActive !== layerVisible) {
+    model._topLayerActive = layerVisible;
+    model.topCanvas.style.display = layerVisible ? "" : "none";
   }
   if (!visible) {
     model._topDirtyRegions = [];

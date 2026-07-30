@@ -2,9 +2,8 @@ export const DEFAULT_INITIAL_COUNT_BACK = 500;
 /** Scroll-back chunk cap — TV prefetches smaller batches than the first load. */
 export const DEFAULT_HISTORY_CHUNK = 200;
 const COUNT_BACK_MIN = 50;
-// 4000 so session-level indicators (30h lookback = 3600 bars on a 30s chart) fit
-// in the FIRST request — the prepend top-up loop is best-effort and can be
-// interrupted (panning, TF switch), which silently dropped Asia/London lines.
+// Replay and explicit host requests may need a larger single response. Normal
+// live loads stay viewport-sized and indicator history is paged separately.
 const COUNT_BACK_MAX = 4000;
 
 /**
@@ -27,16 +26,15 @@ export function estimateCountBackFromViewport(pane, fallback = DEFAULT_INITIAL_C
 }
 
 /**
- * Initial load countBack: viewport estimate, configured default, and indicator lookback.
+ * Initial load countBack follows TradingView's viewport-sized request pattern.
+ * Indicator lookback is intentionally excluded and loaded in follow-up pages.
  * @param {object} pane
  * @param {number} [configuredCountBack]
- * @param {number} [indicatorBars]
  */
-export function estimateInitialCountBack(pane, configuredCountBack, indicatorBars = 0) {
+export function estimateInitialCountBack(pane, configuredCountBack) {
   const configured = Math.max(0, Number(configuredCountBack) || DEFAULT_INITIAL_COUNT_BACK);
-  const indicatorNeed = Math.max(0, Number(indicatorBars) || 0);
   const viewportNeed = estimateCountBackFromViewport(pane, configured);
-  return Math.min(COUNT_BACK_MAX, Math.max(COUNT_BACK_MIN, configured, viewportNeed, indicatorNeed));
+  return Math.min(COUNT_BACK_MAX, Math.max(COUNT_BACK_MIN, configured, viewportNeed));
 }
 
 /**

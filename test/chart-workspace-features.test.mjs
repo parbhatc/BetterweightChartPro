@@ -8,6 +8,7 @@ import { layoutAxisLabels, seriesLastValueColor, usesCustomOhlcRenderer } from "
 import { resolveChartStyleLineColor } from "../public/js/app/symbol/lineStyle.js";
 import { shouldShowTimeframeMenu } from "../public/js/ui/timeframe/favorites.js";
 import { timeframeSwitchPrefersUtcRestore } from "../public/js/app/boot/chart/timeframeRestorePolicy.js";
+import { settleChartPendingOverlay } from "../public/js/ui/loader/chartPendingOverlay.js";
 import { createLayoutSync, scaleLogicalPanDelta } from "../public/js/app/layout/sync.js";
 import { chartAppearancePreset, chartThemeFallback } from "../public/js/app/boot/themes.js";
 import { createChartSettings } from "../public/js/ui/settings/store.js";
@@ -17,6 +18,11 @@ import {
   publishResolutionCache,
   tryRestorePaneResolutionCache,
 } from "../public/js/app/bar/resolutionCache.js";
+import { estimateInitialCountBack } from "../public/js/app/bar/periodParams.js";
+import {
+  invalidateIndicatorReloads,
+  startIndicatorReload,
+} from "../public/js/app/boot/chart/indicatorReload.js";
 import {
   bindEvents,
   TOUCH_TRACKING_CANCEL_DISTANCE,
@@ -108,6 +114,102 @@ test("interval menu visibility follows favorite count and active interval", () =
   assert.equal(shouldShowTimeframeMenu(["1"], "1"), false);
   assert.equal(shouldShowTimeframeMenu(["1"], "5"), true);
   assert.equal(shouldShowTimeframeMenu(["1", "5"], "1"), true);
+});
+
+test("initial history stays viewport-sized instead of expanding for indicators", () => {
+  const pane = {
+    el: { clientWidth: 800 },
+    chart: {
+      timeScale: () => ({
+        options: () => ({ barSpacing: 6, rightOffset: 8 }),
+      }),
+    },
+  };
+
+  // The legacy third argument represents an indicator asking for 1,800 bars.
+  // It must not inflate the first chart request; older bars are paged afterward.
+  assert.equal(estimateInitialCountBack(pane, 500, 1_800), 500);
+});
+
+test("superseded timeframe loads release their pending overlay reference", async () => {
+  let hideCalls = 0;
+  let completionCalls = 0;
+  const ctx = {
+    chartOverlayLoader: {
+      hide() {
+        hideCalls += 1;
+      },
+    },
+  };
+
+  await settleChartPendingOverlay(ctx, false, () => {
+    completionCalls += 1;
+  });
+
+  assert.equal(hideCalls, 1);
+  assert.equal(completionCalls, 0);
+});
+
+test("the current timeframe load also releases history prefetch", async () => {
+  let hideCalls = 0;
+  let completionCalls = 0;
+
+  await settleChartPendingOverlay(
+    {
+      chartOverlayLoader: {
+        hide() {
+          hideCalls += 1;
+        },
+      },
+    },
+    true,
+    () => {
+      completionCalls += 1;
+    },
+  );
+
+  assert.equal(hideCalls, 1);
+  assert.equal(completionCalls, 1);
+});
+
+test("superseded indicator backfill cannot update the next timeframe", async () => {
+  const pane = { index: 0, symbol: "NQ", resolution: "1" };
+  let releaseHistory;
+  const historyPending = new Promise((resolve) => {
+    releaseHistory = resolve;
+  });
+  let overlayLoads = 0;
+  let refreshes = 0;
+  let shouldContinue;
+  const task = startIndicatorReload(
+    {
+      ensureIndicatorChartHistory: async (_pane, options) => {
+        shouldContinue = options.shouldContinue;
+        await historyPending;
+      },
+      ensureIndicatorDataThenOverlay: async () => {
+        overlayLoads += 1;
+      },
+      indicatorController: {
+        paneHasPlotSeriesIndicators: () => true,
+      },
+      refreshIndicatorsImmediate: () => {
+        refreshes += 1;
+      },
+    },
+    [pane],
+  );
+
+  assert.equal(shouldContinue(), true);
+  invalidateIndicatorReloads([pane]);
+  pane.resolution = "30S";
+  assert.equal(shouldContinue(), false);
+  releaseHistory();
+  await task;
+
+  assert.equal(overlayLoads, 0);
+  assert.equal(refreshes, 0);
+  assert.equal("_indicatorHistoryBulkLoad" in pane, false);
 });
 
 test("live timeframe switches preserve bar slots instead of UTC duration", () => {

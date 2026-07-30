@@ -9,16 +9,14 @@ import {
 import { OrderLinePillPrimitive } from "./OrderLinePillPrimitive.js";
 
 function createCompatOrderLine(series, options) {
-  const priceLine = series.createPriceLine(options);
   const primitive = new OrderLinePillPrimitive(options);
   series.attachPrimitive(primitive);
   return {
     applyOptions(patch) {
-      priceLine.applyOptions(patch);
       primitive.applyOptions(patch);
     },
-    options() { return priceLine.options(); },
-    _remove() { series.detachPrimitive(primitive); series.removePriceLine(priceLine); },
+    options() { return primitive.options(); },
+    _remove() { series.detachPrimitive(primitive); },
   };
 }
 

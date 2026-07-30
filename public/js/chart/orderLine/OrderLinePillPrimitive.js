@@ -5,7 +5,10 @@ import {
   layoutOrderLineGeometry,
   measureOrderLineRow,
 } from "./rowLayout.js";
-import { deepMerge } from "../../../vendor/prochart/core/utils.mjs";
+import {
+  deepMerge,
+  setCtxLineStyle,
+} from "../../../vendor/prochart/core/utils.mjs";
 
 /**
  * ProChart primitive that paints the interactive pills for a compatibility
@@ -14,6 +17,7 @@ import { deepMerge } from "../../../vendor/prochart/core/utils.mjs";
  */
 export class OrderLinePillPrimitive {
   constructor(options) {
+    this.useTopCanvas = true;
     this._chart = null;
     this._series = null;
     this._requestUpdate = null;
@@ -32,6 +36,7 @@ export class OrderLinePillPrimitive {
     };
     this._view = {
       zOrder: () => "top",
+      useTopCanvas: true,
       renderer: () => this._renderer,
     };
     this._paneViews = [this._view];
@@ -40,7 +45,7 @@ export class OrderLinePillPrimitive {
   attached(param) {
     this._chart = param.chart;
     this._series = param.series;
-    this._requestUpdate = param.requestUpdate;
+    this._requestUpdate = param.requestTopLayerUpdate ?? param.requestUpdate;
     globalThis.document?.fonts?.addEventListener?.("loadingdone", this._onFontsLoaded);
   }
 
@@ -53,6 +58,10 @@ export class OrderLinePillPrimitive {
 
   paneViews() {
     return this._paneViews;
+  }
+
+  options() {
+    return deepMerge({}, this._options);
   }
 
   applyOptions(patch) {
@@ -91,6 +100,9 @@ export class OrderLinePillPrimitive {
       id: String(options?.id ?? ""),
       price: Number(options?.price),
       lineColor: options?.color,
+      lineVisible: options?.lineVisible !== false,
+      lineWidth: Math.max(1, Number(options?.lineWidth) || 1),
+      lineStyle: Number(options?.lineStyle) || 0,
       pillSide: pills.side === "left" ? "left" : "right",
       pillOffset: Number(pills.offset) || DEFAULT_ORDER_LINE_PILL_OFFSET,
       isMoving: Boolean(pills.moving),
@@ -122,6 +134,20 @@ export class OrderLinePillPrimitive {
     if (y == null || !Number.isFinite(y)) return;
 
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      if (state.lineVisible) {
+        const alignedY = Math.round(y) + 0.5;
+        context.save();
+        context.strokeStyle = state.lineColor;
+        context.lineWidth = state.lineWidth;
+        setCtxLineStyle(context, state.lineStyle, state.lineWidth);
+        context.beginPath();
+        context.moveTo(0, alignedY);
+        context.lineTo(mediaSize.width, alignedY);
+        context.stroke();
+        context.setLineDash([]);
+        context.restore();
+      }
+
       const measurement =
         this._measurement ??
         (this._measurement = measureOrderLineRow(state, context));

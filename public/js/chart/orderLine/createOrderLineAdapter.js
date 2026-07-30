@@ -298,8 +298,10 @@ export function createOrderLineAdapter(manager, id) {
     },
 
     /**
-     * Single native patch for live PnL ticks (text + profit colors).
-     * @param {{ text?: string, profit?: boolean, fill?: string, textColor?: string }} appearance
+     * Single native pill patch for live PnL ticks. The order-line stroke is
+     * intentionally excluded so a text/color tick can stay on the lightweight
+     * top canvas instead of invalidating the full chart.
+     * @param {{ text?: string, quantityText?: string, profit?: boolean, fill?: string, quantityFill?: string, textColor?: string }} appearance
      */
     applyAppearance(appearance) {
       const patch = { pills: {} };
@@ -313,17 +315,37 @@ export function createOrderLineAdapter(manager, id) {
 
       if (appearance.fill != null) {
         const fill = String(appearance.fill);
-        state.lineColor = fill;
         state.bodyBackgroundColor = fill;
-        state.quantityBackgroundColor = fill;
-        patch.color = fill;
         patch.pills.body = {
           ...(patch.pills.body || {}),
           backgroundColor: fill,
         };
+        if (appearance.quantityFill == null) {
+          state.quantityBackgroundColor = fill;
+          patch.pills.quantity = {
+            ...(patch.pills.quantity || {}),
+            backgroundColor: fill,
+          };
+        }
+        changed = true;
+      }
+
+      if (appearance.quantityFill != null) {
+        const quantityFill = String(appearance.quantityFill);
+        state.quantityBackgroundColor = quantityFill;
         patch.pills.quantity = {
           ...(patch.pills.quantity || {}),
-          backgroundColor: fill,
+          backgroundColor: quantityFill,
+        };
+        changed = true;
+      }
+
+      if (appearance.quantityText != null) {
+        state.quantity = String(appearance.quantityText);
+        patch.pills.quantity = {
+          ...(patch.pills.quantity || {}),
+          text: state.quantity,
+          visible: Boolean(state.quantity),
         };
         changed = true;
       }

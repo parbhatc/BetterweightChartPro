@@ -17,9 +17,14 @@ import {
 import {
   showChartPendingOverlay,
   hideChartPendingOverlay,
+  settleChartPendingOverlay,
 } from "../../../ui/loader/chartPendingOverlay.js";
 import { showChartError, hideChartError } from "../../../ui/chart/emptyState.js";
 import { waitForTaskOrTimeout } from "../../../utils/async.js";
+import {
+  invalidateIndicatorReloads,
+  startIndicatorReload,
+} from "./indicatorReload.js";
 
 export const INDICATOR_RELOAD_SOFT_TIMEOUT_MS = 10_000;
 
@@ -115,6 +120,7 @@ async function afterTimeframeChangeThenRestoreViewport(ctx, restoreLayout) {
  * @param {object[]} panes
  */
 export function preparePanesForSeriesReload(ctx, panes) {
+  invalidateIndicatorReloads(panes);
   for (const pane of panes) {
     ctx.indicatorController?.clearOverlaysForPane?.(pane.index);
   }
@@ -184,43 +190,31 @@ export function prepareHtfBeforeTimeframeSwitch(ctx, pane, targetResolution) {
 /**
  * @param {import("./state.js").BootContext} ctx
  * @param {object[]} panes
+ * @param {{ backgroundIndicators?: boolean }} [options]
  */
-export async function finishSeriesReload(ctx, panes) {
+export async function finishSeriesReload(ctx, panes, options = {}) {
   for (const pane of panes) {
     ctx.indicatorController?.syncOverlayTimeCtxForPane?.(pane.index);
   }
   for (const pane of panes) {
     delete pane._suppressHistoryPrefetch;
-    pane._indicatorHistoryBulkLoad = true;
   }
-  const indicatorReload = (async () => {
-    try {
-      for (const pane of panes) {
-        await ctx.ensureIndicatorChartHistory?.(pane);
-      }
-      for (const pane of panes) {
-        await ctx.ensureIndicatorDataThenOverlay?.(pane);
-      }
-      for (const pane of panes) {
-        if (ctx.indicatorController?.paneHasPlotSeriesIndicators?.(pane.index)) {
-          ctx.refreshIndicatorsImmediate?.(pane.index);
-        }
-      }
-    } finally {
-      for (const pane of panes) {
-        delete pane._indicatorHistoryBulkLoad;
-      }
-    }
-  })();
-  const indicatorResult = await waitForTaskOrTimeout(
-    indicatorReload,
-    INDICATOR_RELOAD_SOFT_TIMEOUT_MS,
-  );
-  if (indicatorResult.error) throw indicatorResult.error;
-  if (indicatorResult.timedOut) {
-    console.warn(
-      `[BWC] Indicator history is still loading after ${INDICATOR_RELOAD_SOFT_TIMEOUT_MS / 1000}s; showing the chart while it finishes.`,
+  const indicatorReload = startIndicatorReload(ctx, panes);
+  if (options.backgroundIndicators) {
+    void indicatorReload.catch((err) => {
+      console.warn("[BWC] Background indicator reload failed:", err);
+    });
+  } else {
+    const indicatorResult = await waitForTaskOrTimeout(
+      indicatorReload,
+      INDICATOR_RELOAD_SOFT_TIMEOUT_MS,
     );
+    if (indicatorResult.error) throw indicatorResult.error;
+    if (indicatorResult.timedOut) {
+      console.warn(
+        `[BWC] Indicator history is still loading after ${INDICATOR_RELOAD_SOFT_TIMEOUT_MS / 1000}s; showing the chart while it finishes.`,
+      );
+    }
   }
   if (ctx.opts?.replayHostControlled) {
     for (const pane of panes) {
@@ -444,16 +438,17 @@ export async function wireSymbolAndTimeframePickers(ctx) {
               for (let i = 0; i < panes.length; i += 1) {
                 paintPaneAfterTimeframeLoad(ctx, panes[i], savedLayouts[i]);
               }
-              await finishSeriesReload(ctx, panes);
+              await finishSeriesReload(ctx, panes, { backgroundIndicators: true });
               await afterTimeframeChangeThenRestoreViewport(ctx, () => {});
               return;
             }
             await finishSeriesReload(ctx, panes);
           } finally {
-            if (gen === tfChangeGen) {
-              releasePaneHistoryPrefetch(panes);
-              await hideChartPendingOverlay(ctx);
-            }
+            await settleChartPendingOverlay(
+              ctx,
+              gen === tfChangeGen,
+              () => releasePaneHistoryPrefetch(panes),
+            );
           }
           return;
         }
@@ -500,16 +495,17 @@ export async function wireSymbolAndTimeframePickers(ctx) {
             await afterTimeframeChangeThenRestoreViewport(ctx, () => {});
           } else {
             paintPaneAfterTimeframeLoad(ctx, pane, savedLayout);
-            await finishSeriesReload(ctx, [pane]);
+            await finishSeriesReload(ctx, [pane], { backgroundIndicators: true });
             await afterTimeframeChangeThenRestoreViewport(ctx, () => {});
             return;
           }
           await finishSeriesReload(ctx, [pane]);
         } finally {
-          if (gen === tfChangeGen) {
-            releasePaneHistoryPrefetch(pane);
-            await hideChartPendingOverlay(ctx);
-          }
+          await settleChartPendingOverlay(
+            ctx,
+            gen === tfChangeGen,
+            () => releasePaneHistoryPrefetch(pane),
+          );
         }
       },
     });

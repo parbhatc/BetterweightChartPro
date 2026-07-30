@@ -18,6 +18,7 @@ import { renderStatusLine } from "../public/js/chart/status/line.js";
 import { formatAxisTimeTick } from "../public/js/chart/time/labelFormat.js";
 import { attachPriceLineLabelPrimitive } from "../public/js/primitives/priceLineLabel/index.js";
 import { ChartModel } from "../public/vendor/prochart/api/chartModel.mjs";
+import { SeriesModel } from "../public/vendor/prochart/data/seriesModel.mjs";
 import { bindEvents } from "../public/vendor/prochart/input/interactions.mjs";
 import { RenderFrameTickCache } from "../public/vendor/prochart/render/frameTickCache.mjs";
 import { renderChart } from "../public/vendor/prochart/render/renderer.mjs";
@@ -25,8 +26,10 @@ import {
   createPanePrimitiveViewGroups,
   renderPaneBottomOverlays,
   renderPaneSeriesOverlays,
+  renderPaneTopCanvasOverlays,
   renderTop as renderCrosshairTop,
 } from "../public/vendor/prochart/render/sub/overlayRenderer.mjs";
+import { PriceScaleMode } from "../public/vendor/prochart/core/enums.mjs";
 import { PriceScaleModel } from "../public/vendor/prochart/scale/priceScaleModel.mjs";
 import { createPointerHandlers } from "../public/js/drawings/controller/pointer/handlers.js";
 
@@ -77,6 +80,75 @@ test("overlay passes reuse one primitive pane-view classification per frame", ()
   assert.equal(paneViewCalls, 1);
   assert.equal(zOrderCalls, 3);
   assert.equal(drawCalls, 3);
+});
+
+test("top-canvas primitives bypass the main chart overlay pass", () => {
+  let drawCalls = 0;
+  const pane = {
+    top: 0,
+    height: 100,
+    series: [{
+      options: { visible: false },
+      overlays: [{
+        paneViews() {
+          return [{
+            zOrder: () => "top",
+            useTopCanvas: true,
+            renderer() {
+              return {
+                draw() {
+                  drawCalls += 1;
+                },
+              };
+            },
+          }];
+        },
+      }],
+    }],
+  };
+  const model = { _frameId: 1 };
+  const context = new Proxy(
+    {},
+    {
+      get() {
+        return () => {};
+      },
+    },
+  );
+
+  const groups = createPanePrimitiveViewGroups(model, pane);
+  renderPaneSeriesOverlays(model, context, pane, 0, 200, 1, groups);
+  assert.equal(drawCalls, 0);
+
+  renderPaneTopCanvasOverlays(model, context, pane, 0, 200, 1, groups);
+  assert.equal(drawCalls, 1);
+});
+
+test("top-canvas primitive attachment never invalidates the full chart", () => {
+  let fullInvalidations = 0;
+  let topInvalidations = 0;
+  const chart = {
+    api: {},
+    options: { localization: {} },
+    invalidate() {
+      fullInvalidations += 1;
+    },
+    invalidateCrosshairOnly() {
+      topInvalidations += 1;
+    },
+  };
+  const series = new SeriesModel(chart, "Line", {}, 0);
+  const primitive = {
+    useTopCanvas: true,
+    attached() {},
+    detached() {},
+  };
+
+  series.attachPrimitive(primitive, {});
+  series.detachPrimitive(primitive);
+
+  assert.equal(topInvalidations, 2);
+  assert.equal(fullInvalidations, 0);
 });
 
 test("orderline debug does not activate unrelated pan instrumentation", () => {
@@ -528,6 +600,42 @@ test("full chart rendering computes each price scale tick snapshot once per fram
   renderChart(model);
   assert.equal(tickCalls.get(rightScale), 2);
   assert.equal(tickCalls.get(leftScale), 2);
+});
+
+test("logarithmic mode preserves a manually positioned futures price range", () => {
+  let invalidations = 0;
+  const chart = {
+    invalidate() {
+      invalidations += 1;
+    },
+    options: {
+      localization: { priceFormatter: null },
+      layout: { fontSize: 12, fontFamily: "sans-serif" },
+    },
+  };
+  const pane = {
+    height: 300,
+    seriesFor: () => [],
+  };
+  const scale = new PriceScaleModel(chart, pane, "right", {
+    autoScale: false,
+  });
+  scale.priceRange = { min: 24_000, max: 25_000 };
+  scale._manual = true;
+
+  scale.applyOptions({ mode: PriceScaleMode.Logarithmic });
+
+  assert.equal(invalidations, 1);
+  assert.ok(Math.abs(scale.fromScale(scale.priceRange.min) - 24_000) < 1e-6);
+  assert.ok(Math.abs(scale.fromScale(scale.priceRange.max) - 25_000) < 1e-6);
+  const candleY = scale.priceToCoordinate(24_500);
+  assert.ok(Number.isFinite(candleY));
+  assert.ok(candleY > 0 && candleY < pane.height);
+
+  scale.applyOptions({ mode: PriceScaleMode.Normal });
+
+  assert.ok(Math.abs(scale.priceRange.min - 24_000) < 1e-6);
+  assert.ok(Math.abs(scale.priceRange.max - 25_000) < 1e-6);
 });
 
 test("crosshair movement clears only its previous dirty strips", () => {
