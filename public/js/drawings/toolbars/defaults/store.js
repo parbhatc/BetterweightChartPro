@@ -9,7 +9,12 @@ import { isFibRetracementTool } from "../../tools/fib/retracement.js";
 import { isGannTool } from "../../tools/gann/index.js";
 import { isPatternTool } from "../../tools/pattern/index.js";
 import { isCycleTool } from "../../tools/cycle/index.js";
-import { isPositionTool } from "../../tools/position/barrel.js";
+import { isPositionTool, POSITION_STYLE_DEFAULTS } from "../../tools/position/barrel.js";
+import {
+  ANCHORED_VWAP_DEFAULTS,
+  BARS_PATTERN_DEFAULTS,
+  GHOST_FEED_DEFAULTS,
+} from "../../tools/forecast/index.js";
 import { supportsChannelLineStyleSettings } from "../../tools/channel/family.js";
 import { isVolumeProfileTool } from "../../tools/volumeProfile/index.js";
 import { annotationDefaultsForType, isBrushTool } from "../../tools/annotation/style.js";
@@ -170,8 +175,11 @@ const POSITION_OPTION_KEYS = [
   "statsFields",
   "statsPosition",
   "alwaysShowStats",
+  "compactStatsMode",
   "profitColor",
+  "profitOpacity",
   "stopColor",
+  "stopOpacity",
   "fontSize",
   "positionQty",
   "positionDurationSec",
@@ -181,6 +189,32 @@ const POSITION_OPTION_KEYS = [
   "positionRiskUnit",
   "positionLeverage",
   "positionQtyPrecision",
+];
+
+const BARS_PATTERN_OPTION_KEYS = [
+  "patternBarsCount",
+  "patternFlipped",
+  "patternMirrored",
+  "patternScale",
+  "patternMode",
+  "patternUpColor",
+  "patternDownColor",
+  "patternOpacity",
+];
+
+const GHOST_FEED_OPTION_KEYS = [
+  "ghostBarsCount",
+  "ghostUpColor",
+  "ghostDownColor",
+  "ghostOpacity",
+  "ghostAmplitude",
+];
+
+const ANCHORED_VWAP_OPTION_KEYS = [
+  "vwapShowBands",
+  "vwapBandMultiplier",
+  "vwapBandColor",
+  "vwapBandOpacity",
 ];
 
 const BRUSH_OPTION_KEYS = [
@@ -242,6 +276,9 @@ export function getSavableToolKeys(toolType) {
   else if (isPatternTool(toolType)) keys.push(...PATTERN_OPTION_KEYS);
   else if (isCycleTool(toolType)) keys.push(...CYCLE_OPTION_KEYS);
   else if (isPositionTool(toolType)) keys.push(...POSITION_OPTION_KEYS);
+  else if (toolType === "bars-pattern") keys.push(...BARS_PATTERN_OPTION_KEYS);
+  else if (toolType === "ghost-feed") keys.push(...GHOST_FEED_OPTION_KEYS);
+  else if (toolType === "anchored-vwap") keys.push(...ANCHORED_VWAP_OPTION_KEYS);
   else if (isVolumeProfileTool(toolType)) keys.push(...VOLUME_PROFILE_OPTION_KEYS);
   else if (supportsChannelLineStyleSettings(toolType)) keys.push(...CHANNEL_LINE_OPTION_KEYS);
   else if (isRegressionTrendTool(toolType)) keys.push(...REGRESSION_TREND_OPTION_KEYS);
@@ -339,23 +376,48 @@ export function newDrawingDefaults(toolType) {
   const saved = { ...loadToolDefaults(toolType), ...loadLayoutScopedToolDefaults(toolType) };
   const annotationDefaults = annotationDefaultsForType(toolType);
   const shapeDefaults = shapeDefaultsForType(toolType);
+  const toolDefaults =
+    isPositionTool(toolType)
+      ? POSITION_STYLE_DEFAULTS
+      : toolType === "bars-pattern"
+        ? BARS_PATTERN_DEFAULTS
+        : toolType === "ghost-feed"
+          ? GHOST_FEED_DEFAULTS
+          : toolType === "anchored-vwap"
+            ? ANCHORED_VWAP_DEFAULTS
+            : {};
   const defaultColor = isFlatTopBottomTool(toolType)
     ? FLAT_TOP_BOTTOM_COLOR
-    : (annotationDefaults.color ?? shapeDefaults.color ?? DEFAULT_DRAWING_COLOR);
+    : (toolDefaults.color ??
+      annotationDefaults.color ??
+      shapeDefaults.color ??
+      DEFAULT_DRAWING_COLOR);
   const color = saved.color ?? defaultColor;
-  const colorOpacity = saved.colorOpacity ?? annotationDefaults.colorOpacity ?? shapeDefaults.colorOpacity ?? 100;
+  const colorOpacity =
+    saved.colorOpacity ??
+    toolDefaults.colorOpacity ??
+    annotationDefaults.colorOpacity ??
+    shapeDefaults.colorOpacity ??
+    100;
   /** @type {Record<string, unknown>} */
   const out = {
     color,
     colorOpacity,
-    textColor: saved.textColor ?? color,
-    textColorOpacity: saved.textColorOpacity ?? colorOpacity,
-    lineWidth: saved.lineWidth ?? annotationDefaults.lineWidth ?? shapeDefaults.lineWidth ?? 2,
-    lineStyle: saved.lineStyle ?? 0,
+    textColor: saved.textColor ?? toolDefaults.textColor ?? color,
+    textColorOpacity:
+      saved.textColorOpacity ?? toolDefaults.textColorOpacity ?? colorOpacity,
+    lineWidth:
+      saved.lineWidth ??
+      toolDefaults.lineWidth ??
+      annotationDefaults.lineWidth ??
+      shapeDefaults.lineWidth ??
+      2,
+    lineStyle: saved.lineStyle ?? toolDefaults.lineStyle ?? 0,
   };
   for (const key of getSavableToolKeys(toolType)) {
     if (STYLE_KEYS.includes(key)) continue;
     if (saved[key] !== undefined) out[key] = saved[key];
+    else if (toolDefaults[key] !== undefined) out[key] = toolDefaults[key];
   }
   return out;
 }

@@ -44,7 +44,10 @@ export const SUPPORTED_DRAW_TOOLS = new Set([
   "long-position",
   "short-position",
   "position-forecast",
+  "bars-pattern",
+  "ghost-feed",
   "sector",
+  "anchored-vwap",
   "fixed-range-volume-profile",
   "anchored-volume-profile",
   "price-range",
@@ -123,8 +126,11 @@ export const TOOL_LABELS = {
   "sine-line": "Sine line",
   "long-position": "Long position",
   "short-position": "Short position",
-  "position-forecast": "Forecast",
+  "position-forecast": "Position forecast",
+  "bars-pattern": "Bars pattern",
+  "ghost-feed": "Ghost feed",
   sector: "Sector",
+  "anchored-vwap": "Anchored VWAP",
   "fixed-range-volume-profile": "Fixed range volume profile",
   "anchored-volume-profile": "Anchored volume profile",
   rectangle: "Rectangle",
@@ -236,11 +242,22 @@ export const PATTERNS_FLYOUT_SECTIONS = [
 export const FORECAST_FLYOUT_SECTIONS = [
   {
     title: "Forecasting",
-    tools: ["long-position", "short-position", "position-forecast", "sector"],
+    tools: [
+      "long-position",
+      "short-position",
+      "position-forecast",
+      "bars-pattern",
+      "ghost-feed",
+      "sector",
+    ],
   },
   {
     title: "Volume-based",
-    tools: ["anchored-volume-profile"],
+    tools: [
+      "anchored-vwap",
+      "fixed-range-volume-profile",
+      "anchored-volume-profile",
+    ],
   },
   {
     title: "Measurers",

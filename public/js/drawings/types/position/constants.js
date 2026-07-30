@@ -51,9 +51,18 @@ export const POSITION_STATS_FIELD_ITEMS = [
 export const POSITION_STYLE_DEFAULTS = {
   showPriceLabels: true,
   alwaysShowStats: false,
+  compactStatsMode: false,
   statsPosition: "center",
-  profitColor: "rgba(8, 153, 129, 0.2)",
-  stopColor: "rgba(242, 54, 69, 0.2)",
+  color: "#787B86",
+  colorOpacity: 100,
+  lineWidth: 1,
+  lineStyle: 0,
+  profitColor: "#089981",
+  profitOpacity: 20,
+  stopColor: "#F23645",
+  stopOpacity: 20,
+  textColor: "#FFFFFF",
+  textColorOpacity: 100,
   fontSize: 12,
 };
 

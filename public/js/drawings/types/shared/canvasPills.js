@@ -59,8 +59,18 @@ export function drawCenteredPill(ctx, text, cx, cy, bg, opts = {}) {
  * @param {string} bg
  * @param {"top" | "bottom"} anchor
  * @param {number} [fontSize]
+ * @param {string} [textColor]
  */
-export function drawEdgePill(ctx, text, cx, edgeY, bg, anchor, fontSize = PILL_FONT_SIZE) {
+export function drawEdgePill(
+  ctx,
+  text,
+  cx,
+  edgeY,
+  bg,
+  anchor,
+  fontSize = PILL_FONT_SIZE,
+  textColor = "#ffffff",
+) {
   ctx.font = `500 ${fontSize}px system-ui, sans-serif`;
   const tw = ctx.measureText(text).width;
   const w = tw + PILL_PAD_X * 2;
@@ -75,7 +85,7 @@ export function drawEdgePill(ctx, text, cx, edgeY, bg, anchor, fontSize = PILL_F
   } else {
     ctx.fillRect(x, y, w, h);
   }
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = textColor;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, cx, y + h / 2);
@@ -103,14 +113,15 @@ export function measurePillBlock(lines, fontSize = PILL_FONT_SIZE) {
  * @param {{ x: number, y: number, width: number, height: number, lines: string[], rowH: number, cx: number }} layout
  * @param {string} bg
  * @param {number} fontSize
+ * @param {{ textColor?: string, borderColor?: string }} [opts]
  */
-export function drawPillBlock(ctx, layout, bg, fontSize = PILL_FONT_SIZE) {
+export function drawPillBlock(ctx, layout, bg, fontSize = PILL_FONT_SIZE, opts = {}) {
   ctx.fillStyle = bg;
   if (typeof ctx.roundRect === "function") {
     ctx.beginPath();
     ctx.roundRect(layout.x, layout.y, layout.width, layout.height, PILL_RADIUS);
     ctx.fill();
-    ctx.strokeStyle = "#ffffff";
+    ctx.strokeStyle = opts.borderColor ?? "#ffffff";
     ctx.lineWidth = 1;
     ctx.stroke();
   } else {
@@ -118,7 +129,7 @@ export function drawPillBlock(ctx, layout, bg, fontSize = PILL_FONT_SIZE) {
     ctx.strokeRect(layout.x, layout.y, layout.width, layout.height);
   }
   ctx.font = `500 ${fontSize}px system-ui, sans-serif`;
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = opts.textColor ?? "#ffffff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   let rowY = layout.y + layout.rowH / 2;

@@ -15,8 +15,16 @@ import {
   finalizePositionDrawing,
   isPositionTool,
   POSITION_INPUT_DEFAULTS,
+  POSITION_STYLE_DEFAULTS,
 } from "../../tools/position/barrel.js";
-import { finalizeForecastDrawing, isForecastTool, FORECAST_STYLE_DEFAULTS } from "../../tools/forecast/index.js";
+import {
+  ANCHORED_VWAP_DEFAULTS,
+  BARS_PATTERN_DEFAULTS,
+  finalizeForecastDrawing,
+  FORECAST_STYLE_DEFAULTS,
+  GHOST_FEED_DEFAULTS,
+  isForecastTool,
+} from "../../tools/forecast/index.js";
 import {
   finalizeVolumeProfileDrawing,
   isVolumeProfileTool,
@@ -77,20 +85,19 @@ export const TREND_LINE_FAMILY_DEFAULTS = {
   "extended-line": trendLineStyleDefaults({ extendLeft: true, extendRight: true }),
   "trend-angle": trendLineStyleDefaults({ angle: 45 }),
   "long-position": {
-    showPriceLabels: true,
+    ...POSITION_STYLE_DEFAULTS,
     statsFields: defaultPositionStatsFields(),
-    statsPosition: "center",
-    alwaysShowStats: false,
     ...POSITION_INPUT_DEFAULTS,
   },
   "short-position": {
-    showPriceLabels: true,
+    ...POSITION_STYLE_DEFAULTS,
     statsFields: defaultPositionStatsFields(),
-    statsPosition: "center",
-    alwaysShowStats: false,
     ...POSITION_INPUT_DEFAULTS,
   },
   "position-forecast": { ...FORECAST_STYLE_DEFAULTS },
+  "bars-pattern": { ...BARS_PATTERN_DEFAULTS },
+  "ghost-feed": { ...GHOST_FEED_DEFAULTS },
+  "anchored-vwap": { ...ANCHORED_VWAP_DEFAULTS },
   "fixed-range-volume-profile": { ...VOLUME_PROFILE_DEFAULTS },
   "anchored-volume-profile": { ...VOLUME_PROFILE_DEFAULTS },
   "price-range": { ...MEASURE_STYLE_DEFAULTS },

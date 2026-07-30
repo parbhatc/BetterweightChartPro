@@ -97,6 +97,12 @@ import {
   wireForecastSettings,
 } from "../sections/forecast.js";
 import {
+  forecastSeriesDraftFromDrawing,
+  readForecastSeriesDraftFromUi,
+  syncForecastSeriesDialogUi,
+  wireForecastSeriesSettings,
+} from "../sections/forecastSeries.js";
+import {
   measureDraftFromDrawing,
   readMeasureDraftFromUi,
   syncMeasureDialogUi,
@@ -301,6 +307,7 @@ export function createDrawingSettingsDialog(opts) {
     syncRegressionTrendDialogUi(root, draft);
     syncPositionDialogUi(root, draft);
     syncForecastDialogUi(root, draft);
+    syncForecastSeriesDialogUi(root, draft);
     syncMeasureDialogUi(root, draft);
     syncAnnotationDialogUi(root, draft);
     syncShapeDialogUi(root, draft);
@@ -350,6 +357,7 @@ export function createDrawingSettingsDialog(opts) {
       ...readCycleDraftFromUi(root, draft),
       ...positionPatch,
       ...readForecastDraftFromUi(root, draft),
+      ...readForecastSeriesDraftFromUi(root, draft),
       ...readMeasureDraftFromUi(root, draft),
       ...readAnnotationDraftFromUi(root, draft),
       ...readShapeDraftFromUi(root, draft),
@@ -447,6 +455,7 @@ export function createDrawingSettingsDialog(opts) {
         ? positionDraftFromDrawing(drawing, getContext().precision ?? 2)
         : {}),
       ...(isForecastTool(drawing.type) ? forecastDraftFromDrawing(drawing) : {}),
+      ...forecastSeriesDraftFromDrawing(drawing),
       ...(isMeasureTool(drawing.type) ? measureDraftFromDrawing(drawing) : {}),
       ...(supportsAnnotationStyleSettings(drawing.type) ? annotationDraftFromDrawing(drawing) : {}),
       ...(supportsShapeStyleSettings(drawing.type) ? shapeDraftFromDrawing(drawing) : {}),
@@ -663,6 +672,7 @@ export function createDrawingSettingsDialog(opts) {
   wireRegressionTrendSettings(root, wireCtx);
   wirePositionSettings(root, { ...wireCtx, getPrecision: () => getContext().precision ?? 2 });
   wireForecastSettings(root, wireCtx);
+  wireForecastSeriesSettings(root, wireCtx);
   wireMeasureSettings(root, wireCtx);
   wireAnnotationSettings(root, wireCtx);
   wireShapeSettings(root, wireCtx);

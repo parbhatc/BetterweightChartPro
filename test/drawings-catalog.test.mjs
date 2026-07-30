@@ -7,10 +7,26 @@ import { responsiveAxisMinimums } from "../public/js/chart/view/responsiveAxes.j
 
 const labels = (sections) => sections.flatMap((section) => section.tools);
 
-test("volume-profile indicator ranges keep their internal placement contracts", () => {
+test("forecasting menu mirrors the supported placement contracts", () => {
   assert.equal(pointCountForTool("anchored-volume-profile"), 1);
   assert.equal(pointCountForTool("fixed-range-volume-profile"), 2);
-  assert.equal(labels(FORECAST_FLYOUT_SECTIONS).includes("fixed-range-volume-profile"), false);
+  assert.equal(pointCountForTool("anchored-vwap"), 1);
+  assert.equal(pointCountForTool("bars-pattern"), 2);
+  assert.equal(pointCountForTool("ghost-feed"), 2);
+  assert.deepEqual(labels(FORECAST_FLYOUT_SECTIONS), [
+    "long-position",
+    "short-position",
+    "position-forecast",
+    "bars-pattern",
+    "ghost-feed",
+    "sector",
+    "anchored-vwap",
+    "fixed-range-volume-profile",
+    "anchored-volume-profile",
+    "price-range",
+    "date-range",
+    "date-price-range",
+  ]);
 });
 
 test("mobile axes reserve TradingView-like interactive gutters", () => {

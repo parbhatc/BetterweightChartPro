@@ -15,12 +15,15 @@ import {
 } from "./constants.js";
 import { positionGeometry, positionScreenBounds, positionStatsCenterPrice } from "./geometry.js";
 import {
+  buildCompactPositionCenterStatLines,
+  buildCompactPositionZoneLabel,
   buildPositionCenterStatLines,
   buildPositionZoneLabel,
   computePositionStatValues,
   resolvePositionStatsFields,
   shouldShowPositionStats,
 } from "./stats.js";
+import { applyColorOpacity } from "../../../ui/color/picker.js";
 
 /**
  * Price-axis labels for long/short position tools.
@@ -87,8 +90,18 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
   const { left, width } = positionScreenBounds(geom, x1, x2);
   const top = Math.min(yTarget, yStop);
   const bottom = Math.max(yTarget, yStop);
-  const profitColor = drawing.profitColor ?? TV_PROFIT_FILL;
-  const stopColor = drawing.stopColor ?? TV_STOP_FILL;
+  const profitColor = applyColorOpacity(
+    drawing.profitColor ?? TV_PROFIT_FILL,
+    drawing.profitOpacity ?? 100,
+  );
+  const stopColor = applyColorOpacity(
+    drawing.stopColor ?? TV_STOP_FILL,
+    drawing.stopOpacity ?? 100,
+  );
+  const textColor = applyColorOpacity(
+    drawing.textColor ?? "#ffffff",
+    drawing.textColorOpacity ?? 100,
+  );
   const fontSize = drawing.fontSize ?? PILL_FONT_SIZE;
   const precision = state.precision ?? 2;
   const fields = resolvePositionStatsFields(drawing);
@@ -103,28 +116,39 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
   ctx.fillStyle = stopColor;
   ctx.fillRect(left, Math.min(yEntry, yStop), width, Math.abs(yEntry - yStop));
 
-  ctx.strokeStyle = TV_BORDER;
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = applyColorOpacity(
+    drawing.color ?? TV_BORDER,
+    drawing.colorOpacity ?? 100,
+  );
+  ctx.lineWidth = drawing.lineWidth ?? 1;
+  ctx.setLineDash(drawing.lineStyle === 1 ? [2, 3] : drawing.lineStyle === 2 ? [6, 4] : []);
   ctx.strokeRect(left, top, width, bottom - top);
+  ctx.setLineDash([]);
 
   if (showStats) {
-    const targetLabel = buildPositionZoneLabel(fields, values, "target");
-    const stopLabel = buildPositionZoneLabel(fields, values, "stop");
+    const targetLabel = drawing.compactStatsMode
+      ? buildCompactPositionZoneLabel(fields, values, "target")
+      : buildPositionZoneLabel(fields, values, "target");
+    const stopLabel = drawing.compactStatsMode
+      ? buildCompactPositionZoneLabel(fields, values, "stop")
+      : buildPositionZoneLabel(fields, values, "stop");
     const profitFarY = geom.isLong ? Math.min(yEntry, yTarget) : Math.max(yEntry, yTarget);
     const stopFarY = geom.isLong ? Math.max(yEntry, yStop) : Math.min(yEntry, yStop);
 
     if (targetLabel) {
       const anchor = geom.isLong ? "bottom" : "top";
       const edgeY = geom.isLong ? profitFarY - PILL_OUTSIDE_GAP : profitFarY + PILL_OUTSIDE_GAP;
-      drawEdgePill(ctx, targetLabel, cx, edgeY, TV_PROFIT_PILL, anchor, fontSize);
+      drawEdgePill(ctx, targetLabel, cx, edgeY, TV_PROFIT_PILL, anchor, fontSize, textColor);
     }
     if (stopLabel) {
       const anchor = geom.isLong ? "top" : "bottom";
       const edgeY = geom.isLong ? stopFarY + PILL_OUTSIDE_GAP : stopFarY - PILL_OUTSIDE_GAP;
-      drawEdgePill(ctx, stopLabel, cx, edgeY, TV_STOP_PILL, anchor, fontSize);
+      drawEdgePill(ctx, stopLabel, cx, edgeY, TV_STOP_PILL, anchor, fontSize, textColor);
     }
 
-    const centerLines = buildPositionCenterStatLines(fields, values);
+    const centerLines = drawing.compactStatsMode
+      ? buildCompactPositionCenterStatLines(fields, values)
+      : buildPositionCenterStatLines(fields, values);
     const yStats = priceToY(positionStatsCenterPrice(geom));
     const layout = layoutPositionCenterStats(
       { x: left, y: yEntry },
@@ -136,7 +160,10 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
     if (layout) {
       const plRaw = values.openClosedPLRaw ?? 0;
       const badgeBg = plRaw > 0 ? TV_PROFIT_PILL : plRaw < 0 ? TV_STOP_PILL : "rgba(55, 58, 68, 0.96)";
-      drawPillBlock(ctx, layout, badgeBg, fontSize);
+      drawPillBlock(ctx, layout, badgeBg, fontSize, {
+        textColor,
+        borderColor: textColor,
+      });
     }
   }
 

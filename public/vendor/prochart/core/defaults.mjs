@@ -54,7 +54,7 @@ export function defaultChartOptions() {
       axisDoubleClickReset: { time: true, price: true },
     },
     kineticScroll: { mouse: false, touch: true },
-    /** hybrid renderer: "auto" uses WebGL for bulk series geometry when available */
+    /** "auto" selects Canvas2D or WebGL from visible geometry complexity. */
     renderer: "auto",
   };
 }

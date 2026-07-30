@@ -25,6 +25,7 @@ import {
   createPanePrimitiveViewGroups,
   renderPaneBottomOverlays,
   renderPaneSeriesOverlays,
+  renderTop as renderCrosshairTop,
 } from "../public/vendor/prochart/render/sub/overlayRenderer.mjs";
 import { PriceScaleModel } from "../public/vendor/prochart/scale/priceScaleModel.mjs";
 import { createPointerHandlers } from "../public/js/drawings/controller/pointer/handlers.js";
@@ -449,9 +450,10 @@ test("full chart rendering computes each price scale tick snapshot once per fram
     _leftW: 0,
     _rightW: 0,
     panes: [pane],
-    baseCanvas: { width: 800, height: 300 },
+    baseCanvas: { width: 800, height: 300, style: {} },
+    glCanvas: { width: 300, height: 150, style: {} },
     mainCanvas: { width: 800, height: 300 },
-    topCanvas: { width: 800, height: 300 },
+    topCanvas: { width: 800, height: 300, style: {} },
     baseCtx: context,
     mainCtx: context,
     topCtx: context,
@@ -517,10 +519,87 @@ test("full chart rendering computes each price scale tick snapshot once per fram
   renderChart(model);
   assert.equal(tickCalls.get(rightScale), 1);
   assert.equal(tickCalls.get(leftScale), 1);
+  assert.equal(model.baseCanvas.style.display, "none");
+  assert.equal(model.glCanvas.style.display, "none");
+  assert.equal(model.topCanvas.style.display, "none");
+  assert.equal(model.glCanvas.width, 1);
+  assert.equal(model.glCanvas.height, 1);
 
   renderChart(model);
   assert.equal(tickCalls.get(rightScale), 2);
   assert.equal(tickCalls.get(leftScale), 2);
+});
+
+test("crosshair movement clears only its previous dirty strips", () => {
+  const clearCalls = [];
+  const noop = () => {};
+  const context = {
+    beginPath: noop,
+    clearRect: (...args) => clearCalls.push(args),
+    lineTo: noop,
+    moveTo: noop,
+    restore: noop,
+    save: noop,
+    setLineDash: noop,
+    setTransform: noop,
+    stroke: noop,
+  };
+  const pane = {
+    top: 0,
+    height: 275,
+    priceScales: new Map(),
+  };
+  const model = {
+    dpr: 1,
+    width: 800,
+    height: 300,
+    _leftW: 0,
+    _rightW: 0,
+    panes: [pane],
+    topCanvas: { width: 800, height: 300, style: {} },
+    topCtx: context,
+    crosshair: {
+      visible: true,
+      logical: 4,
+      x: 40,
+      y: 120,
+      paneIndex: 0,
+    },
+    options: {
+      crosshair: {
+        mode: 0,
+        vertLine: {
+          visible: true,
+          width: 1,
+          labelVisible: false,
+        },
+        horzLine: {
+          visible: true,
+          width: 1,
+          labelVisible: false,
+        },
+      },
+      timeScale: { visible: false },
+      layout: { fontSize: 12 },
+    },
+    timeScale: {
+      barSpacing: 10,
+      visibleLogicalRange: () => ({ from: 0, to: 20 }),
+    },
+    paneWidth: () => 800,
+    timeAxisHeight: () => 25,
+  };
+
+  renderCrosshairTop(model);
+  assert.deepEqual(clearCalls.shift(), [0, 0, 800, 300]);
+
+  model.crosshair.logical = 5;
+  model.crosshair.x = 50;
+  model.crosshair.y = 130;
+  renderCrosshairTop(model);
+
+  assert.equal(clearCalls.length, 2);
+  assert.ok(clearCalls.every(([, , width, height]) => width < 800 || height < 300));
 });
 
 test("chart input geometry is shared within a frame and refreshes after layout moves", () => {

@@ -26,6 +26,7 @@ import {
   renderTop as renderOverlayTop,
 } from "./sub/overlayRenderer.mjs";
 import { RenderFrameTickCache } from "./frameTickCache.mjs";
+import { shouldUseGpu } from "./gpuPolicy.mjs";
 
 export {
   renderSeries2d,
@@ -42,31 +43,25 @@ export {
 export function renderChart(model) {
   model._frameId = (model._frameId || 0) + 1;
   const dpr = model.dpr || 1;
-  const baseContext = model.baseCtx;
   const mainContext = model.mainCtx;
   if (model.lineEndPulseHost) model.lineEndPulseHost.hidden = true;
 
   const tickCache = new RenderFrameTickCache(model);
   prepareLayout(model, mainContext, dpr, tickCache);
-  clearLayer(model.baseCanvas, baseContext, dpr);
-  clearLayer(model.mainCanvas, mainContext, dpr);
-  renderBackground(model, baseContext);
 
   const plotX = model._leftW || 0;
   const plotWidth = model.paneWidth();
-  const useGpu = Boolean(
-    model.gpu
-    && model.gpu.ok
-    && model.options.renderer !== "cpu",
-  );
+  const useGpu = shouldUseGpu(model);
+  const backgroundContext = prepareCanvasLayers(model, dpr, useGpu);
   prepareGpuFrame(model, dpr, useGpu);
+  renderBackground(model, backgroundContext);
 
   for (const pane of model.panes) {
     if (pane.height <= 0) continue;
 
     renderPaneGrid(
       model,
-      baseContext,
+      backgroundContext,
       pane,
       plotX,
       plotWidth,
@@ -75,7 +70,7 @@ export function renderChart(model) {
     const primitiveViewGroups = createPanePrimitiveViewGroups(model, pane);
     renderPaneBottomOverlays(
       model,
-      baseContext,
+      backgroundContext,
       pane,
       plotX,
       plotWidth,
@@ -102,7 +97,7 @@ export function renderChart(model) {
     );
   }
 
-  renderPaneSeparators(model, baseContext);
+  renderPaneSeparators(model, backgroundContext);
   renderPriceAxes(model, mainContext, tickCache);
   renderTimeAxis(model, mainContext, plotX, plotWidth, tickCache);
   renderAxisCorner(model);
@@ -157,14 +152,40 @@ function clearLayer(canvas, context, dpr) {
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function prepareGpuFrame(model, dpr, useGpu) {
-  if (!model.gpu?.ok) return;
-  if (useGpu) {
-    model.gpu.beginFrame(
-      Math.round(model.width * dpr),
-      Math.round(model.height * dpr),
-    );
-  } else {
-    model.gpu.beginFrame(1, 1);
+function prepareCanvasLayers(model, dpr, useGpu) {
+  const splitLayers = Boolean(useGpu);
+  if (model._splitRenderLayers !== splitLayers) {
+    model._splitRenderLayers = splitLayers;
+    model.baseCanvas.style.display = splitLayers ? "" : "none";
   }
+
+  clearLayer(model.mainCanvas, model.mainCtx, dpr);
+  if (!splitLayers) return model.mainCtx;
+
+  clearLayer(model.baseCanvas, model.baseCtx, dpr);
+  return model.baseCtx;
+}
+
+function prepareGpuFrame(model, dpr, useGpu) {
+  const active = Boolean(useGpu && model.gpu?.ok);
+  const changed = model._gpuLayerActive !== active;
+  model._gpuLayerActive = active;
+
+  if (model.glCanvas && changed) {
+    model.glCanvas.style.display = active ? "" : "none";
+    if (!active) {
+      if (model.gpu?.ok) {
+        model.gpu.beginFrame(1, 1);
+      } else {
+        model.glCanvas.width = 1;
+        model.glCanvas.height = 1;
+      }
+    }
+  }
+
+  if (!active) return;
+  model.gpu.beginFrame(
+    Math.round(model.width * dpr),
+    Math.round(model.height * dpr),
+  );
 }

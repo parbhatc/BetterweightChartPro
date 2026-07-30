@@ -111,6 +111,20 @@ export function buildPositionCenterStatLines(fields, values) {
   return lines;
 }
 
+/**
+ * TradingView-compatible compact stats labels retain every selected field while
+ * shortening the prose around the numeric values.
+ * @param {Record<string, boolean>} fields
+ * @param {ReturnType<typeof computePositionStatValues>} values
+ */
+export function buildCompactPositionCenterStatLines(fields, values) {
+  const chunks = [];
+  if (fields.openClosedPL) chunks.push(`P&L ${values.openClosedPL}`);
+  if (fields.qty) chunks.push(`Q ${values.qty}`);
+  if (fields.riskRewardRatio) chunks.push(`R:R ${values.riskRewardRatio}`);
+  return chunks.length ? [chunks.join("  ")] : [];
+}
+
 /** @param {Record<string, boolean>} fields @param {ReturnType<typeof computePositionStatValues>} values @param {"target" | "stop"} zone */
 export function buildPositionZoneLabel(fields, values, zone) {
   const chunks = [];
@@ -132,6 +146,29 @@ export function buildPositionZoneLabel(fields, values, zone) {
   if (fields.slAmount) text = text ? `${prefix}: ${text}, Amount: ${values.slAmount}` : `${prefix}: Amount: ${values.slAmount}`;
   else if (text) text = `${prefix}: ${text}`;
   return text;
+}
+
+/**
+ * @param {Record<string, boolean>} fields
+ * @param {ReturnType<typeof computePositionStatValues>} values
+ * @param {"target" | "stop"} zone
+ */
+export function buildCompactPositionZoneLabel(fields, values, zone) {
+  const target = zone === "target";
+  const chunks = [target ? "T" : "S"];
+  if (fields[target ? "tpPriceOffset" : "slPriceOffset"]) {
+    chunks.push(target ? values.tpPriceOffset : values.slPriceOffset);
+  }
+  if (fields[target ? "tpPercentOffset" : "slPercentOffset"]) {
+    chunks.push(`(${target ? values.tpPercentOffset : values.slPercentOffset}%)`);
+  }
+  if (fields[target ? "tpTickOffset" : "slTickOffset"]) {
+    chunks.push(`${target ? values.tpTickOffset : values.slTickOffset}t`);
+  }
+  if (fields[target ? "tpAmount" : "slAmount"]) {
+    chunks.push(target ? values.tpAmount : values.slAmount);
+  }
+  return chunks.length > 1 ? chunks.join(" ") : "";
 }
 
 /**

@@ -3,7 +3,7 @@ import { LINE_END_ARROW_ICON, LINE_END_NORMAL_ICON } from "../../tools/line/tren
 import { isRegressionTrendTool } from "../../tools/regression/trend.js";
 import { isPositionTool } from "../../tools/position/barrel.js";
 import { isVolumeProfileTool } from "../../tools/volumeProfile/index.js";
-import { isForecastTool } from "../../tools/forecast/index.js";
+import { isForecastSeriesTool, isForecastTool } from "../../tools/forecast/index.js";
 import { isMeasureTool } from "../../tools/measure/index.js";
 import { supportsAnnotationStyleSettings } from "../../tools/annotation/style.js";
 import { shapeHidesCoordsTab, shapeHidesTextTab } from "../../tools/shape/index.js";
@@ -147,6 +147,7 @@ export function syncDrawingSettingsTabs(root, drawingType) {
   const isRegression = isRegressionTrendTool(drawingType);
   const isPosition = isPositionTool(drawingType);
   const isForecast = isForecastTool(drawingType);
+  const isForecastSeries = isForecastSeriesTool(drawingType);
   const isMeasure = isMeasureTool(drawingType);
   const isVolumeProfile = isVolumeProfileTool(drawingType);
   const isAnnotation = supportsAnnotationStyleSettings(drawingType);
@@ -162,7 +163,14 @@ export function syncDrawingSettingsTabs(root, drawingType) {
   if (tabs.inputs instanceof HTMLElement) tabs.inputs.hidden = !isRegression && !isPosition && !isVolumeProfile;
   if (tabs.text instanceof HTMLElement) {
     tabs.text.hidden =
-      isRegression || isPosition || isForecast || isMeasure || isAnnotation || isVolumeProfile || hideShapeText;
+      isRegression ||
+      isPosition ||
+      isForecast ||
+      isForecastSeries ||
+      isMeasure ||
+      isAnnotation ||
+      isVolumeProfile ||
+      hideShapeText;
   }
   if (tabs.coordinates instanceof HTMLElement) {
     tabs.coordinates.hidden = isPosition || isAnnotation || hideShapeCoords;

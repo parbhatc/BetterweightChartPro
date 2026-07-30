@@ -27,7 +27,11 @@ export function factoryDrawingDefaults(toolType) {
     lineWidth: annotationDefaults.lineWidth ?? shapeDefaults.lineWidth ?? 2,
     lineStyle: 0,
   };
-  const merged = { ...extend, ...base, ...(isVolumeProfileTool(toolType) ? VOLUME_PROFILE_DEFAULTS : {}) };
+  const merged = {
+    ...base,
+    ...extend,
+    ...(isVolumeProfileTool(toolType) ? VOLUME_PROFILE_DEFAULTS : {}),
+  };
   /** @type {Record<string, unknown>} */
   const out = {};
   for (const key of getSavableToolKeys(toolType)) {

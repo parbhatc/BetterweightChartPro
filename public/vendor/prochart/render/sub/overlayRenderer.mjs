@@ -274,18 +274,20 @@ function markerY(series, scale, marker, local, size) {
 export function renderTop(model) {
   const context = model.topCtx;
   const dpr = model.dpr || 1;
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.clearRect(
-    0,
-    0,
-    model.topCanvas.width,
-    model.topCanvas.height,
-  );
+  clearPreviousCrosshairFrame(model, context, dpr);
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const crosshair = model.crosshair;
   const options = model.options.crosshair;
-  if (!crosshair.visible || options.mode === 2) return;
+  const visible = crosshair.visible && options.mode !== 2;
+  if (model._topLayerActive !== visible) {
+    model._topLayerActive = visible;
+    model.topCanvas.style.display = visible ? "" : "none";
+  }
+  if (!visible) {
+    model._topDirtyRegions = [];
+    return;
+  }
 
   const plotX = model._leftW || 0;
   const plotWidth = model.paneWidth();
@@ -298,6 +300,14 @@ export function renderTop(model) {
     ) * timeScale.barSpacing;
   }
   const pane = model.panes[crosshair.paneIndex] || model.panes[0];
+  model._topDirtyRegions = crosshairDirtyRegions(
+    model,
+    pane,
+    plotX,
+    plotWidth,
+    x,
+    options,
+  );
 
   context.save();
   renderCrosshairLines(
@@ -312,6 +322,104 @@ export function renderTop(model) {
   renderCrosshairTimeLabel(model, context, plotX, x, options);
   renderCrosshairPriceLabels(model, context, pane, options);
   context.restore();
+}
+
+function clearPreviousCrosshairFrame(model, context, dpr) {
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  const canvasWidth = model.topCanvas.width;
+  const canvasHeight = model.topCanvas.height;
+  const sizeChanged = (
+    model._topDirtyCanvasWidth !== canvasWidth
+    || model._topDirtyCanvasHeight !== canvasHeight
+  );
+  const regions = model._topDirtyRegions;
+  if (sizeChanged || !Array.isArray(regions)) {
+    context.clearRect(0, 0, canvasWidth, canvasHeight);
+  } else {
+    for (const region of regions) {
+      const left = Math.floor(region.x * dpr) - 2;
+      const top = Math.floor(region.y * dpr) - 2;
+      const width = Math.ceil(region.width * dpr) + 4;
+      const height = Math.ceil(region.height * dpr) + 4;
+      context.clearRect(left, top, width, height);
+    }
+  }
+  model._topDirtyCanvasWidth = canvasWidth;
+  model._topDirtyCanvasHeight = canvasHeight;
+}
+
+function crosshairDirtyRegions(
+  model,
+  pane,
+  plotX,
+  plotWidth,
+  x,
+  options,
+) {
+  const regions = [];
+  const verticalWidth = Math.max(1, Number(options.vertLine?.width) || 1) + 4;
+  if (
+    options.vertLine?.visible !== false
+    && x >= 0
+    && x <= plotWidth
+  ) {
+    regions.push({
+      x: plotX + x - verticalWidth / 2,
+      y: 0,
+      width: verticalWidth,
+      height: Math.max(0, model.height - model.timeAxisHeight()),
+    });
+  }
+
+  const horizontalWidth = Math.max(1, Number(options.horzLine?.width) || 1) + 4;
+  if (
+    options.horzLine?.visible !== false
+    && pane
+    && model.crosshair.y >= pane.top
+    && model.crosshair.y <= pane.top + pane.height
+  ) {
+    regions.push({
+      x: plotX,
+      y: model.crosshair.y - horizontalWidth / 2,
+      width: plotWidth,
+      height: horizontalWidth,
+    });
+  }
+
+  if (
+    options.vertLine?.labelVisible !== false
+    && model.options.timeScale.visible
+    && model.crosshair.logical != null
+  ) {
+    regions.push({
+      x: 0,
+      y: model.height - TIME_AXIS_HEIGHT - 1,
+      width: model.width,
+      height: TIME_AXIS_HEIGHT + 2,
+    });
+  }
+
+  if (options.horzLine?.labelVisible !== false && pane) {
+    const labelHeight = Number(model.options.layout.fontSize || 12) + 12;
+    if (model._leftW > 0) {
+      regions.push({
+        x: 0,
+        y: model.crosshair.y - labelHeight / 2,
+        width: model._leftW,
+        height: labelHeight,
+      });
+    }
+    if (model._rightW > 0) {
+      regions.push({
+        x: model.width - model._rightW,
+        y: model.crosshair.y - labelHeight / 2,
+        width: model._rightW,
+        height: labelHeight,
+      });
+    }
+  }
+
+  return regions;
 }
 
 function renderCrosshairLines(

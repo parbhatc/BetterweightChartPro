@@ -1,7 +1,24 @@
 import { fmtDrawingPrice } from "../line/info.js";
 import { renderFixedRangeVolumeProfile } from "../volumeProfile/index.js";
+import { BARS_PATTERN_DEFAULTS, renderBarsPattern } from "./barsPattern.js";
+import { GHOST_FEED_DEFAULTS, renderGhostFeed } from "./ghostFeed.js";
+import { ANCHORED_VWAP_DEFAULTS, renderAnchoredVwap } from "./anchoredVwap.js";
+
+export {
+  ANCHORED_VWAP_DEFAULTS,
+  BARS_PATTERN_DEFAULTS,
+  GHOST_FEED_DEFAULTS,
+  renderAnchoredVwap,
+  renderBarsPattern,
+  renderGhostFeed,
+};
 
 export const FORECAST_TOOL_TYPE = "position-forecast";
+export const FORECAST_SERIES_TOOL_TYPES = new Set([
+  "bars-pattern",
+  "ghost-feed",
+  "anchored-vwap",
+]);
 
 /** Default Forecast tool settings. */
 export const FORECAST_STYLE_DEFAULTS = {
@@ -23,6 +40,11 @@ export const FORECAST_STYLE_DEFAULTS = {
 /** @param {string} type */
 export function isForecastTool(type) {
   return type === FORECAST_TOOL_TYPE;
+}
+
+/** @param {string} type */
+export function isForecastSeriesTool(type) {
+  return FORECAST_SERIES_TOOL_TYPES.has(type);
 }
 
 /** @param {string} type */
@@ -246,6 +268,15 @@ export function renderForecastDrawing(ctx, drawing, pts, right, bottom, state = 
       }
       renderPositionForecast(ctx, drawing, a, b, state);
       break;
+    case "bars-pattern":
+      if (b) renderBarsPattern(ctx, drawing, state);
+      break;
+    case "ghost-feed":
+      if (b) renderGhostFeed(ctx, drawing, state);
+      break;
+    case "anchored-vwap":
+      renderAnchoredVwap(ctx, drawing, state);
+      break;
     case "sector":
       if (b) {
         const x1 = Math.min(a.x, b.x);
@@ -352,6 +383,9 @@ function renderPositionForecast(ctx, drawing, a, b, state) {
 export function isForecastDrawingType(type) {
   return (
     type === FORECAST_TOOL_TYPE ||
+    type === "bars-pattern" ||
+    type === "ghost-feed" ||
+    type === "anchored-vwap" ||
     type === "sector" ||
     type === "fixed-range-volume-profile" ||
     type === "anchored-volume-profile"
@@ -370,7 +404,11 @@ export function hitForecastDrawing(type, pts, px, py, threshold) {
   const b = pts[1];
   if (!a) return false;
 
-  if (type === "sector" || type === "fixed-range-volume-profile" || type === "anchored-volume-profile") {
+  if (
+    type === "sector" ||
+    type === "fixed-range-volume-profile" ||
+    type === "anchored-volume-profile"
+  ) {
     if (!b) return Math.hypot(px - a.x, py - a.y) <= threshold;
     const x1 = Math.min(a.x, b.x) - threshold;
     const x2 = Math.max(a.x, b.x) + threshold;
@@ -382,6 +420,10 @@ export function hitForecastDrawing(type, pts, px, py, threshold) {
       distToSegment(px, py, x2, y2, x1, y2) <= threshold ||
       distToSegment(px, py, x1, y2, x1, y1) <= threshold
     );
+  }
+
+  if (type === "anchored-vwap") {
+    return Math.hypot(px - a.x, py - a.y) <= threshold;
   }
 
   if (!b) return Math.hypot(px - a.x, py - a.y) <= threshold;

@@ -211,6 +211,14 @@ export function drawingSettingsDialogHtml() {
             </div>
           </div>
           <div class="tv-set__section" data-position-section hidden>
+            <div class="tv-set__section-head">Lines</div>
+            <div class="tv-set__section-body">
+              <button type="button" class="tv-drawing-settings__line-btn" data-position-line-style aria-label="Position line style">
+                <span class="tv-drawing-settings__line-preview" data-position-line-preview></span>
+              </button>
+            </div>
+          </div>
+          <div class="tv-set__section" data-position-section hidden>
             <div class="tv-set__section-head">Stop color</div>
             <div class="tv-set__section-body">
               <button type="button" class="tv-drawing-settings__color-btn tv-drawing-settings__color-btn--compact" data-position-stop-color aria-label="Stop color">
@@ -229,6 +237,9 @@ export function drawingSettingsDialogHtml() {
           <div class="tv-set__section" data-position-section hidden>
             <div class="tv-set__section-head">Text</div>
             <div class="tv-set__section-body tv-drawing-settings__line-row">
+              <button type="button" class="tv-drawing-settings__color-btn tv-drawing-settings__color-btn--compact" data-position-text-color aria-label="Position text color">
+                <span class="tv-drawing-settings__color-swatch" data-position-text-swatch></span>
+              </button>
               <select class="tv-drawing-settings__select tv-drawing-settings__select--small" data-position-font-size>
                 <option value="10">10</option>
                 <option value="12" selected>12</option>
@@ -258,6 +269,12 @@ export function drawingSettingsDialogHtml() {
                     <span class="tv-set__select-chev">${MENU_CHEVRON}</span>
                   </button>
                 </div>
+              </div>
+              <div class="tv-set__check-row">
+                <button type="button" class="tv-set__check" data-position-compact-stats-btn role="checkbox" aria-checked="false" aria-label="Compact stats mode">
+                  <span class="tv-set__check-box"></span>
+                </button>
+                <span class="tv-set__check-label">Compact stats mode</span>
               </div>
               <div class="tv-set__check-row">
                 <button type="button" class="tv-set__check" data-position-always-show-stats-btn role="checkbox" aria-checked="false" aria-label="Always show stats">

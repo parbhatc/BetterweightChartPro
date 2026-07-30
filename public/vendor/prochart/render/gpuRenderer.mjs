@@ -43,6 +43,13 @@ export class GpuRenderer {
     });
     if (!gl) return;
     this.gl = gl;
+    this.rendererInfo = this._readRendererInfo(gl);
+    this.softwareRenderer = this._isSoftwareRenderer(this.rendererInfo);
+    // A software WebGL implementation adds buffer uploads and another full
+    // canvas composite without GPU acceleration. The pure Canvas2D fallback is
+    // materially faster in that environment (notably Chrome with hardware
+    // acceleration disabled), so fail closed before allocating GL resources.
+    if (this.softwareRenderer) return;
 
     const compile = (type, src) => {
       const sh = gl.createShader(type);
@@ -79,6 +86,26 @@ export class GpuRenderer {
     this.ok = true;
     canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); this.ok = false; });
     canvas.addEventListener("webglcontextrestored", () => { /* rebuilt next frame via new GpuRenderer by chart */ });
+  }
+
+  /** @param {WebGLRenderingContext} gl */
+  _readRendererInfo(gl) {
+    try {
+      const extension = gl.getExtension?.("WEBGL_debug_renderer_info");
+      if (extension) {
+        return String(gl.getParameter(extension.UNMASKED_RENDERER_WEBGL) || "");
+      }
+      return String(gl.getParameter?.(gl.RENDERER) || "");
+    } catch {
+      return "";
+    }
+  }
+
+  /** @param {string} rendererInfo */
+  _isSoftwareRenderer(rendererInfo) {
+    return /swiftshader|software|llvmpipe|softpipe|basic render|microsoft basic/i.test(
+      rendererInfo,
+    );
   }
 
   _grow(minRects) {

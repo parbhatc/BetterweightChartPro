@@ -164,6 +164,7 @@ export function renderDrawing(ctx, drawing, timeToX, priceToY, right, bottom, st
       } else if (isForecastDrawingType(drawing.type)) {
         renderForecastDrawing(ctx, drawing, pts, right, bottom, {
           ...state,
+          timeToX,
           priceToY,
         });
       } else if (isMeasureDrawingType(drawing.type)) {

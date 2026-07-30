@@ -1,10 +1,12 @@
 import { createTvMenu } from "../menu/tv.js";
-import { MENU_CHEVRON, setTvCheck } from "../dialog/utils.js";
+import { applyColorOpacity } from "../../../ui/color/picker.js";
+import { MENU_CHEVRON, setTvCheck, syncLineStylePreview } from "../dialog/utils.js";
 import { fmtDrawingPrice } from "../../tools/line/info.js";
 import {
   POSITION_INPUT_DEFAULTS,
   POSITION_QTY_PRECISION_ITEMS,
   POSITION_RISK_UNIT_ITEMS,
+  POSITION_STYLE_DEFAULTS,
   POSITION_STATS_FIELD_ITEMS,
   computePositionQty,
   isPositionTool,
@@ -178,14 +180,40 @@ export function syncPositionDialogUi(root, draft) {
     setTvCheck(alwaysShowBtn, Boolean(draft.alwaysShowStats));
   }
 
+  const compactStatsBtn = root.querySelector("[data-position-compact-stats-btn]");
+  if (compactStatsBtn instanceof HTMLButtonElement) {
+    setTvCheck(compactStatsBtn, Boolean(draft.compactStatsMode));
+  }
+
+  syncLineStylePreview(root.querySelector("[data-position-line-preview]"), {
+    color: String(draft.color ?? POSITION_STYLE_DEFAULTS.color),
+    opacity: Number(draft.colorOpacity ?? POSITION_STYLE_DEFAULTS.colorOpacity),
+    width: Number(draft.lineWidth ?? POSITION_STYLE_DEFAULTS.lineWidth),
+    style: Number(draft.lineStyle ?? POSITION_STYLE_DEFAULTS.lineStyle),
+  });
+
   const profitSwatch = root.querySelector("[data-position-profit-swatch]");
   if (profitSwatch instanceof HTMLElement) {
-    profitSwatch.style.backgroundColor = String(draft.profitColor ?? "rgba(8, 153, 129, 0.2)");
+    profitSwatch.style.backgroundColor = applyColorOpacity(
+      String(draft.profitColor ?? POSITION_STYLE_DEFAULTS.profitColor),
+      Number(draft.profitOpacity ?? POSITION_STYLE_DEFAULTS.profitOpacity),
+    );
   }
 
   const stopSwatch = root.querySelector("[data-position-stop-swatch]");
   if (stopSwatch instanceof HTMLElement) {
-    stopSwatch.style.backgroundColor = String(draft.stopColor ?? "rgba(242, 54, 69, 0.2)");
+    stopSwatch.style.backgroundColor = applyColorOpacity(
+      String(draft.stopColor ?? POSITION_STYLE_DEFAULTS.stopColor),
+      Number(draft.stopOpacity ?? POSITION_STYLE_DEFAULTS.stopOpacity),
+    );
+  }
+
+  const textSwatch = root.querySelector("[data-position-text-swatch]");
+  if (textSwatch instanceof HTMLElement) {
+    textSwatch.style.backgroundColor = applyColorOpacity(
+      String(draft.textColor ?? POSITION_STYLE_DEFAULTS.textColor),
+      Number(draft.textColorOpacity ?? POSITION_STYLE_DEFAULTS.textColorOpacity),
+    );
   }
 
   const fontSizeEl = root.querySelector("[data-position-font-size]");
@@ -226,6 +254,7 @@ export function readPositionDraftFromUi(root, draft, precision = 2) {
 
   const priceLabelsBtn = root.querySelector("[data-position-price-labels-btn]");
   const alwaysShowBtn = root.querySelector("[data-position-always-show-stats-btn]");
+  const compactStatsBtn = root.querySelector("[data-position-compact-stats-btn]");
   const fontSizeEl = root.querySelector("[data-position-font-size]");
   const inputs = readPositionInputsFromUi(root);
 
@@ -259,11 +288,21 @@ export function readPositionDraftFromUi(root, draft, precision = 2) {
     positionQtyPrecision: merged.positionQtyPrecision,
     showPriceLabels: priceLabelsBtn?.classList.contains("tv-set__check--on") ?? draft.showPriceLabels,
     alwaysShowStats: alwaysShowBtn?.classList.contains("tv-set__check--on") ?? draft.alwaysShowStats,
+    compactStatsMode:
+      compactStatsBtn?.classList.contains("tv-set__check--on") ?? draft.compactStatsMode,
     fontSize:
       fontSizeEl instanceof HTMLSelectElement ? Number(fontSizeEl.value) || 12 : draft.fontSize,
     statsFields: draft.statsFields,
+    color: draft.color,
+    colorOpacity: draft.colorOpacity,
+    lineWidth: draft.lineWidth,
+    lineStyle: draft.lineStyle,
     profitColor: draft.profitColor,
+    profitOpacity: draft.profitOpacity,
     stopColor: draft.stopColor,
+    stopOpacity: draft.stopOpacity,
+    textColor: draft.textColor,
+    textColorOpacity: draft.textColorOpacity,
   };
 }
 
@@ -274,8 +313,17 @@ export function positionDraftFromDrawing(drawing, precision = 2) {
     ...positionInputsDraftFromDrawing(drawing, precision),
     showPriceLabels: drawing.showPriceLabels !== false,
     alwaysShowStats: Boolean(drawing.alwaysShowStats),
-    profitColor: drawing.profitColor,
-    stopColor: drawing.stopColor,
+    compactStatsMode: Boolean(drawing.compactStatsMode),
+    color: drawing.color ?? POSITION_STYLE_DEFAULTS.color,
+    colorOpacity: drawing.colorOpacity ?? POSITION_STYLE_DEFAULTS.colorOpacity,
+    lineWidth: drawing.lineWidth ?? POSITION_STYLE_DEFAULTS.lineWidth,
+    lineStyle: drawing.lineStyle ?? POSITION_STYLE_DEFAULTS.lineStyle,
+    profitColor: drawing.profitColor ?? POSITION_STYLE_DEFAULTS.profitColor,
+    profitOpacity: drawing.profitOpacity ?? POSITION_STYLE_DEFAULTS.profitOpacity,
+    stopColor: drawing.stopColor ?? POSITION_STYLE_DEFAULTS.stopColor,
+    stopOpacity: drawing.stopOpacity ?? POSITION_STYLE_DEFAULTS.stopOpacity,
+    textColor: drawing.textColor ?? POSITION_STYLE_DEFAULTS.textColor,
+    textColorOpacity: drawing.textColorOpacity ?? POSITION_STYLE_DEFAULTS.textColorOpacity,
     fontSize: drawing.fontSize ?? 12,
     statsFields: resolvePositionStatsFields(drawing),
   };
@@ -411,15 +459,53 @@ export function wirePositionSettings(root, ctx) {
       return;
     }
 
+    const compactStatsBtn = ev.target.closest("[data-position-compact-stats-btn]");
+    if (compactStatsBtn instanceof HTMLButtonElement) {
+      setTvCheck(compactStatsBtn, !compactStatsBtn.classList.contains("tv-set__check--on"));
+      ctx.patchDrawing({ compactStatsMode: compactStatsBtn.classList.contains("tv-set__check--on") });
+      return;
+    }
+
+    const lineStyleBtn = ev.target.closest("[data-position-line-style]");
+    if (lineStyleBtn instanceof HTMLElement) {
+      const draft = ctx.getDraft();
+      ctx.colorPicker.openLine(
+        lineStyleBtn,
+        {
+          color: String(draft.color ?? POSITION_STYLE_DEFAULTS.color),
+          opacity: Number(draft.colorOpacity ?? POSITION_STYLE_DEFAULTS.colorOpacity),
+          width: Number(draft.lineWidth ?? POSITION_STYLE_DEFAULTS.lineWidth),
+          style: Number(draft.lineStyle ?? POSITION_STYLE_DEFAULTS.lineStyle),
+        },
+        {
+          showOpacity: true,
+          showLineStyle: true,
+          onChange: (value) => {
+            ctx.patchDrawing({
+              color: value.color,
+              colorOpacity: value.opacity,
+              lineWidth: value.width,
+              lineStyle: value.style,
+            });
+            syncPositionDialogUi(root, ctx.getDraft());
+          },
+        },
+      );
+      return;
+    }
+
     const profitColorBtn = ev.target.closest("[data-position-profit-color]");
     if (profitColorBtn instanceof HTMLElement) {
       const draft = ctx.getDraft();
       ctx.colorPicker.openSwatch(
         profitColorBtn,
-        { color: String(draft.profitColor ?? "rgba(8, 153, 129, 0.2)"), opacity: 100 },
+        {
+          color: String(draft.profitColor ?? POSITION_STYLE_DEFAULTS.profitColor),
+          opacity: Number(draft.profitOpacity ?? POSITION_STYLE_DEFAULTS.profitOpacity),
+        },
         {
           onChange: (value) => {
-            ctx.patchDrawing({ profitColor: value.color });
+            ctx.patchDrawing({ profitColor: value.color, profitOpacity: value.opacity });
             syncPositionDialogUi(root, ctx.getDraft());
           },
         },
@@ -432,10 +518,32 @@ export function wirePositionSettings(root, ctx) {
       const draft = ctx.getDraft();
       ctx.colorPicker.openSwatch(
         stopColorBtn,
-        { color: String(draft.stopColor ?? "rgba(242, 54, 69, 0.2)"), opacity: 100 },
+        {
+          color: String(draft.stopColor ?? POSITION_STYLE_DEFAULTS.stopColor),
+          opacity: Number(draft.stopOpacity ?? POSITION_STYLE_DEFAULTS.stopOpacity),
+        },
         {
           onChange: (value) => {
-            ctx.patchDrawing({ stopColor: value.color });
+            ctx.patchDrawing({ stopColor: value.color, stopOpacity: value.opacity });
+            syncPositionDialogUi(root, ctx.getDraft());
+          },
+        },
+      );
+      return;
+    }
+
+    const textColorBtn = ev.target.closest("[data-position-text-color]");
+    if (textColorBtn instanceof HTMLElement) {
+      const draft = ctx.getDraft();
+      ctx.colorPicker.openSwatch(
+        textColorBtn,
+        {
+          color: String(draft.textColor ?? POSITION_STYLE_DEFAULTS.textColor),
+          opacity: Number(draft.textColorOpacity ?? POSITION_STYLE_DEFAULTS.textColorOpacity),
+        },
+        {
+          onChange: (value) => {
+            ctx.patchDrawing({ textColor: value.color, textColorOpacity: value.opacity });
             syncPositionDialogUi(root, ctx.getDraft());
           },
         },
