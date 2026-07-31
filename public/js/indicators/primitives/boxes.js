@@ -34,6 +34,61 @@ function labelXInBox(box, left, right, w, timeToX, pad) {
   return hi;
 }
 
+export function formatCountdownLabel(closeAt, now = Date.now() / 1000) {
+  const remaining = Math.max(0, Math.ceil(Number(closeAt) - Number(now)));
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  const seconds = remaining % 60;
+  const clock = hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${minutes}:${String(seconds).padStart(2, "0")}`;
+  return `Closes in: ${clock}`;
+}
+
+/** Draw a Pine-table-style cell anchored to the pane instead of time/price. */
+function drawScreenBox(ctx, box, mediaSize) {
+  const width = Math.max(1, Number(box.screenWidth) || 96);
+  const height = Math.max(1, Number(box.screenHeight) || 20);
+  const rows = Math.max(1, Math.trunc(Number(box.screenRows) || 1));
+  const row = Math.max(0, Math.min(rows - 1, Math.trunc(Number(box.screenRow) || 0)));
+  const marginX = Math.max(0, Number(box.screenMarginX) || 0);
+  const marginY = Math.max(0, Number(box.screenMarginY) || 0);
+  const totalHeight = height * rows;
+  const left = box.screenHorizontal === "left"
+    ? marginX
+    : mediaSize.width - marginX - width;
+  const groupTop = box.screenVertical === "top"
+    ? marginY
+    : box.screenVertical === "bottom"
+      ? mediaSize.height - marginY - totalHeight
+      : (mediaSize.height - totalHeight) / 2;
+  const top = groupTop + row * height;
+
+  ctx.save();
+  ctx.fillStyle = box.fillColor ?? applyColorOpacity("#2962ff", 10);
+  ctx.fillRect(left, top, width, height);
+
+  const bw = Number(box.borderWidth) || 0;
+  if (bw > 0 && box.borderColor) {
+    ctx.strokeStyle = box.borderColor;
+    ctx.lineWidth = bw;
+    ctx.setLineDash(Array.isArray(box.borderDash) ? box.borderDash : []);
+    ctx.strokeRect(left + bw / 2, top + bw / 2, width - bw, height - bw);
+  }
+
+  const label = Number.isFinite(Number(box.countdownTo))
+    ? formatCountdownLabel(Number(box.countdownTo))
+    : box.label;
+  if (box.showLabel && label) {
+    ctx.font = labelFont(box);
+    ctx.fillStyle = box.textColor ?? "#131722";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText(String(label), left + width / 2, top + height / 2);
+  }
+  ctx.restore();
+}
+
 /** @param {CanvasRenderingContext2D} ctx @param {object} box @param {(t: number) => number | null} timeToX @param {(p: number) => number | null} priceToY @param {number} rightX */
 function drawBox(ctx, box, timeToX, priceToY, rightX) {
   const x1 = timeToX(box.timeStart);
@@ -68,6 +123,19 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
   }
 
   const yBot = priceToY(box.priceBottom);
+  if (box.kind === "vertical-line") {
+    if (x1 == null || yTop == null || yBot == null) return;
+    ctx.save();
+    ctx.strokeStyle = box.lineColor ?? box.borderColor ?? box.fillColor ?? "#787b86";
+    ctx.lineWidth = Math.max(1, Number(box.lineWidth) || 1);
+    ctx.setLineDash(Array.isArray(box.lineDash) ? box.lineDash : []);
+    ctx.beginPath();
+    ctx.moveTo(x1, yTop);
+    ctx.lineTo(x1, yBot);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   if (x1 == null || x2 == null || yTop == null || yBot == null) return;
   // Skip draw when start/end coords disagree (stale mapBars during history restore).
   if (!box.extendRight && x2End != null && x1 > x2End + 2) return;
@@ -146,6 +214,10 @@ class BoxesPaneRenderer {
       const pad = 4;
       for (const box of boxes) {
         if (!this._filter(box)) continue;
+        if (box.kind === "screen-box") {
+          drawScreenBox(ctx, box, mediaSize);
+          continue;
+        }
         const x1 = timeToX(box.timeStart);
         const x2End = box.extendRight ? null : timeToX(box.timeEnd);
         const x2 = box.extendRight ? rightX : x2End;
@@ -208,6 +280,15 @@ function boxesEqual(a, b) {
       x.fontWeight !== y.fontWeight ||
       x.labelAlign !== y.labelAlign ||
       x.labelOffsetX !== y.labelOffsetX ||
+      x.screenHorizontal !== y.screenHorizontal ||
+      x.screenVertical !== y.screenVertical ||
+      x.screenWidth !== y.screenWidth ||
+      x.screenHeight !== y.screenHeight ||
+      x.screenRows !== y.screenRows ||
+      x.screenRow !== y.screenRow ||
+      x.screenMarginX !== y.screenMarginX ||
+      x.screenMarginY !== y.screenMarginY ||
+      x.countdownTo !== y.countdownTo ||
       x.zOrder !== y.zOrder
     ) {
       return false;
@@ -230,6 +311,7 @@ class BoxesPrimitive {
     this._series = null;
     /** @type {(() => void) | null} */
     this._requestUpdate = null;
+    this._countdownTimer = null;
     /** @type {(() => void) | null} */
     this._unsub = null;
     this._paneViews = [
@@ -268,6 +350,19 @@ class BoxesPrimitive {
     if (dirty) this._timeMapping = null;
 
     if (dirty && !skipRedraw) this._requestUpdate?.();
+    this._syncCountdownTimer();
+  }
+
+  _syncCountdownTimer() {
+    const needsTimer = Boolean(this._requestUpdate) && this._boxes.some(
+      (box) => Number.isFinite(Number(box.countdownTo)),
+    );
+    if (!needsTimer && this._countdownTimer != null) {
+      clearInterval(this._countdownTimer);
+      this._countdownTimer = null;
+    } else if (needsTimer && this._countdownTimer == null) {
+      this._countdownTimer = setInterval(() => this._requestUpdate?.(), 1000);
+    }
   }
 
   requestRefresh() {
@@ -280,6 +375,7 @@ class BoxesPrimitive {
     this._series = param.series;
     this._requestUpdate = param.requestUpdate;
     this._timeMapping = null;
+    this._syncCountdownTimer();
   }
 
   detached() {
@@ -287,6 +383,7 @@ class BoxesPrimitive {
     this._series = null;
     this._requestUpdate = null;
     this._timeMapping = null;
+    this._syncCountdownTimer();
   }
 
   updateAllViews() {}

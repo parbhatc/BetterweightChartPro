@@ -5,13 +5,24 @@ import { CHART_FEATURES, createFeatureFlags } from "../public/js/chart/features.
 import { CHART_TYPES, loadChartType } from "../public/js/ui/header/chartTypes.js";
 import { readPageOptions } from "../public/js/datafeed/client.js";
 import { layoutAxisLabels, seriesLastValueColor, usesCustomOhlcRenderer } from "../public/vendor/prochart/render/renderer.mjs";
-import { resolveChartStyleLineColor } from "../public/js/app/symbol/lineStyle.js";
+import {
+  colorContrastRatio,
+  ensureVisiblePriceLineColor,
+  resolveChartStyleLineColor,
+  resolveSymbolLineColor,
+} from "../public/js/app/symbol/lineStyle.js";
 import { shouldShowTimeframeMenu } from "../public/js/ui/timeframe/favorites.js";
+import {
+  enforcePriceBarRatio,
+  enforcePriceBarRatioOnPriceZoom,
+  measurePriceBarRatio,
+} from "../public/js/chart/price/barRatio.js";
 import { timeframeSwitchPrefersUtcRestore } from "../public/js/app/boot/chart/timeframeRestorePolicy.js";
 import { settleChartPendingOverlay } from "../public/js/ui/loader/chartPendingOverlay.js";
 import { createLayoutSync, scaleLogicalPanDelta } from "../public/js/app/layout/sync.js";
 import { chartAppearancePreset, chartThemeFallback } from "../public/js/app/boot/themes.js";
 import { createChartSettings } from "../public/js/ui/settings/store.js";
+import { APPEARANCE_PRESET_OPTIONS } from "../public/js/ui/settings/defaults.js";
 import { clearResolvedPaneEmptyState } from "../public/js/app/bar/loader.js";
 import {
   clearResolutionCache,
@@ -21,6 +32,7 @@ import {
 import { estimateInitialCountBack } from "../public/js/app/bar/periodParams.js";
 import {
   invalidateIndicatorReloads,
+  scheduleIndicatorReloadAfterPaint,
   startIndicatorReload,
 } from "../public/js/app/boot/chart/indicatorReload.js";
 import {
@@ -114,6 +126,66 @@ test("interval menu visibility follows favorite count and active interval", () =
   assert.equal(shouldShowTimeframeMenu(["1"], "1"), false);
   assert.equal(shouldShowTimeframeMenu(["1"], "5"), true);
   assert.equal(shouldShowTimeframeMenu(["1", "5"], "1"), true);
+});
+
+test("candle price labels follow body colors until explicitly overridden", () => {
+  const symbol = { bodyUpColor: "#b2b5be", bodyDownColor: "#434651" };
+  assert.equal(
+    resolveSymbolLineColor(
+      { symbolLabelLineUpColor: "#22ab94", symbolLabelLineDownColor: "#f7525f" },
+      symbol,
+      { open: 10, close: 9 },
+    ),
+    "#434651",
+  );
+  assert.equal(
+    resolveSymbolLineColor(
+      {
+        symbolLabelLineFollowBodyColors: false,
+        symbolLabelLineUpColor: "#22ab94",
+        symbolLabelLineDownColor: "#f7525f",
+      },
+      symbol,
+      { open: 10, close: 9 },
+    ),
+    "#f7525f",
+  );
+});
+
+test("low-contrast candle price lines remain visible without changing the label color", () => {
+  const bodyColor = "#b2b5be";
+  const background = "#c2baae";
+  const stroke = ensureVisiblePriceLineColor(bodyColor, background);
+  assert.equal(bodyColor, "#b2b5be");
+  assert.ok(colorContrastRatio(stroke, background) >= 1.8);
+  assert.notEqual(stroke, bodyColor);
+  assert.equal(ensureVisiblePriceLineColor("#434651", background), "#434651");
+});
+
+test("price-to-bar ratio uses price units per horizontal bar", () => {
+  let barSpacing = 10;
+  let scaleFactor = null;
+  const chart = {
+    paneSize: () => ({ height: 100 }),
+    timeScale: () => ({
+      options: () => ({ barSpacing, minBarSpacing: 3 }),
+      applyOptions: ({ barSpacing: next }) => { barSpacing = next; },
+    }),
+    priceScale: () => ({
+      applyOptions() {},
+      scaleAroundCenter(factor) { scaleFactor = factor; },
+    }),
+  };
+  const series = { coordinateToPrice: (coordinate) => 200 - coordinate * 2 };
+
+  assert.equal(measurePriceBarRatio(chart, series), 20);
+  enforcePriceBarRatio(chart, series, "right", 10);
+  assert.equal(scaleFactor, 0.5);
+
+  scaleFactor = null;
+  enforcePriceBarRatioOnPriceZoom(chart, series, 10);
+  assert.equal(barSpacing, 5);
+  assert.equal(scaleFactor, null);
 });
 
 test("initial history stays viewport-sized instead of expanding for indicators", () => {
@@ -212,6 +284,33 @@ test("superseded indicator backfill cannot update the next timeframe", async () 
   assert.equal("_indicatorHistoryBulkLoad" in pane, false);
 });
 
+test("initial indicator history waits until candles have painted twice", async () => {
+  const frames = [];
+  let historyLoads = 0;
+  let overlayLoads = 0;
+  const pane = { symbol: "NQ", resolution: "1" };
+  scheduleIndicatorReloadAfterPaint(
+    {
+      ensureIndicatorChartHistory: async () => { historyLoads += 1; },
+      ensureIndicatorDataThenOverlay: async () => { overlayLoads += 1; },
+      indicatorController: { paneHasPlotSeriesIndicators: () => false },
+    },
+    [pane],
+    (callback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+  );
+
+  assert.equal(historyLoads, 0);
+  frames.shift()(0);
+  assert.equal(historyLoads, 0);
+  frames.shift()(16);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(historyLoads, 1);
+  assert.equal(overlayLoads, 1);
+});
+
 test("live timeframe switches preserve bar slots instead of UTC duration", () => {
   const hourlyLayout = {
     resolution: "60",
@@ -286,13 +385,60 @@ test("multi-pane pans scale logical movement by each pane interval", () => {
   }
 });
 
-test("appearance presets include trader-friendly gray and never enable attribution", () => {
-  const gray = chartAppearancePreset("gray");
-  assert.equal(gray.theme, "light");
-  assert.equal(gray.canvas.backgroundColor, "#b9bec8");
-  assert.equal(gray.symbol.bordersUpColor, "#090d14");
+test("appearance exposes Default and Gray chart-only palettes and never enables attribution", () => {
+  const standard = chartAppearancePreset("default");
+  const theme = chartAppearancePreset("theme");
+  assert.deepEqual(APPEARANCE_PRESET_OPTIONS, [
+    { value: "default", label: "Default" },
+    { value: "none", label: "None / Custom" },
+    { value: "theme", label: "Gray" },
+  ]);
+  assert.equal(standard.canvas.appearancePreset, "default");
+  assert.equal(standard.canvas.backgroundColor, "#09090b");
+  assert.equal(standard.canvas.gridLinesMode, "vertAndHorz");
+  assert.equal(standard.symbol.bodyUpColor, "#089981");
+  assert.equal(standard.symbol.bodyDownColor, "#f23645");
+  assert.equal(standard.position.profitColor, "#089981");
+  assert.equal(standard.position.stopColor, "#f23645");
+  assert.equal(standard.statusLine.showBackground, true);
+  assert.equal(standard.statusLine.showVolume, true);
+  assert.equal(chartAppearancePreset("dark"), null);
+  assert.equal(theme.theme, undefined);
+  assert.equal(theme.canvas.backgroundColor, "#c2baae");
+  assert.equal(theme.canvas.gridLinesMode, "none");
+  assert.equal(theme.canvas.scalesTextColor, "#0f0f0f");
+  assert.equal(theme.canvas.scalesFontSize, "12");
+  assert.equal(theme.canvas.crosshairColor, "#9c9c9c");
+  assert.equal(theme.canvas.marginBottom, 8);
+  assert.equal(theme.symbol.bodyUpColor, "#b2b5be");
+  assert.equal(theme.symbol.bodyDownColor, "#434651");
+  assert.equal(theme.symbol.bordersUpColor, "#000000");
+  assert.equal(theme.symbol.wickDownColor, "#000000");
+  assert.equal(theme.symbol.ethBackground, undefined);
+  assert.equal(theme.position.profitColor, "#376b89");
+  assert.equal(theme.position.stopColor, "#5e6977");
+  assert.equal(theme.position.showPriceLabels, true);
+  assert.equal(theme.scales.symbolLabelLineFollowBodyColors, true);
+  assert.equal(theme.statusLine.showBackground, false);
+  assert.equal(theme.statusLine.useChartTextColor, true);
+  assert.equal(theme.statusLine.showVolume, false);
+  assert.deepEqual(Object.keys(theme.canvas).sort(), [
+    "appearancePreset",
+    "backgroundColor",
+    "backgroundType",
+    "crosshairColor",
+    "gridLinesMode",
+    "marginBottom",
+    "marginRight",
+    "marginTop",
+    "scalesFontSize",
+    "scalesLineColor",
+    "scalesTextColor",
+    "watermarkColor",
+  ]);
 
   const settings = createChartSettings();
+  assert.equal(settings.get().symbol.ethBackground, "rgba(41, 98, 255, 0.08)");
   settings.replace({ canvas: { attributionLogo: true } });
   assert.equal(settings.get().canvas.attributionLogo, false);
   assert.equal(settings.get().scales.bidLabelValue, false);
@@ -315,12 +461,7 @@ test("appearance presets include trader-friendly gray and never enable attributi
   assert.equal(settings.get().scales.askLabelValue, false);
 });
 
-test("dark appearance uses Auren's neutral palette", () => {
-  const dark = chartAppearancePreset("dark");
-  assert.equal(dark.theme, "dark");
-  assert.equal(dark.canvas.backgroundColor, "#09090b");
-  assert.equal(dark.canvas.scalesTextColor, "#a1a1aa");
-
+test("application theme fallback remains independent from chart appearance", () => {
   assert.deepEqual(chartThemeFallback("dark"), {
     bg: "#09090b",
     text: "#a1a1aa",

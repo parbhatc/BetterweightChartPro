@@ -47,6 +47,50 @@ export function initPrimaryChart(ctx) {
   }
   ctx.maintainLockedRatio = maintainLockedRatio;
 
+  const priceAxisSideAt = (clientX) => {
+    const rect = ctx.el.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const rightWidth = chart.priceScale("right").width();
+    const leftWidth = chart.priceScale("left").width();
+    if (rightWidth > 0 && x >= rect.width - rightWidth) return "right";
+    if (leftWidth > 0 && x <= leftWidth) return "left";
+    return null;
+  };
+
+  let lockedPriceAxisDrag = false;
+  let lockedPriceAxisDragFrame = 0;
+  const syncLockedPriceAxisDrag = () => {
+    lockedPriceAxisDragFrame = 0;
+    const target = lockedRatioTarget();
+    if (target == null) return;
+    enforcePriceBarRatioOnPriceZoom(chart, series, target);
+  };
+  ctx.el.addEventListener("pointerdown", (ev) => {
+    lockedPriceAxisDrag = ev.button === 0
+      && priceAxisSideAt(ev.clientX) != null
+      && lockedRatioTarget() != null;
+  });
+  ctx.el.addEventListener("pointermove", () => {
+    if (!lockedPriceAxisDrag || lockedPriceAxisDragFrame) return;
+    lockedPriceAxisDragFrame = requestAnimationFrame(syncLockedPriceAxisDrag);
+  });
+  const endLockedPriceAxisDrag = () => {
+    lockedPriceAxisDrag = false;
+    if (lockedPriceAxisDragFrame) cancelAnimationFrame(lockedPriceAxisDragFrame);
+    lockedPriceAxisDragFrame = 0;
+  };
+  ctx.el.addEventListener("pointerup", endLockedPriceAxisDrag);
+  ctx.el.addEventListener("pointercancel", endLockedPriceAxisDrag);
+
+  if (typeof ResizeObserver !== "undefined") {
+    ctx.ratioResizeObserver?.disconnect?.();
+    ctx.ratioResizeObserver = new ResizeObserver(() => {
+      if (lockedRatioTarget() == null) return;
+      requestAnimationFrame(maintainLockedRatio);
+    });
+    ctx.ratioResizeObserver.observe(ctx.el);
+  }
+
   if (ctx.debugOn) ctx.debugHud = ensureDebugHud();
   ctx.panFps = createPanFpsMonitor({
     onSample: (stats) => {
@@ -62,13 +106,7 @@ export function initPrimaryChart(ctx) {
   ctx.el.addEventListener(
     "wheel",
     (ev) => {
-      const rect = ctx.el.getBoundingClientRect();
-      const x = ev.clientX - rect.left;
-      const rw = chart.priceScale("right").width();
-      const lw = chart.priceScale("left").width();
-      const onRight = rw > 0 && x >= rect.width - rw;
-      const onLeft = lw > 0 && x <= lw;
-      if (!onRight && !onLeft) return;
+      if (priceAxisSideAt(ev.clientX) == null) return;
       const target = lockedRatioTarget();
       if (target == null) return;
       chartDebugThrottle(

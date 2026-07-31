@@ -105,7 +105,35 @@ function rangeText(range, mode, tickSize, symbolInfo) {
     return `${(range / Math.max(pipSize, Number.EPSILON)).toFixed(1)} pips`;
   }
   const currency = symbolInfo?.currency_code ?? symbolInfo?.currencyCode ?? "";
-  return `${formatSymbolPrice(range, symbolInfo)}${currency ? ` ${currency}` : ""}`;
+  return `${po3PriceText(range, symbolInfo)}${currency ? ` ${currency}` : ""}`;
+}
+
+function po3PriceText(price, symbolInfo) {
+  return formatSymbolPrice(price, symbolInfo)
+    .replace(/(\.\d*?[1-9])0+$/, "$1")
+    .replace(/\.0+$/, "");
+}
+
+function closeAtUnix(bar, timeframe) {
+  const tfSec = resolutionSec(timeframe);
+  if (!tfSec || !Number.isFinite(Number(bar?.time))) return null;
+  return Number(bar.time) + tfSec;
+}
+
+function closeTimeText(closeAt, ctx) {
+  if (!Number.isFinite(closeAt)) return "";
+  const timeZone = String(ctx.chartTimeZone || ctx.symbolInfo?.timezone || "Etc/UTC");
+  try {
+    const value = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(closeAt * 1000));
+    return `Closes: ${value}`;
+  } catch {
+    return "";
+  }
 }
 
 function labelItem(time, price, text, color, fontSize) {
@@ -200,9 +228,14 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
         { id: "left", label: "Left" },
         { id: "right", label: "Right" },
       ], { section: "PO3 Info Table" }),
+      createSelect("closeTimeMode", "Close time", "exact", [
+        { id: "exact", label: "Exact time" },
+        { id: "countdown", label: "Countdown" },
+        { id: "off", label: "Off" },
+      ], { section: "PO3 Info Table" }),
       inlinePair(
         "PO3 Info Table",
-        createColor("infoBgColor", "Label", { color: COLORS.infoBg, opacity: 85 }, { store: "style" }),
+        createColor("infoBgColor", "Label", { color: COLORS.infoBg, opacity: 100 }, { store: "style" }),
         createColor("infoTextColor", "Text", { color: COLORS.infoText, opacity: 100 }, { store: "style" }),
       ),
     ]);
@@ -231,7 +264,7 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
       priceTextColor: style.priceTextColor ?? COLORS.priceText,
       priceTextColorOpacity: style.priceTextColorOpacity ?? 100,
       infoBgColor: style.infoBgColor ?? COLORS.infoBg,
-      infoBgColorOpacity: style.infoBgColorOpacity ?? 85,
+      infoBgColorOpacity: style.infoBgColorOpacity ?? 100,
       infoTextColor: style.infoTextColor ?? COLORS.infoText,
       infoTextColorOpacity: style.infoTextColorOpacity ?? 100,
     };
@@ -307,8 +340,6 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
     const bodyStart = lastChartTime + gapBars * chartBarSec;
     const bodyEnd = bodyStart + bodyWidthBars * chartBarSec;
     const wickCenter = bodyStart + (bodyWidthBars / 2) * chartBarSec;
-    const wickStart = wickCenter - 0.25 * chartBarSec;
-    const wickEnd = wickCenter + 0.25 * chartBarSec;
     const labelTime = bodyEnd + chartBarSec;
     const range = Math.max(Number(bar.high) - Number(bar.low), Number.EPSILON);
     const tickSize = tickSizeFromSymbol(ctx.symbolInfo);
@@ -325,7 +356,7 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
     const openLineColor = styleColorWithOpacity(style, "openLineColor", COLORS.projection, 50);
     const highLowLineColor = styleColorWithOpacity(style, "highLowLineColor", COLORS.projection, 50);
     const priceTextColor = styleColorWithOpacity(style, "priceTextColor", COLORS.priceText, 100);
-    const infoBgColor = styleColorWithOpacity(style, "infoBgColor", COLORS.infoBg, 85);
+    const infoBgColor = styleColorWithOpacity(style, "infoBgColor", COLORS.infoBg, 100);
     const infoTextColor = styleColorWithOpacity(style, "infoTextColor", COLORS.infoText, 100);
     const projectionStart = Number(bar.chartTime ?? bar.time);
 
@@ -357,22 +388,15 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
       }
     }
 
-    if (Number(bar.high) > bodyTop) {
+    if (Number(bar.high) > bodyTop || Number(bar.low) < bodyBottom) {
       items.push({
-        timeStart: wickStart,
-        timeEnd: wickEnd,
+        kind: "vertical-line",
+        timeStart: wickCenter,
+        timeEnd: wickCenter,
         priceTop: Number(bar.high),
-        priceBottom: bodyTop,
-        fillColor: wickColor,
-      });
-    }
-    if (Number(bar.low) < bodyBottom) {
-      items.push({
-        timeStart: wickStart,
-        timeEnd: wickEnd,
-        priceTop: bodyBottom,
         priceBottom: Number(bar.low),
-        fillColor: wickColor,
+        lineColor: wickColor,
+        lineWidth: 1,
       });
     }
     items.push({
@@ -387,7 +411,7 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
 
     if (inputs.showOhlc !== false) {
       const fontSize = PRICE_TEXT_SIZES[inputs.priceTextSize] ?? PRICE_TEXT_SIZES.small;
-      const format = (price) => formatSymbolPrice(price, ctx.symbolInfo);
+      const format = (price) => po3PriceText(price, ctx.symbolInfo);
       items.push(
         labelItem(labelTime, Number(bar.high), format(Number(bar.high)), priceTextColor, fontSize),
         labelItem(labelTime, Number(bar.close), format(Number(bar.close)), priceTextColor, fontSize),
@@ -398,22 +422,30 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
 
     if (inputs.rangeMode !== "off") {
       const infoOnRight = inputs.infoHorizontal !== "left";
-      const infoStart = infoOnRight
-        ? lastChartTime - 15 * chartBarSec
-        : lastChartTime - 70 * chartBarSec;
-      const infoEnd = infoStart + 13 * chartBarSec;
       const vertical = inputs.infoVertical ?? "middle";
-      const center = vertical === "top"
-        ? Number(bar.high) + range * 0.12
-        : vertical === "bottom"
-          ? Number(bar.low) - range * 0.12
-          : (Number(bar.high) + Number(bar.low)) / 2;
-      const halfHeight = Math.max(tickSize * 2, range * 0.025);
       const tfLabel = resolutionShortLabel(inputs.htfTimeframe ?? "240").toUpperCase();
+      const closeMode = inputs.closeTimeMode ?? (inputs.showCloseTime === false ? "off" : "exact");
+      const closeAt = closeAtUnix(bar, inputs.htfTimeframe ?? "240");
+      const closeRow = closeMode === "countdown" && closeAt != null
+        ? { label: "", fontWeight: 400, countdownTo: closeAt }
+        : closeMode === "exact" && closeAt != null
+          ? { label: closeTimeText(closeAt, ctx), fontWeight: 400 }
+          : null;
+      const rows = [
+        { label: `${tfLabel} CANDLE PO3\u00b0`, fontWeight: 600 },
+        { label: `Range: ${rangeText(range, inputs.rangeMode, tickSize, ctx.symbolInfo)}`, fontWeight: 400 },
+        ...(closeRow ? [closeRow] : []),
+      ];
       const tableBase = {
+        kind: "screen-box",
         zOrder: "top",
-        timeStart: infoStart,
-        timeEnd: infoEnd,
+        screenHorizontal: infoOnRight ? "right" : "left",
+        screenVertical: vertical,
+        screenWidth: 94,
+        screenHeight: 20,
+        screenRows: rows.length,
+        screenMarginX: 0,
+        screenMarginY: 12,
         borderColor: infoTextColor,
         borderWidth: 1,
         showLabel: true,
@@ -421,24 +453,14 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
         textColor: infoTextColor,
         fontSize: 10,
       };
-      items.push(
-        {
+      items.push(...rows.map((row, screenRow) => ({
           ...tableBase,
-          priceTop: center + halfHeight,
-          priceBottom: center,
-          fillColor: "#f5f5f5",
-          label: `${tfLabel} CANDLE PO3\u00b0`,
-          fontWeight: 600,
-        },
-        {
-          ...tableBase,
-          priceTop: center,
-          priceBottom: center - halfHeight,
+          screenRow,
           fillColor: infoBgColor,
-          label: `Range: ${rangeText(range, inputs.rangeMode, tickSize, ctx.symbolInfo)}`,
-          fontWeight: 400,
-        },
-      );
+          label: row.label,
+          fontWeight: row.fontWeight,
+          ...(row.countdownTo != null ? { countdownTo: row.countdownTo } : {}),
+        })));
     }
 
     return items;

@@ -30,6 +30,18 @@ test("CISD is registered as a standalone indicator", () => {
   );
 });
 
+test("returned style defaults populate distinct bullish and bearish colors", () => {
+  const cisd = CisdIndicator.createInstance(0);
+  assert.equal(cisd.style.bullColor, "#089981");
+  assert.equal(cisd.style.bearColor, "#f23645");
+  assert.equal(cisd.style.bullColorOpacity, 100);
+  assert.equal(cisd.style.bearColorOpacity, 100);
+
+  const structure = MarketStructureIndicator.createInstance(0);
+  assert.equal(structure.style.bullBosColor, "#089981");
+  assert.equal(structure.style.bearBosColor, "#f23645");
+});
+
 test("bullish CISD closes above the first open of a minimum-length bearish run", () => {
   const bars = [
     bar(0, 10, 9),

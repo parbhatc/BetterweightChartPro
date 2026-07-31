@@ -1,4 +1,6 @@
 import { finalizeMeasureDrawing } from "../../tools/measure/index.js";
+import { positionGeometry } from "../../types/position/index.js";
+import { applyColorOpacity } from "../../../ui/color/picker.js";
 import { renderDrawing } from "../renderers/index.js";
 import { DrawingPriceLinesSync } from "../priceLines/index.js";
 import { subscribePrimitiveViewportRefresh } from "../../../primitives/viewportRefresh.js";
@@ -29,6 +31,7 @@ export class UserDrawingsPrimitive {
     /** @type {() => { bars: { time: number }[], barSec: number }} */
     this._getContext = () => ({ bars: [], barSec: 60 });
     this._paneView = new DrawingsPaneView(this);
+    this._priceAxisPaneView = new DrawingsPriceAxisPaneView(this);
     this._unsub = null;
     this._priceLines = new DrawingPriceLinesSync();
   }
@@ -138,6 +141,38 @@ export class UserDrawingsPrimitive {
     return [this._paneView];
   }
 
+  priceAxisPaneViews() {
+    return [this._priceAxisPaneView];
+  }
+
+  positionAxisBands() {
+    if (this._drawingsHidden || !this._series || !this._selectedId) return [];
+    const bands = [];
+    for (const drawing of this._drawings) {
+      // TradingView paints the extended target/stop tint behind the price
+      // scale only as a selection affordance. Idle positions keep their three
+      // price chips, but do not tint the entire axis between those prices.
+      if (drawing.id !== this._selectedId) continue;
+      const geom = positionGeometry(drawing);
+      if (!geom) continue;
+      const entryY = this._series.priceToCoordinate(geom.entryPrice);
+      const targetY = this._series.priceToCoordinate(geom.targetPrice);
+      const stopY = this._series.priceToCoordinate(geom.stopPrice);
+      if (entryY == null || targetY == null || stopY == null) continue;
+      bands.push({
+        from: Math.min(entryY, targetY),
+        to: Math.max(entryY, targetY),
+        color: applyColorOpacity(drawing.profitColor ?? "#089981", drawing.profitOpacity ?? 20),
+      });
+      bands.push({
+        from: Math.min(entryY, stopY),
+        to: Math.max(entryY, stopY),
+        color: applyColorOpacity(drawing.stopColor ?? "#F23645", drawing.stopOpacity ?? 20),
+      });
+    }
+    return bands;
+  }
+
   drawData() {
     const chart = this._chart;
     const series = this._series;
@@ -199,6 +234,42 @@ class DrawingsPaneView {
   }
 }
 
+class DrawingsPriceAxisPaneView {
+  /** @param {UserDrawingsPrimitive} source */
+  constructor(source) {
+    this._source = source;
+  }
+
+  zOrder() {
+    return "bottom";
+  }
+
+  renderer() {
+    return new DrawingsPriceAxisPaneRenderer(this._source);
+  }
+}
+
+class DrawingsPriceAxisPaneRenderer {
+  /** @param {UserDrawingsPrimitive} source */
+  constructor(source) {
+    this._source = source;
+  }
+
+  draw(target) {
+    const bands = this._source.positionAxisBands();
+    if (!bands.length) return;
+    target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+      for (const band of bands) {
+        const top = Math.max(0, Math.round(band.from));
+        const bottom = Math.min(mediaSize.height, Math.round(band.to));
+        if (bottom <= top) continue;
+        ctx.fillStyle = band.color;
+        ctx.fillRect(0, top, mediaSize.width, bottom - top);
+      }
+    });
+  }
+}
+
 class DrawingsPaneRenderer {
   /** @param {UserDrawingsPrimitive} source */
   constructor(source) {
@@ -216,6 +287,7 @@ class DrawingsPaneRenderer {
       selectedId,
       hoveredId,
       regressionGuideDrawingId,
+      chart,
       barSec,
       precision,
       formatPointTime,
@@ -243,6 +315,7 @@ class DrawingsPaneRenderer {
 
       for (const d of items) {
         const isPreview = d.id === "__preview__";
+        const background = chart?.options?.()?.layout?.background ?? {};
         renderDrawing(ctx, d, timeToX, priceToY, right, bottom, {
           isPreview,
           isSelected: !isPreview && d.id === selectedId,
@@ -253,6 +326,8 @@ class DrawingsPaneRenderer {
           precision: precision ?? 2,
           formatPointTime,
           bars,
+          anchorFillColor:
+            background.color ?? background.topColor ?? background.bottomColor ?? "#000000",
         });
       }
     });

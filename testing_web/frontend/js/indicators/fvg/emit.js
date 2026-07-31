@@ -5,6 +5,7 @@ import { barChartTime, fvgAtBar, takeRecentZones, zoneConfirmTime, zoneFromFvgHi
 import { formingSeriesForLayer } from "./layers.js";
 import { passesCorrelatedFilter } from "./zones.js";
 import { debugFvgDrawBox, debugFvgEmitResult } from "./fvgDebug.js";
+import { DEFAULT_FVG_BEAR_COLOR, DEFAULT_FVG_BULL_COLOR } from "./palette.js";
 
 const LABEL_DISTANCE_BARS = 10;
 
@@ -42,6 +43,10 @@ export function emitZoneBox(script, layer, series, zone, opts = {}) {
   }
 
   const isBull = zone.kind === "bull";
+  const layerFills = isIfvg ? null : resolveLayerBoxFills(layer, script.inputs);
+  const directionTextColor = isBull
+    ? (layerFills?.bullText ?? DEFAULT_FVG_BULL_COLOR)
+    : (layerFills?.bearText ?? DEFAULT_FVG_BEAR_COLOR);
   let fillColor;
   let borderColor;
   let borderWidth;
@@ -50,35 +55,35 @@ export function emitZoneBox(script, layer, series, zone, opts = {}) {
 
   if (isIfvg) {
     fillColor = cfg.ifvgColor;
-    borderColor = cfg.ifvgColor;
-    borderWidth = cfg.ifvgColor ? cfg.borderWidth : 0;
+    borderColor = cfg.ifvgBorder;
+    borderWidth = cfg.ifvgBorder ? cfg.borderWidth : 0;
     label = cfg.ifvgLabel;
-    textColor = script.inputs.ifvgBoxColor ?? "#ffff00";
+    textColor = cfg.ifvgTextColor;
   } else if (zone.forming) {
     fillColor = isBull ? cfg.formingBullFill : cfg.formingBearFill;
     borderColor = fillColor;
     borderWidth = fillColor ? cfg.borderWidth : 0;
     label = opts.layerLabel ?? layer.label;
-    textColor = isBull
-      ? (script.inputs.formingBullColor ?? "#00bcd4")
-      : (script.inputs.formingBearColor ?? "#ab47bc");
+    textColor = directionTextColor;
   } else if (zone.partial) {
     fillColor = cfg.partialFill;
     borderColor = cfg.partialFill;
     borderWidth = cfg.partialFill ? cfg.borderWidth : 0;
     label = opts.layerLabel ?? layer.label;
-    textColor = script.inputs.partialCloseColor ?? "#ff9800";
+    textColor = directionTextColor;
   } else {
-    const layerFills = resolveLayerBoxFills(layer, script.inputs);
     fillColor = isBull ? (layerFills?.bullFill ?? cfg.bullFill) : (layerFills?.bearFill ?? cfg.bearFill);
     borderColor = isBull
       ? (layerFills?.bullBorder ?? cfg.bullBorder)
       : (layerFills?.bearBorder ?? cfg.bearBorder);
     borderWidth = borderColor ? cfg.borderWidth : 0;
     label = opts.layerLabel ?? layer.label;
-    textColor = isBull
-      ? (script.inputs.bullBorderColor ?? "#00e676")
-      : (script.inputs.bearBorderColor ?? "#f23645");
+    textColor = directionTextColor;
+  }
+
+  if (!isIfvg && !zone.forming && zone.tapped && cfg.tapBorder) {
+    borderColor = cfg.tapBorder;
+    borderWidth = cfg.borderWidth;
   }
 
   if (!isIfvg) {

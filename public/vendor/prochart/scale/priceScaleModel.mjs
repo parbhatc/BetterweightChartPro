@@ -176,7 +176,10 @@ export class PriceScaleModel {
     const { topPx, innerH, h, bottomPx } = this._innerMetrics();
     const { min, max } = this.priceRange;
     const span = max - min || 1;
-    const target = Math.max(1, Math.floor(innerH / 42) + 1);
+    // TradingView keeps price marks relatively dense (about 30px before the
+    // nice-number rounding pass). A 42px target skipped useful half-steps on
+    // futures charts, producing 100-point gaps where TradingView shows 50.
+    const target = Math.max(1, Math.floor(innerH / 30) + 1);
     const rawStep = span / target;
     const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
     let step = mag;
@@ -191,7 +194,10 @@ export class PriceScaleModel {
       let y = topPx + ((max - v) / span) * innerH;
       if (this.options.invertScale) y = h - y;
       if (y < 4 || y > h - 4) continue;
-      out.push({ y, price });
+      const majorStep = step * 5;
+      const majorMultiple = v / majorStep;
+      const major = Math.abs(majorMultiple - Math.round(majorMultiple)) < 1e-7;
+      out.push({ y, price, major });
     }
     return out;
   }
@@ -210,9 +216,11 @@ export class PriceScaleModel {
     if (this.priceRange) {
       const ticks = tickSnapshot ?? this.ticks();
       for (const t of ticks) {
+        ctx.font = `${t.major ? "600 " : ""}${layout.fontSize}px ${layout.fontFamily}`;
         const w = ctx.measureText(String(fmt(t.price))).width;
         if (w > maxW) maxW = w;
       }
+      ctx.font = `${layout.fontSize}px ${layout.fontFamily}`;
       for (const s of this.pane.seriesFor(this)) {
         if (!s.options.lastValueVisible) continue;
         const last = s.lastValue();

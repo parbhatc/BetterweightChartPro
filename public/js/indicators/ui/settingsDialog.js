@@ -959,11 +959,8 @@ export function createIndicatorSettingsDialog(opts) {
         !Array.isArray(draft.inputs.fvgBoxColorsByTf)
           ? draft.inputs.fvgBoxColorsByTf[tfKey]
           : null;
-      const isChartFill = tfKey === "chart" && role === "fill";
       const swatch = inputsPanel.querySelector(`[data-fvg-box-swatch="${tfKey}|${swatchKind}"]`);
-      const fallbackColor = isChartFill
-        ? (side === "bull" ? "#4caf50" : "#f23645")
-        : (side === "bull" ? "#00897b" : "#880e4f");
+      const fallbackColor = side === "bull" ? "#6e7c65" : "#916966";
       const currentColor = String(
         stored?.[colorKey] ??
         draft.inputs[globalColorKey] ??
@@ -977,7 +974,7 @@ export function createIndicatorSettingsDialog(opts) {
             ? Number(draft.inputs[globalOpacityKey])
             : swatch instanceof HTMLElement && swatch.dataset.opacity != null
               ? Number(swatch.dataset.opacity)
-              : role === "border" ? 50 : isChartFill ? 20 : 15;
+              : role === "border" ? 0 : 20;
       colorPicker.openSwatch(
         fvgBoxColorPick,
         { color: currentColor, opacity: currentOpacity },

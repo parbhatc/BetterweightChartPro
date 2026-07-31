@@ -376,6 +376,11 @@ test("status line rebuilds its retained view after an external loading clear", (
     const firstRoot = main.firstElementChild;
     assert.ok(firstRoot);
     assert.equal(main.innerHTMLWrites, 1);
+    assert.match(
+      main.innerHTML,
+      /status-line__meta[\s\S]*status-line__values/,
+      "instrument metadata should occupy the row above OHLC values",
+    );
 
     options.bar = { open: 101, high: 103, low: 100, close: 102, volume: 600 };
     renderStatusLine(host, options);

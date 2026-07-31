@@ -82,11 +82,10 @@ export function attachPriceLineLabelPrimitive(opts) {
     const lineOptions = {
       id: "symbol",
       price,
-      color: state.color,
+      color: state.lineColor ?? state.color,
       lineVisible,
       axisLabelVisible,
       axisLabelColor: state.color,
-      axisLabelTextColor: "#ffffff",
       axisLabelText: state.priceText ?? "",
       axisSubtitleText,
       title,

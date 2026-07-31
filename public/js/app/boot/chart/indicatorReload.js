@@ -59,3 +59,28 @@ export function startIndicatorReload(ctx, panes) {
     }
   })();
 }
+
+/**
+ * Paint the initial candle viewport before paging the deeper history requested
+ * by studies. This keeps remote-feed latency off the blocking boot path while
+ * retaining the same token-based stale-work protection as timeframe changes.
+ * @param {import("./state.js").BootContext} ctx
+ * @param {object[]} panes
+ * @param {(callback: FrameRequestCallback) => number} [raf]
+ */
+export function scheduleIndicatorReloadAfterPaint(
+  ctx,
+  panes,
+  raf = globalThis.requestAnimationFrame,
+) {
+  const run = () => {
+    void startIndicatorReload(ctx, panes).catch((err) => {
+      console.warn("[BWC] Initial indicator history reload failed:", err);
+    });
+  };
+  if (typeof raf !== "function") {
+    queueMicrotask(run);
+    return;
+  }
+  raf(() => raf(run));
+}

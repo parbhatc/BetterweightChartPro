@@ -90,80 +90,38 @@ export function hitPositionStatsBox(drawing, px, py, timeToX, priceToY, state) {
 export function positionDragUpdate(anchorIndex, startAnchors, point, drawing, precision = 2) {
   const tick = tickSizeForPrecision(precision);
   if (startAnchors.length < 4) {
-    const p0 = startAnchors[0];
-    const p1 = startAnchors[1];
-    if (!p0 || !p1) return { points: startAnchors.slice(0, 2) };
-    startAnchors = positionAnchorPoints({ ...drawing, points: [p0, p1] });
+    startAnchors = positionAnchorPoints(drawing);
   }
-
-  const startPoints = [
-    {
-      time: Math.min(startAnchors[0].time, startAnchors[3].time),
-      price: Math.max(startAnchors[0].price, startAnchors[1].price),
-    },
-    {
-      time: Math.max(startAnchors[1].time, startAnchors[2].time),
-      price: Math.min(startAnchors[3].price, startAnchors[2].price),
-    },
-  ];
-  const startGeom = positionGeometry({ ...drawing, points: startPoints });
-  if (!startGeom) return { points: drawing.points.map((p) => ({ ...p })) };
-
   const isLong = drawing.type === "long-position";
-  const entryPrice = startGeom.entryPrice;
-  const nextAnchors = startAnchors.map((a, i) => (i === anchorIndex ? point : a));
-  const topLeft = nextAnchors[0];
-  const topRight = nextAnchors[1];
-  const bottomRight = nextAnchors[2];
-  const bottomLeft = nextAnchors[3];
-  if (!topLeft || !topRight || !bottomRight || !bottomLeft) {
+  const [targetAnchor, entryAnchor, widthAnchor, stopAnchor] = startAnchors;
+  if (!targetAnchor || !entryAnchor || !widthAnchor || !stopAnchor) {
     return { points: drawing.points.map((p) => ({ ...p })) };
   }
+  const tStart = entryAnchor.time;
+  let tEnd = widthAnchor.time;
+  let entryPrice = entryAnchor.price;
+  let targetPrice = targetAnchor.price;
+  let stopPrice = stopAnchor.price;
+  const reward = Math.abs(targetPrice - entryPrice);
+  const risk = Math.abs(entryPrice - stopPrice);
 
-  const tStart = Math.min(topLeft.time, bottomLeft.time);
-  const tEnd = Math.max(topRight.time, bottomRight.time);
-
-  if (anchorIndex === 4 || anchorIndex === 5) {
+  if (anchorIndex === 0) {
+    targetPrice = clampPositionLevelPrice(point.price, entryPrice, isLong, "target", tick);
+  } else if (anchorIndex === 1) {
     const newEntry = point.price;
-    const targetPrice = isLong ? newEntry + startGeom.reward : newEntry - startGeom.reward;
-    const stopPrice = isLong ? newEntry - startGeom.risk : newEntry + startGeom.risk;
-    return {
-      points: [
-        { time: tStart, price: isLong ? targetPrice : stopPrice },
-        { time: tEnd, price: isLong ? stopPrice : targetPrice },
-      ],
-      positionEntryPrice: newEntry,
-    };
-  }
-
-  if (anchorIndex === 0 || anchorIndex === 1) {
-    const newTarget = clampPositionLevelPrice(point.price, entryPrice, isLong, "target", tick);
-    const stopPrice = startGeom.stopPrice;
-    return {
-      points: [
-        { time: tStart, price: isLong ? newTarget : stopPrice },
-        { time: tEnd, price: isLong ? stopPrice : newTarget },
-      ],
-      positionEntryPrice: entryPrice,
-    };
-  }
-
-  if (anchorIndex === 2 || anchorIndex === 3) {
-    const newStop = clampPositionLevelPrice(point.price, entryPrice, isLong, "stop", tick);
-    const targetPrice = startGeom.targetPrice;
-    return {
-      points: [
-        { time: tStart, price: isLong ? targetPrice : newStop },
-        { time: tEnd, price: isLong ? newStop : targetPrice },
-      ],
-      positionEntryPrice: entryPrice,
-    };
+    entryPrice = newEntry;
+    targetPrice = isLong ? newEntry + reward : newEntry - reward;
+    stopPrice = isLong ? newEntry - risk : newEntry + risk;
+  } else if (anchorIndex === 2) {
+    tEnd = Math.max(tStart + 1, point.time);
+  } else if (anchorIndex === 3) {
+    stopPrice = clampPositionLevelPrice(point.price, entryPrice, isLong, "stop", tick);
   }
 
   return {
     points: [
-      { time: tStart, price: isLong ? startGeom.targetPrice : startGeom.stopPrice },
-      { time: tEnd, price: isLong ? startGeom.stopPrice : startGeom.targetPrice },
+      { time: tStart, price: isLong ? targetPrice : stopPrice },
+      { time: tEnd, price: isLong ? stopPrice : targetPrice },
     ],
     positionEntryPrice: entryPrice,
   };

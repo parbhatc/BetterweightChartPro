@@ -43,9 +43,24 @@
   border-color: var(--status-line-border-color);
 }
 
+.status-line:not(.status-line--bg) .study-legend-toggler {
+  border-color: transparent;
+  background: color-mix(
+    in srgb,
+    var(--status-line-bg, var(--tv-bg)) 30%,
+    transparent
+  );
+  backdrop-filter: blur(6px);
+}
+
 .study-legend-toggler:hover {
   color: var(--tv-text);
   background: color-mix(in srgb, var(--tv-surface-hover) 75%, transparent);
+}
+
+.status-line:not(.status-line--bg) .study-legend-toggler:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--tv-text) 10%, transparent);
 }
 
 .study-legend-toggler__arrow,

@@ -2,6 +2,7 @@ import { applyColorOpacity } from "/js/ui/color/picker.js";
 import { normalizeResolutionId, resolutionDisplayTitle } from "/js/chart/resolutionFormat.js";
 import { fvgExtendTfKey } from "./fvgExtendBoxesPanel.js";
 import { resolveFvgTimeframeRows } from "./fvgTimeframesPanel.js";
+import { defaultFvgPalette, migrateLegacyFvgSetting } from "../fvg/palette.js";
 
 /** @param {string} timeframe */
 export function fvgBoxColorTfKey(timeframe) {
@@ -10,14 +11,8 @@ export function fvgBoxColorTfKey(timeframe) {
 
 /** @param {object} inputs */
 function defaultGlobalBoxColors(inputs, tfKey) {
-  const palettes = {
-    chart: { bull: "#4caf50", bear: "#f23645", fillOpacity: 20 },
-    "15": { bull: "#00897b", bear: "#880e4f", fillOpacity: 15 },
-    "60": { bull: "#00bcd4", bear: "#e53935", fillOpacity: 15 },
-    "240": { bull: "#2962ff", bear: "#ff6d00", fillOpacity: 15 },
-  };
-  const palette = palettes[tfKey] ?? palettes["15"];
-  return {
+  const palette = defaultFvgPalette();
+  return migrateLegacyFvgColors({
     bullColor: String(inputs.bullBoxColor ?? palette.bull),
     bullOpacity:
       inputs.bullBoxColorOpacity !== undefined && inputs.bullBoxColorOpacity !== null
@@ -29,9 +24,43 @@ function defaultGlobalBoxColors(inputs, tfKey) {
         ? Number(inputs.bearBoxColorOpacity)
         : palette.fillOpacity,
     bullBorderColor: String(inputs.bullBorderColor ?? palette.bull),
-    bullBorderOpacity: inputs.bullBorderColorOpacity != null ? Number(inputs.bullBorderColorOpacity) : 50,
+    bullBorderOpacity:
+      inputs.bullBorderColorOpacity != null
+        ? Number(inputs.bullBorderColorOpacity)
+        : palette.borderOpacity,
     bearBorderColor: String(inputs.bearBorderColor ?? palette.bear),
-    bearBorderOpacity: inputs.bearBorderColorOpacity != null ? Number(inputs.bearBorderColorOpacity) : 50,
+    bearBorderOpacity:
+      inputs.bearBorderColorOpacity != null
+        ? Number(inputs.bearBorderColorOpacity)
+        : palette.borderOpacity,
+  });
+}
+
+/** @param {object} colors */
+function migrateLegacyFvgColors(colors) {
+  const bullFill = migrateLegacyFvgSetting("bull", "fill", colors.bullColor, colors.bullOpacity);
+  const bearFill = migrateLegacyFvgSetting("bear", "fill", colors.bearColor, colors.bearOpacity);
+  const bullBorder = migrateLegacyFvgSetting(
+    "bull",
+    "border",
+    colors.bullBorderColor,
+    colors.bullBorderOpacity,
+  );
+  const bearBorder = migrateLegacyFvgSetting(
+    "bear",
+    "border",
+    colors.bearBorderColor,
+    colors.bearBorderOpacity,
+  );
+  return {
+    bullColor: bullFill.color,
+    bullOpacity: bullFill.opacity,
+    bearColor: bearFill.color,
+    bearOpacity: bearFill.opacity,
+    bullBorderColor: bullBorder.color,
+    bullBorderOpacity: bullBorder.opacity,
+    bearBorderColor: bearBorder.color,
+    bearBorderOpacity: bearBorder.opacity,
   };
 }
 
@@ -42,7 +71,7 @@ export function resolveFvgBoxColorsForTf(inputs, tfKey) {
   const custom =
     stored && typeof stored === "object" && !Array.isArray(stored) ? stored[tfKey] : null;
   if (!custom || typeof custom !== "object") return { ...defaults };
-  return {
+  return migrateLegacyFvgColors({
     bullColor: String(custom.bullColor ?? defaults.bullColor),
     bullOpacity:
       custom.bullOpacity !== undefined && custom.bullOpacity !== null
@@ -61,7 +90,7 @@ export function resolveFvgBoxColorsForTf(inputs, tfKey) {
     bearBorderOpacity: custom.bearBorderOpacity != null
       ? Number(custom.bearBorderOpacity)
       : defaults.bearBorderOpacity,
-  };
+  });
 }
 
 /**
@@ -76,6 +105,8 @@ export function resolveLayerBoxFills(layer, inputs) {
     bearFill: applyColorOpacity(colors.bearColor, colors.bearOpacity),
     bullBorder: applyColorOpacity(colors.bullBorderColor, colors.bullBorderOpacity),
     bearBorder: applyColorOpacity(colors.bearBorderColor, colors.bearBorderOpacity),
+    bullText: colors.bullColor,
+    bearText: colors.bearColor,
   };
 }
 

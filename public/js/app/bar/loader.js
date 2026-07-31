@@ -911,9 +911,6 @@ export function createBarLoader(opts) {
         clearResolvedPaneEmptyState(pane, syncPaneEmptyState);
       }
       chartDebug("data", "history loaded", { pane: pane.index, bars: pane.bars.length });
-      if (wasFirstRequest && pane.bars.length && !opts.deferChartRefresh) {
-        await ensureIndicatorChartHistory(pane);
-      }
       return await finishPaneAfterBarsLoaded(pane, loadOpts);
     });
 

@@ -9,6 +9,8 @@ import { PaneApi } from "../public/vendor/prochart/layout/paneApi.mjs";
 import * as renderer from "../public/vendor/prochart/render/renderer.mjs";
 import * as axisRenderer from "../public/vendor/prochart/render/sub/axisRenderer.mjs";
 import * as seriesRenderer from "../public/vendor/prochart/render/sub/seriesRenderer.mjs";
+import { PriceScaleModel } from "../public/vendor/prochart/scale/priceScaleModel.mjs";
+import { contrastTextColor } from "../public/vendor/prochart/core/utils.mjs";
 import { TimeScaleApi } from "../public/vendor/prochart/scale/timeScaleApi.mjs";
 
 test("series option normalization is isolated and remains available from the barrel", () => {
@@ -46,6 +48,102 @@ test("renderer orchestrator preserves legacy utility exports", () => {
   assert.equal(renderer.layoutAxisLabels, axisRenderer.layoutAxisLabels);
   assert.equal(renderer.tickDate, axisRenderer.tickDate);
   assert.equal(renderer.timeTicks, axisRenderer.timeTicks);
+});
+
+test("price scale classifies every fifth mark as a bold major price", () => {
+  const chart = {
+    options: {
+      layout: { fontSize: 12, fontFamily: "sans-serif" },
+      localization: {},
+    },
+    invalidate() {},
+  };
+  const pane = { height: 500, seriesFor: () => [] };
+  const scale = new PriceScaleModel(chart, pane, "right", {
+    scaleMargins: { top: 0, bottom: 0 },
+  });
+  scale.priceRange = { min: 0, max: 100 };
+
+  const ticks = scale.ticks();
+  assert.equal(ticks.find((tick) => tick.price === 50)?.major, true);
+  assert.equal(ticks.find((tick) => tick.price === 40)?.major, false);
+});
+
+test("price scale retains TradingView-style half steps on a futures range", () => {
+  const chart = {
+    options: {
+      layout: { fontSize: 12, fontFamily: "sans-serif" },
+      localization: {},
+    },
+    invalidate() {},
+  };
+  const pane = { height: 612, seriesFor: () => [] };
+  const scale = new PriceScaleModel(chart, pane, "right", {
+    scaleMargins: { top: 0, bottom: 0 },
+  });
+  scale.priceRange = { min: 28000, max: 28800 };
+
+  const prices = scale.ticks().map((tick) => tick.price);
+  assert.ok(prices.includes(28550));
+  assert.ok(prices.includes(28600));
+});
+
+test("price-axis chips use dark text only for pale label colors", () => {
+  assert.equal(contrastTextColor("#b2b5be"), "#131722");
+  assert.equal(contrastTextColor("#434651"), "#ffffff");
+  assert.equal(contrastTextColor("#376b89"), "#ffffff");
+});
+
+test("candlestick renderer outlines bullish and bearish bodies", () => {
+  const rects = [];
+  const fillStyles = [];
+  const context = {
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    fill() {},
+    stroke() {},
+    fillRect() {},
+    rect(...args) { rects.push(args); },
+  };
+  Object.defineProperty(context, "fillStyle", {
+    set(value) { fillStyles.push(value); },
+  });
+  const series = {
+    type: "Candlestick",
+    whitespace: [false, false],
+    packed: new Float64Array([10, 12, 8, 11, 11, 12, 9, 10]),
+    indices: [0, 1],
+    options: {
+      upColor: "#b2b5be",
+      downColor: "#434651",
+      wickUpColor: "#000000",
+      wickDownColor: "#000000",
+      borderVisible: true,
+      borderUpColor: "#000000",
+      borderDownColor: "#000000",
+    },
+    visibleLocalRange: () => ({ a: 0, b: 1 }),
+  };
+  const model = {
+    dpr: 1.25,
+    timeScale: {
+      barSpacing: 8,
+      visibleLogicalRange: () => ({ from: 0, to: 2 }),
+    },
+  };
+  const pane = {
+    scale: () => ({
+      priceRange: { min: 0, max: 20 },
+      priceToCoordinate: (price) => 100 - price * 5,
+    }),
+  };
+
+  seriesRenderer.renderSeries2d(model, context, pane, series, 100);
+
+  assert.ok(fillStyles.includes("#000000"));
+  assert.ok(rects.length > 2);
+  assert.ok(rects.flat().every((value) => Math.abs(value * 1.25 - Math.round(value * 1.25)) < 1e-9));
 });
 
 test("TimeScaleApi delegates range and navigation calculations to its model", () => {

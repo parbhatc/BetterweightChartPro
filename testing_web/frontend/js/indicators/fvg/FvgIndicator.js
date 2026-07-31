@@ -48,6 +48,9 @@ function formingLiveKey(instance, ctx) {
       parts.push(hit ? `fvg:${hit.kind}|${hit.top}|${hit.bottom}` : "fvg:none");
     }
   }
+  if (inputs.showTapBorder === true) {
+    parts.push(`tap:${b.high}|${b.low}`);
+  }
   const fillType = inputs.filledType === "wick" ? "wick" : "close";
   const liveFill = inputs.deleteOnFill !== false || inputs.showPartial === true;
   if (liveFill) {

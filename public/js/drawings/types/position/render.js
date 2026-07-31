@@ -27,7 +27,8 @@ import { applyColorOpacity } from "../../../ui/color/picker.js";
 
 /**
  * Price-axis labels for long/short position tools.
- * Target/stop labels show only when stats are visible (hover, select, or always on).
+ * Price labels are independent from the hover-only stats. TradingView keeps
+ * target, entry, and stop on the scale whenever the Price labels option is on.
  * @param {import("../../types.js").UserDrawing} drawing
  * @param {{ isSelected?: boolean, isHovered?: boolean }} [state]
  * @returns {{ id: string, price: number, color: string }[]}
@@ -36,12 +37,13 @@ export function positionPriceAxisLabels(drawing, state = {}) {
   if (drawing.showPriceLabels === false) return [];
   const geom = positionGeometry(drawing);
   if (!geom) return [];
-  const labels = [{ id: "entry", price: geom.entryPrice, color: TV_ENTRY_PILL }];
-  if (shouldShowPositionStats(drawing, state)) {
-    labels.unshift({ id: "target", price: geom.targetPrice, color: TV_PROFIT_PILL });
-    labels.push({ id: "stop", price: geom.stopPrice, color: TV_STOP_PILL });
-  }
-  return labels;
+  const profitPill = drawing.profitColor ?? TV_PROFIT_PILL;
+  const stopPill = drawing.stopColor ?? TV_STOP_PILL;
+  return [
+    { id: "target", price: geom.targetPrice, color: profitPill },
+    { id: "entry", price: geom.entryPrice, color: TV_ENTRY_PILL },
+    { id: "stop", price: geom.stopPrice, color: stopPill },
+  ];
 }
 
 /**
@@ -88,8 +90,6 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
   if (x1 == null || x2 == null || yEntry == null || yTarget == null || yStop == null) return;
 
   const { left, width } = positionScreenBounds(geom, x1, x2);
-  const top = Math.min(yTarget, yStop);
-  const bottom = Math.max(yTarget, yStop);
   const profitColor = applyColorOpacity(
     drawing.profitColor ?? TV_PROFIT_FILL,
     drawing.profitOpacity ?? 100,
@@ -108,6 +108,8 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
   const values = computePositionStatValues(drawing, precision, state.bars);
   const cx = left + width / 2;
   const showStats = shouldShowPositionStats(drawing, state);
+  const profitPill = drawing.profitColor ?? TV_PROFIT_PILL;
+  const stopPill = drawing.stopColor ?? TV_STOP_PILL;
 
   ctx.save();
 
@@ -122,7 +124,11 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
   );
   ctx.lineWidth = drawing.lineWidth ?? 1;
   ctx.setLineDash(drawing.lineStyle === 1 ? [2, 3] : drawing.lineStyle === 2 ? [6, 4] : []);
-  ctx.strokeRect(left, top, width, bottom - top);
+  const alignedEntryY = Math.round(yEntry) + 0.5;
+  ctx.beginPath();
+  ctx.moveTo(left, alignedEntryY);
+  ctx.lineTo(left + width, alignedEntryY);
+  ctx.stroke();
   ctx.setLineDash([]);
 
   if (showStats) {
@@ -138,12 +144,12 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
     if (targetLabel) {
       const anchor = geom.isLong ? "bottom" : "top";
       const edgeY = geom.isLong ? profitFarY - PILL_OUTSIDE_GAP : profitFarY + PILL_OUTSIDE_GAP;
-      drawEdgePill(ctx, targetLabel, cx, edgeY, TV_PROFIT_PILL, anchor, fontSize, textColor);
+      drawEdgePill(ctx, targetLabel, cx, edgeY, profitPill, anchor, fontSize, textColor);
     }
     if (stopLabel) {
       const anchor = geom.isLong ? "top" : "bottom";
       const edgeY = geom.isLong ? stopFarY + PILL_OUTSIDE_GAP : stopFarY - PILL_OUTSIDE_GAP;
-      drawEdgePill(ctx, stopLabel, cx, edgeY, TV_STOP_PILL, anchor, fontSize, textColor);
+      drawEdgePill(ctx, stopLabel, cx, edgeY, stopPill, anchor, fontSize, textColor);
     }
 
     const centerLines = drawing.compactStatsMode
@@ -159,7 +165,7 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
     );
     if (layout) {
       const plRaw = values.openClosedPLRaw ?? 0;
-      const badgeBg = plRaw > 0 ? TV_PROFIT_PILL : plRaw < 0 ? TV_STOP_PILL : "rgba(55, 58, 68, 0.96)";
+      const badgeBg = plRaw > 0 ? profitPill : plRaw < 0 ? stopPill : "rgba(55, 58, 68, 0.96)";
       drawPillBlock(ctx, layout, badgeBg, fontSize, {
         textColor,
         borderColor: textColor,

@@ -146,6 +146,7 @@ export function renderSeries2d(model, context, pane, series, _plotWidth) {
       xOf,
       barSpacing,
       options,
+      model.dpr ?? globalThis.devicePixelRatio ?? 1,
     );
     return;
   }
@@ -174,6 +175,7 @@ function renderBarsOrCandles(
   xOf,
   barSpacing,
   options,
+  dpr = 1,
 ) {
   const bodyWidth = Math.max(
     1,
@@ -191,8 +193,8 @@ function renderBarsOrCandles(
       : options.wickDownColor || color;
 
     if (options.wickVisible !== false && series.type === "Candlestick") {
-      context.strokeStyle = wickColor;
-      context.lineWidth = Math.max(1, Math.floor(barSpacing / 10));
+      const wickWidthPx = Math.max(1, Math.floor((barSpacing * dpr) / 10));
+      context.fillStyle = wickColor;
       context.beginPath();
       for (let index = range.a; index <= range.b; index += 1) {
         if (series.whitespace[index]) continue;
@@ -202,13 +204,19 @@ function renderBarsOrCandles(
         );
         if (isUp !== up) continue;
 
-        const x = Math.round(xOf(index)) + 0.5;
+        const xPx = Math.round(xOf(index) * dpr);
         const highY = scale.priceToCoordinate(series.packed[index * 4 + 1]);
         const lowY = scale.priceToCoordinate(series.packed[index * 4 + 2]);
-        context.moveTo(x, highY);
-        context.lineTo(x, lowY);
+        const topPx = Math.round(Math.min(highY, lowY) * dpr);
+        const bottomPx = Math.round(Math.max(highY, lowY) * dpr);
+        context.rect(
+          (xPx - Math.floor(wickWidthPx / 2)) / dpr,
+          topPx / dpr,
+          wickWidthPx / dpr,
+          Math.max(1, bottomPx - topPx) / dpr,
+        );
       }
-      context.stroke();
+      context.fill();
     }
 
     context.fillStyle = color;
@@ -254,17 +262,57 @@ function renderBarsOrCandles(
       } else {
         const openY = scale.priceToCoordinate(open);
         const closeY = scale.priceToCoordinate(close);
-        const top = Math.min(openY, closeY);
-        const height = Math.max(1, Math.abs(closeY - openY));
+        const leftPx = Math.round((x - halfWidth) * dpr);
+        const rightPx = Math.max(leftPx + 1, Math.round((x + halfWidth) * dpr));
+        const topPx = Math.round(Math.min(openY, closeY) * dpr);
+        const bottomPx = Math.max(topPx + 1, Math.round(Math.max(openY, closeY) * dpr));
         context.rect(
-          Math.round(x - halfWidth),
-          Math.round(top),
-          Math.max(1, Math.round(bodyWidth)),
-          Math.round(height),
+          leftPx / dpr,
+          topPx / dpr,
+          (rightPx - leftPx) / dpr,
+          (bottomPx - topPx) / dpr,
         );
       }
     }
     context.fill();
+
+    if (series.type === "Candlestick" && options.borderVisible !== false) {
+      const borderColor = up
+        ? options.borderUpColor || color
+        : options.borderDownColor || color;
+      context.fillStyle = borderColor;
+      context.beginPath();
+      for (let index = range.a; index <= range.b; index += 1) {
+        if (series.whitespace[index]) continue;
+        const open = series.packed[index * 4];
+        const close = series.packed[index * 4 + 3];
+        if ((close >= open) !== up) continue;
+
+        const x = xOf(index);
+        const openY = scale.priceToCoordinate(open);
+        const closeY = scale.priceToCoordinate(close);
+        const leftPx = Math.round((x - halfWidth) * dpr);
+        const rightPx = Math.max(leftPx + 1, Math.round((x + halfWidth) * dpr));
+        const topPx = Math.round(Math.min(openY, closeY) * dpr);
+        const bottomPx = Math.max(topPx + 1, Math.round(Math.max(openY, closeY) * dpr));
+        const widthPx = rightPx - leftPx;
+        const heightPx = bottomPx - topPx;
+        if (widthPx <= 2 || heightPx <= 2) {
+          context.rect(leftPx / dpr, topPx / dpr, widthPx / dpr, heightPx / dpr);
+        } else {
+          const px = 1 / dpr;
+          const left = leftPx / dpr;
+          const top = topPx / dpr;
+          const width = widthPx / dpr;
+          const height = heightPx / dpr;
+          context.rect(left, top, width, px);
+          context.rect(left, top + height - px, width, px);
+          context.rect(left, top + px, px, height - 2 * px);
+          context.rect(left + width - px, top + px, px, height - 2 * px);
+        }
+      }
+      context.fill();
+    }
   }
 }
 
@@ -602,6 +650,26 @@ function renderAlternativeCandles(
       );
     } else {
       context.fillRect(left, Math.round(top), width, Math.round(height));
+      if (options.borderVisible !== false) {
+        const borderColor = up
+          ? options.borderUpColor || color
+          : options.borderDownColor || color;
+        context.strokeStyle = borderColor;
+        context.fillStyle = borderColor;
+        context.lineWidth = 1;
+        const roundedTop = Math.round(top);
+        const roundedHeight = Math.max(1, Math.round(height));
+        if (width <= 1 || roundedHeight <= 1) {
+          context.fillRect(left, roundedTop, width, roundedHeight);
+        } else {
+          context.strokeRect(
+            left + 0.5,
+            roundedTop + 0.5,
+            width - 1,
+            roundedHeight - 1,
+          );
+        }
+      }
     }
   }
 }

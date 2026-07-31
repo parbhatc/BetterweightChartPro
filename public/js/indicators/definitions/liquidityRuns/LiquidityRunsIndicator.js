@@ -20,11 +20,15 @@ const COLORS = {
   hrlr: "#f23645",
 };
 
-function confirmedPivots(bars, chartBars, left, right, waitClose) {
+function confirmedPivots(bars, chartBars, left, right, waitClose, liveFormingTime = null) {
   const highs = [];
   const lows = [];
   for (let confirmIndex = left + right; confirmIndex < bars.length; confirmIndex += 1) {
-    if (waitClose && confirmIndex === bars.length - 1 && bars[confirmIndex]?.isForming) continue;
+    const isLiveConfirmation = confirmIndex === bars.length - 1 && (
+      bars[confirmIndex]?.isForming === true ||
+      (liveFormingTime != null && bars[confirmIndex]?.time === liveFormingTime)
+    );
+    if (waitClose && isLiveConfirmation) continue;
     const pivotIndex = pivotBarIndex(confirmIndex, right);
     const time = chartBars[pivotIndex]?.time ?? bars[pivotIndex]?.time;
     if (time == null) continue;
@@ -96,13 +100,6 @@ function stackedRunLines(pivots, bars, highSide, state) {
   const lines = [];
   let run = [];
 
-  const finishRun = () => {
-    if (state.showLrlr && run.length >= state.minimumPivots) {
-      lines.push(lineForPair(run[0], run.at(-1), "LRLR", highSide, state, run.length));
-    }
-    run = [];
-  };
-
   for (let i = 1; i < pivots.length; i += 1) {
     const previous = pivots[i - 1];
     const current = pivots[i];
@@ -114,15 +111,19 @@ function stackedRunLines(pivots, bars, highSide, state) {
     if (lrlr && !blocked) {
       if (!run.length || run.at(-1) !== previous) run = [previous];
       run.push(current);
+      // Preserve every closed-bar milestone. Extending a confirmed ×4 run to
+      // ×5 appends a new line instead of replacing historical output.
+      if (state.showLrlr && run.length >= state.minimumPivots) {
+        lines.push(lineForPair(run[0], current, "LRLR", highSide, state, run.length));
+      }
       continue;
     }
 
-    finishRun();
+    run = [];
     if (!lrlr && state.showHrlr) {
       lines.push(lineForPair(previous, current, "HRLR", highSide, state));
     }
   }
-  finishRun();
   return lines;
 }
 
@@ -210,6 +211,7 @@ class LiquidityRunsIndicator extends BarScriptIndicator {
       left,
       right,
       inputs.waitClose !== false,
+      ctx.formingBar?.time ?? null,
     );
     const collect = (series, highSide) => state.mode === "stacked"
       ? stackedRunLines(series, utcBars, highSide, state)

@@ -97,3 +97,14 @@ export function parseColor(css) {
   colorCache.set(css, c);
   return c;
 }
+
+/**
+ * TradingView-style label foreground for a solid/mostly-solid color chip.
+ * The higher threshold intentionally keeps mid-tone drawing colors on white
+ * while switching pale candle colors to the dark chart foreground.
+ */
+export function contrastTextColor(background) {
+  const [r, g, b] = parseColor(background);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness >= 160 ? "#131722" : "#ffffff";
+}

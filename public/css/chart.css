@@ -18,6 +18,7 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .tv-chart-wrap__stage #chart,
@@ -128,6 +129,10 @@
   border-bottom-right-radius: var(--radius-sm);
 }
 
+.status-line:not(.status-line--bg) .status-line__item {
+  background: transparent;
+}
+
 .status-line:not(.status-line--bg) .status-line__item + .status-line__item {
   margin-top: -1px;
 }
@@ -145,8 +150,10 @@
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
+  gap: 0 6px;
   min-width: 0;
+  min-height: 18px;
+  line-height: 18px;
 }
 
 .status-line__pair--minor .status-line__lbl {
@@ -272,13 +279,16 @@
   gap: var(--space-1) var(--space-2);
   flex-shrink: 0;
   min-width: 0;
+  min-height: 18px;
+  line-height: 18px;
 }
 
 .status-line__flow {
-  display: inline-flex;
+  display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1) var(--space-3);
+  gap: 0 6px;
   min-width: 0;
   max-width: 100%;
 }
@@ -549,6 +559,18 @@
   white-space: pre-line;
   text-align: center;
   line-height: 1.05;
+}
+
+/* TradingView keeps symbol metadata and OHLC on one line while they fit, then
+   moves the complete values group below it in a narrow chart pane. A container
+   query also covers split layouts where the browser itself is still wide. */
+@container (max-width: 768px) {
+  .status-line__flow {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 0;
+  }
 }
 
 [data-prochart-line-end-pulse] {

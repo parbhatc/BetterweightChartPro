@@ -3,7 +3,7 @@ import { plotStyleKeys } from "../schema.js";
 
 export const LINE_STYLES = [LineStyle.Solid, LineStyle.Dotted, LineStyle.Dashed, LineStyle.LargeDashed];
 
-export const MAIN_SCALE_BOTTOM_DEFAULT = 0.12;
+export const MAIN_SCALE_BOTTOM_DEFAULT = 0.04;
 export const MAIN_SCALE_BOTTOM_WITH_VOLUME = 0.26;
 export const VOLUME_OVERLAY_TOP_MARGIN = 0.78;
 export const STUDY_PANE_SCALE_MARGINS = { top: 0.02, bottom: 0.02 };

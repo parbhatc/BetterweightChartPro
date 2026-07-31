@@ -35,6 +35,7 @@ import { attachChartTableBoot } from "./chartTableBoot.js";
 import { attachNewsBoot } from "./newsBoot.js";
 import { attachReplayBoot, restoreReplayAfterLoad } from "./replayBoot.js";
 import { attachQuoteManager } from "../../quotes/manager.js";
+import { scheduleIndicatorReloadAfterPaint } from "./indicatorReload.js";
 import {
   CHART_FEATURES,
   createFeatureFlags,
@@ -275,6 +276,8 @@ export async function bootChart(overrides = {}) {
     const destroyWidget = widget.destroy.bind(widget);
     widget.destroy = () => {
       ctx.chartTypeUi?.destroy?.();
+      ctx.ratioResizeObserver?.disconnect?.();
+      ctx.ratioResizeObserver = null;
       destroyWidget();
     };
     const orderLines = widget.orderLines;
@@ -296,6 +299,7 @@ export async function bootChart(overrides = {}) {
       }
     }
     widget._notifyChartReady?.();
+    scheduleIndicatorReloadAfterPaint(ctx, ctx.getAllChartPanes());
     return widget;
   } finally {
     ctx.loader.hide();

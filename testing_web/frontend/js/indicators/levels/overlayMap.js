@@ -1,7 +1,6 @@
 import { mapUtcTimeToChartTime } from "/js/indicators/math/barTimeMap.js";
 import { buildReleasePlan, resolveNewsLevels } from "/js/news/events.js";
 import { tickSizeFromSymbol } from "/js/indicators/symbol.js";
-import { inputColorStr } from "/js/indicators/styleColor.js";
 import {
   resolveSessionLevels,
   resolveTimeLevels,
@@ -13,6 +12,7 @@ import {
   debugLevelsReplayStep,
   debugLevelsTimeMapping,
 } from "../math/levelsDebug.js";
+import { LEVEL_REFERENCE_PALETTE, migrateLegacyLevelColor } from "./palette.js";
 
 /** @typedef {import("/js/indicators/script/liquidityMatrix.js").LiqLine} LiqLine */
 
@@ -77,16 +77,16 @@ export function buildLevelsEngineOpts(inputs, style, ctx, engine, levelsHtf) {
     preferDatafeedHtf: Boolean(ctx.isReplayLocked?.()),
     replayHostControlled: Boolean(ctx.replayHostControlled),
     mergeConfluence: inputs.mergeConfluence !== false,
-    confHiColor: inputColorStr(inputs.confHiColor, "#9400d3"),
-    confLoColor: inputColorStr(inputs.confLoColor, "#ffaa00"),
+    confHiColor: migrateLegacyLevelColor(inputs.confHiColor, "#9400d3", LEVEL_REFERENCE_PALETTE.confluenceHigh),
+    confLoColor: migrateLegacyLevelColor(inputs.confLoColor, "#ffaa00", LEVEL_REFERENCE_PALETTE.confluenceLow),
     previousDayEnabled: inputs.previousDayEnabled === true,
-    previousDayColor: inputColorStr(inputs.previousDayColor, "#f59e0b"),
+    previousDayColor: migrateLegacyLevelColor(inputs.previousDayColor, "#f59e0b", LEVEL_REFERENCE_PALETTE.previousDay),
     previousWeekEnabled: inputs.previousWeekEnabled === true,
-    previousWeekColor: inputColorStr(inputs.previousWeekColor, "#38bdf8"),
+    previousWeekColor: migrateLegacyLevelColor(inputs.previousWeekColor, "#38bdf8", LEVEL_REFERENCE_PALETTE.previousWeek),
     midpointEnabled: inputs.midpointEnabled === true,
     midpointStartTime: String(inputs.midpointStartTime ?? "18:00"),
     midpointEndTime: String(inputs.midpointEndTime ?? "current"),
-    midpointColor: inputColorStr(inputs.midpointColor, "#a3e635"),
+    midpointColor: migrateLegacyLevelColor(inputs.midpointColor, "#a3e635", LEVEL_REFERENCE_PALETTE.midpoint),
     htfStyles: engine.htfStyles.all(),
     sessionDefs: engine.sessionDefs.all(),
   };

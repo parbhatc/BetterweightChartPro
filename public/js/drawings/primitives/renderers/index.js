@@ -29,7 +29,7 @@ import { renderGannStyleDrawing } from "../../tools/gann/index.js";
 import { renderPatternDrawing, isPatternDrawingType } from "../../tools/pattern/index.js";
 import { renderForecastDrawing, isForecastDrawingType } from "../../tools/forecast/index.js";
 import { getDrawingTypeHandler } from "../../types/handlers.js";
-import { renderPositionDrawing, positionAnchorPoints } from "../../tools/position/barrel.js";
+import { renderPositionDrawing, positionAnchorPoints, positionGeometry } from "../../tools/position/barrel.js";
 import { isRectangleTool, rectangleAnchorPoints } from "../../tools/shape/index.js";
 import { renderMeasureDrawing, isMeasureDrawingType } from "../../tools/measure/index.js";
 import { renderAnnotationDrawing, isAnnotationDrawingType } from "../../tools/annotation/index.js";
@@ -73,7 +73,7 @@ function pt(points, i, timeToX, priceToY) {
  * @param {(p: number) => number | null} priceToY
  * @param {number} right
  * @param {number} bottom
- * @param {{ isPreview?: boolean, isSelected?: boolean, barSec?: number, precision?: number, formatPointTime?: (t: number) => string, bars?: { time: number, close?: number }[] }} state
+ * @param {{ isPreview?: boolean, isSelected?: boolean, barSec?: number, precision?: number, formatPointTime?: (t: number) => string, bars?: { time: number, close?: number }[], anchorFillColor?: string }} state
  */
 export function renderDrawing(ctx, drawing, timeToX, priceToY, right, bottom, state = {}) {
   const isPreview = Boolean(state.isPreview);
@@ -180,6 +180,26 @@ export function renderDrawing(ctx, drawing, timeToX, priceToY, right, bottom, st
 
   if (isAxisLineTool(drawing.type)) {
     maybeDrawTimeAxisLabel(ctx, drawing, timeToX, bottom, color, state);
+  }
+  if (
+    isPositionTool(drawing.type)
+    && state.isSelected
+    && typeof state.formatPointTime === "function"
+  ) {
+    const geom = positionGeometry(drawing);
+    for (const time of geom ? [geom.tStart, geom.tEnd] : []) {
+      const anchor = { time };
+      if (!anchor) continue;
+      const x = timeToX(anchor.time);
+      if (x == null) continue;
+      drawTimeAxisLabel(
+        ctx,
+        x,
+        bottom,
+        state.formatPointTime(anchor.time),
+        ANCHOR_BORDER_COLOR,
+      );
+    }
   }
 
   if (showAnchors) {
@@ -481,12 +501,14 @@ function drawEndpointAnchors(ctx, drawing, timeToX, priceToY, color, lw, isPrevi
       ctx.save();
       ctx.setLineDash([]);
       ctx.beginPath();
-      if (typeof ctx.roundRect === "function") {
-        ctx.roundRect(x - side / 2, y - side / 2, side, side, 3);
+      if (i === 1 && typeof ctx.arc === "function") {
+        ctx.arc(x, y, side / 2, 0, Math.PI * 2);
+      } else if (typeof ctx.roundRect === "function") {
+        ctx.roundRect(x - side / 2, y - side / 2, side, side, 1.5);
       } else {
         ctx.rect(x - side / 2, y - side / 2, side, side);
       }
-      ctx.fillStyle = ANCHOR_FILL_COLOR;
+      ctx.fillStyle = state.anchorFillColor ?? ANCHOR_FILL_COLOR;
       ctx.fill();
       ctx.strokeStyle = ANCHOR_BORDER_COLOR;
       ctx.lineWidth = ANCHOR_BORDER_WIDTH;

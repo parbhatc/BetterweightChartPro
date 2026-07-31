@@ -12,6 +12,7 @@ import { loadShowMobilePlacementBar, saveShowMobilePlacementBar } from "../../..
 import { applyCanvasPresetForTheme, chartAppearancePreset } from "../themes.js";
 import { saveThemePreference } from "../../../ui/theme/store.js";
 import { chartThemeFallback } from "../themes.js";
+import { saveToolDefaults } from "../../../drawings/toolbars/defaults/store.js";
 
 /**
  * @param {import("./state.js").BootContext} ctx
@@ -104,15 +105,28 @@ export function attachSettingsBoot(ctx) {
       ctx.settingsStore.set("canvas", "appearancePreset", "none");
       return;
     }
-    ctx.currentTheme = preset.theme;
-    saveThemePreference(ctx.currentTheme);
-    const colors =
-      ctx.cfg.themes?.[ctx.currentTheme] ??
-      ctx.cfg.themes?.dark ??
-      chartThemeFallback(ctx.currentTheme);
-    document.documentElement.setAttribute("data-theme", ctx.currentTheme);
-    ctx.applyTheme(colors);
-    ctx.settingsStore.merge({ canvas: preset.canvas, symbol: preset.symbol });
+    ctx.settingsStore.merge({
+      canvas: preset.canvas,
+      symbol: preset.symbol,
+      scales: preset.scales,
+      statusLine: preset.statusLine,
+    });
+    if (preset.position) {
+      saveToolDefaults("long-position", preset.position);
+      saveToolDefaults("short-position", preset.position);
+    }
+  }
+
+  // A persisted chart preset must restore its drawing-tool palette too. The
+  // chart settings and drawing defaults live in separate stores, so relying on
+  // the preset-menu click alone makes the first position after a reload fall
+  // back to green/red even though Gray is still visibly selected.
+  const initialAppearancePreset = chartAppearancePreset(
+    ctx.settingsStore.get().canvas?.appearancePreset,
+  );
+  if (initialAppearancePreset?.position) {
+    saveToolDefaults("long-position", initialAppearancePreset.position);
+    saveToolDefaults("short-position", initialAppearancePreset.position);
   }
 
   function formatPrice(n) {

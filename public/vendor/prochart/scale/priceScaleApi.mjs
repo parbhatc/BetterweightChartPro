@@ -38,6 +38,11 @@ export class PriceScaleApi {
     return this._m.coordinateToPrice(coordinate);
   }
 
+  /** Scale the visible price range around its center without changing margins. */
+  scaleAroundCenter(factor) {
+    this._m.scaleAroundCenter(factor);
+  }
+
   width() {
     return this._m.width();
   }

@@ -74,7 +74,6 @@ export class DrawingPriceLinesSync {
             lineVisible: false,
             axisLabelVisible: true,
             axisLabelColor: label.color,
-            axisLabelTextColor: "#ffffff",
             lineWidth: 0,
             title: "",
           };
@@ -110,7 +109,6 @@ export class DrawingPriceLinesSync {
           lineVisible: false,
           axisLabelVisible: true,
           axisLabelColor: color,
-          axisLabelTextColor: "#ffffff",
           lineWidth: 1,
           title: "",
         };

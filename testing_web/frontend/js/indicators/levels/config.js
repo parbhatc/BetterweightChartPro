@@ -2,6 +2,7 @@ import { normalizeResolutionId } from "/js/chart/resolutionFormat.js";
 import { resolutionSec } from "/js/chart/resolutions.js";
 import { levelsHtfStyles } from "./htfStyles.js";
 import { levelsSessionDefs } from "./sessionDefs.js";
+import { LEVEL_SESSION_PALETTE } from "./palette.js";
 
 /** @typedef {{ enabled: boolean, label: string, layer: string }} LevelLayerRow */
 
@@ -42,7 +43,7 @@ export function sessionConfigFromRow(row, sessionDefs = {}) {
     endH: end.h,
     endM: end.min,
     crossesMidnight: endMod <= startMod,
-    color: def?.color ?? "#00ffcc",
+    color: def?.color ?? LEVEL_SESSION_PALETTE.asia,
   };
 }
 

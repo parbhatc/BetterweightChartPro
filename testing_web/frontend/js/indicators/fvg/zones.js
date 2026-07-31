@@ -3,6 +3,7 @@ import {
   compareFvgKindAtConfirmTime,
   fvgAtBar,
   isFvgFilled,
+  isFvgTapped,
   isIfvgCloseInversion,
   isPartialClose,
   layerMatchesCorrelatedTfSel,
@@ -31,7 +32,11 @@ export function processFvgBar(script, layer, series, active, ifvgActive, i, last
   const isFormingBar = i === lastBarIdx;
 
   for (let z = active.length - 1; z >= 0; z--) {
-    const zone = active[z];
+    let zone = active[z];
+    if (!zone.tapped && isFvgTapped(zone, series[i])) {
+      zone = { ...zone, tapped: true };
+      active[z] = zone;
+    }
     if (showIfvg && !isFormingBar && isIfvgCloseInversion(zone, series[i])) {
       const ifvgZone = {
         ...zone,

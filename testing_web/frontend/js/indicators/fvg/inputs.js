@@ -139,6 +139,20 @@ export function buildInputs() {
       { section: "Border Settings" },
     ),
     createInt("borderWidth", "Border Width", 1, { section: "Border Settings" }),
-    createColor("ifvgBoxColor", "IFVG", { color: "#ffff00", opacity: 20 }, { section: "IFVG settings" }),
+    createBool("showTapBorder", "FVG tap border", false, {
+      section: "Border Settings",
+      showInStatusLine: false,
+    }),
+    createColor(
+      "tapBorderColor",
+      "FVG tap border color",
+      { color: "#787b86", opacity: 100 },
+      {
+        section: "Border Settings",
+        disabled: (inputs) => inputs.showTapBorder !== true,
+        showInStatusLine: false,
+      },
+    ),
+    createColor("ifvgBoxColor", "IFVG", { color: "#8a8051", opacity: 20 }, { section: "IFVG settings" }),
   ];
 }

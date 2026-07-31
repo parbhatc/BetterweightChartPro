@@ -1,4 +1,5 @@
 import { resolutionDisplayTitle } from "/js/chart/resolutionFormat.js";
+import { LEVEL_HTF_PALETTE } from "./palette.js";
 
 /** @typedef {{ tag?: string; hi: string; lo: string }} HtfStyle */
 
@@ -6,11 +7,11 @@ export class LevelsHtfStyles {
   /** @returns {Record<string, HtfStyle>} */
   all() {
     return {
-      "240": { tag: "4H", hi: "#007fff", lo: "#ff7644" },
-      "60": { tag: "1H", hi: "#00ffcc", lo: "#ff4d4d" },
-      "15": { tag: "15m", hi: "#ffed4a", lo: "#e046ff" },
-      "5": { tag: "5m", hi: "#ffed4a", lo: "#e046ff" },
-      "10": { tag: "10m", hi: "#ffed4a", lo: "#e046ff" },
+      "240": { tag: "4H", ...LEVEL_HTF_PALETTE["240"] },
+      "60": { tag: "1H", ...LEVEL_HTF_PALETTE["60"] },
+      "15": { tag: "15m", ...LEVEL_HTF_PALETTE["15"] },
+      "5": { tag: "5m", ...LEVEL_HTF_PALETTE["5"] },
+      "10": { tag: "10m", ...LEVEL_HTF_PALETTE["10"] },
     };
   }
 
@@ -21,7 +22,7 @@ export class LevelsHtfStyles {
 
   /** @param {string} tfId */
   resolve(tfId) {
-    return this.get(tfId) ?? { tag: resolutionDisplayTitle(tfId), hi: "#007fff", lo: "#ff7644" };
+    return this.get(tfId) ?? { tag: resolutionDisplayTitle(tfId), ...LEVEL_HTF_PALETTE["240"] };
   }
 }
 

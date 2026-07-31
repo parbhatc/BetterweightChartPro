@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS = {
     wickDownColor: "#f23645",
     session: "electronic",
     sessionBreaks: false,
-    ethBackground: "rgba(161, 161, 170, 0.08)",
+    ethBackground: "rgba(41, 98, 255, 0.08)",
     precision: "default",
     timezone: "America/New_York",
   },
@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS = {
     showVolume: true,
     showBackground: true,
     backgroundOpacity: 80,
+    useChartTextColor: false,
     legendCollapsed: false,
   },
   scales: {
@@ -48,12 +49,14 @@ export const DEFAULT_SETTINGS = {
     scaleLines: true,
     lockPriceToBarRatio: false,
     lockPriceToBarRatioValue: null,
+    lockPriceToBarRatioVersion: 2,
     scalesPlacement: "auto",
     noOverlappingLabels: true,
     countdownToBarClose: true,
     symbolLabelName: false,
     symbolLabelValue: true,
     symbolLabelLine: true,
+    symbolLabelLineFollowBodyColors: true,
     symbolLabelLineUpColor: "#089981",
     symbolLabelLineDownColor: "#f23645",
     symbolLabelLineWidth: 1,
@@ -72,7 +75,7 @@ export const DEFAULT_SETTINGS = {
     timeHoursFormat: "12-hours",
   },
   canvas: {
-    appearancePreset: "none",
+    appearancePreset: "default",
     backgroundType: "solid",
     backgroundColor: "#09090b",
     backgroundGradientTopColor: "#18181b",
@@ -116,11 +119,9 @@ export const THEME_OPTIONS = [
 ];
 
 export const APPEARANCE_PRESET_OPTIONS = [
+  { value: "default", label: "Default" },
   { value: "none", label: "None / Custom" },
-  { value: "dark", label: "Dark" },
-  { value: "gray", label: "Cool Gray" },
-  { value: "blue", label: "Deep Blue" },
-  { value: "light", label: "Light" },
+  { value: "theme", label: "Gray" },
 ];
 
 export const BACKGROUND_TYPE_OPTIONS = [

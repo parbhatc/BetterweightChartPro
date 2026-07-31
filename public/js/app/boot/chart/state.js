@@ -105,6 +105,7 @@ function getChartShellById(el, id) {
  * @property {(index: number) => void} switchActivePane
  * @property {() => string} activePriceScaleId
  * @property {() => void} maintainLockedRatio
+ * @property {ResizeObserver | null} ratioResizeObserver
  * @property {() => void} syncLayoutDateRangeFrom
  * @property {(pane: object, wrapEl: HTMLElement) => object} buildPaneContextMenuOpts
  * @property {() => Promise<void>} loadBars
@@ -269,6 +270,7 @@ export function createBootContext(overrides) {
     switchActivePane: () => {},
     activePriceScaleId: () => "right",
     maintainLockedRatio: () => {},
+    ratioResizeObserver: null,
     syncLayoutDateRangeFrom: () => {},
     buildPaneContextMenuOpts: () => ({}),
     loadBars: async () => {},

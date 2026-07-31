@@ -1,6 +1,7 @@
 import { resolutionSec } from "/js/chart/resolutions.js";
 import { normalizeResolutionId } from "/js/chart/resolutionFormat.js";
 import { mapUtcTimeToChartTime } from "/js/indicators/math/barTimeMap.js";
+export { isFvgTapped } from "./tap.js";
 
 /** @param {object[]} bars @param {number} i confirmation bar (third candle) @param {number} [tfSec] */
 export function fvgAtBar(bars, i, tfSec = 900) {

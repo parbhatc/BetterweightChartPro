@@ -111,11 +111,14 @@ export function createAppLoader(root = document.querySelector(".tv-stage")) {
   }
 
   let pending = 0;
+  const appRoot = root?.closest(".tv-app");
+  appRoot?.classList.add("tv-app--loading");
 
   function sync() {
     const on = pending > 0;
     el.classList.toggle("app-loader--hidden", !on);
     root?.setAttribute("aria-busy", on ? "true" : "false");
+    appRoot?.classList.toggle("tv-app--loading", on);
   }
 
   return {

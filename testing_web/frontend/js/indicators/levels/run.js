@@ -22,6 +22,7 @@ import {
   walkReleaseBar,
   walkSessionBar,
 } from "./sessions.js";
+import { LEVEL_REFERENCE_PALETTE } from "./palette.js";
 
 /** @typedef {import("/js/indicators/script/liquidityMatrix.js").LiqLine} LiqLine */
 
@@ -86,8 +87,8 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
   const maxSessions = Math.max(1, Number(opts.maxSessions) || 3);
   const proximity = (Number(opts.tickSize) || 0.25) * 6;
   const showLabels = opts.showLabels !== false;
-  const confHi = String(opts.confHiColor ?? "#9400d3");
-  const confLo = String(opts.confLoColor ?? "#ffaa00");
+  const confHi = String(opts.confHiColor ?? LEVEL_REFERENCE_PALETTE.confluenceHigh);
+  const confLo = String(opts.confLoColor ?? LEVEL_REFERENCE_PALETTE.confluenceLow);
   const mergeConfluence = opts.mergeConfluence !== false;
 
   const { htf, sessions } = buildLevelsEngineConfig(opts.timeLayers ?? [], opts.sessionLayers ?? [], {

@@ -26,6 +26,12 @@ function normalizeSettings(next) {
       Object.assign(merged[section], values);
     }
   }
+  if (!["default", "none", "theme"].includes(String(merged.canvas.appearancePreset))) {
+    merged.canvas.appearancePreset = DEFAULT_SETTINGS.canvas.appearancePreset;
+  }
+  if (String(next.symbol?.ethBackground ?? "").toLowerCase() === "rgba(161, 161, 170, 0.08)") {
+    merged.symbol.ethBackground = DEFAULT_SETTINGS.symbol.ethBackground;
+  }
   // Migrate the previous lower-margin default so existing saved layouts pick
   // up the tighter TradingView-like spacing without touching custom values.
   if (Number(next.canvas?.marginBottom) === 8) {
@@ -49,6 +55,14 @@ function normalizeSettings(next) {
     merged.scales.askLabelLine = false;
   }
   merged.scales.bidAskDefaultsVersion = 2;
+  // Version 1 stored an inverse pixel-derived value and adjusted margins
+  // instead of the visible price span. It cannot be interpreted as
+  // TradingView's price-units-per-bar ratio.
+  if (Number(next.scales?.lockPriceToBarRatioVersion) !== 2) {
+    merged.scales.lockPriceToBarRatio = false;
+    merged.scales.lockPriceToBarRatioValue = null;
+  }
+  merged.scales.lockPriceToBarRatioVersion = 2;
   // TradingView attribution is not part of BWC Pro's appearance controls.
   merged.canvas.attributionLogo = false;
   return merged;

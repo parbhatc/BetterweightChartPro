@@ -21,6 +21,7 @@ import { symbolLabelAnchorsForPane } from "../../chart/scale/symbolLabelAnchors.
 import {
   priceLineBarForPane,
   resolvePriceLineColorForPane,
+  resolvePriceLineStrokeColorForPane,
 } from "../symbol/lineStyle.js";
 import { chartDebugCount, chartDebugTime, chartDebug, chartDebugThrottle } from "../../debug/chart/index.js";
 import { resolvePaneBackgroundColor } from "../../chart/canvas/settings.js";
@@ -36,7 +37,7 @@ import {
   updateFormingBarOnPaneSeries,
 } from "../../chart/pane/data.js";
 
-/** Electronic session shading — off by default while perf-testing. `localStorage.setItem('bwc-session-bg','1')` or `?sessionBg=1` to enable. */
+/** Electronic-session shading is enabled by default to match TradingView. */
 /** Keep each chart's vertical position synchronized while preserving its own price range. */
 function wireSynchronizedVerticalPan(pane, getAllChartPanes, getDrawingHub) {
   let drag = null;
@@ -157,9 +158,9 @@ function sessionBackgroundEnabled() {
     const sp = new URLSearchParams(window.location.search);
     if (sp.get("sessionBg") === "1" || sp.get("sessionBg") === "true") return true;
     if (sp.get("noSessionBg") === "1" || sp.has("noSessionBg")) return false;
-    return localStorage.getItem("bwc-session-bg") === "1";
+    return localStorage.getItem("bwc-session-bg") !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -363,6 +364,7 @@ export function createPaneExtras(deps) {
           barSec: barSecForPane(pane),
           price: close,
           color: resolvePriceLineColorForPane(pane, settingsStore, symbolInfo),
+          lineColor: resolvePriceLineStrokeColorForPane(pane, settingsStore, symbolInfo),
           title: sc.symbolLabelName ? pane.symbol : "",
           priceText:
             close == null || !Number.isFinite(close)

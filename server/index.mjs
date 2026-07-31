@@ -118,23 +118,33 @@ function resolveStatic(relPath) {
   return null;
 }
 
-function serveFile(res, filePath, opts = {}) {
+function serveFile(req, res, filePath, opts = {}) {
   const ext = path.extname(filePath);
   // Revalidate source assets on every request. This server is used for local
   // development, where a one-day cache otherwise leaves stale JS/CSS active
   // after an indicator or panel has been changed.
   const sourceAsset = ext === ".mjs" || ext === ".js" || ext === ".css";
   const cacheControl = opts.noCache ? "no-store" : sourceAsset ? "no-cache" : "no-store";
-  res.writeHead(200, {
+  const stat = fs.statSync(filePath);
+  const etag = `W/\"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}\"`;
+  const headers = {
     ...HDR,
     "Content-Type": MIME[ext] || "application/octet-stream",
     "Cache-Control": cacheControl,
-  });
+    ETag: etag,
+    "Last-Modified": stat.mtime.toUTCString(),
+  };
+  if (!opts.noCache && req.headers["if-none-match"] === etag) {
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 }
 
 /** Serve LWC fork dist directly — no vendor copy step while developing the fork. */
-function tryServeLiveLwc(res, relPath) {
+function tryServeLiveLwc(req, res, relPath) {
   if (!LWC_LIVE) return false;
   if (relPath !== "vendor/lightweight-charts.mjs") return false;
   if (!fs.existsSync(LWC_LIVE_BUNDLE)) {
@@ -144,7 +154,7 @@ function tryServeLiveLwc(res, relPath) {
     );
     return true;
   }
-  serveFile(res, LWC_LIVE_BUNDLE, { noCache: true });
+  serveFile(req, res, LWC_LIVE_BUNDLE, { noCache: true });
   return true;
 }
 
@@ -502,7 +512,7 @@ function handleRequest(req, res) {
 
       const rel = filePathname.startsWith("/") ? filePathname.slice(1) : filePathname;
 
-      if (tryServeLiveLwc(res, rel)) return;
+      if (tryServeLiveLwc(req, res, rel)) return;
 
       let filePath = null;
       if (pathname === "/testing" || pathname === "/testing/" || pathname.startsWith("/testing/")) {
@@ -523,7 +533,7 @@ function handleRequest(req, res) {
         return;
       }
 
-      serveFile(res, filePath);
+      serveFile(req, res, filePath);
     });
     });
   });

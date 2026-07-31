@@ -6,12 +6,13 @@ export function measurePriceBarRatio(chart, series) {
   const paneH = chart.paneSize().height;
   if (paneH <= 0) return null;
   const barSpacing = chart.timeScale().options().barSpacing ?? 8;
-  const p0 = series.coordinateToPrice(0);
-  const p1 = series.coordinateToPrice(paneH);
+  if (!Number.isFinite(barSpacing) || barSpacing <= 0) return null;
+  const center = paneH / 2;
+  const p0 = series.coordinateToPrice(center - barSpacing / 2);
+  const p1 = series.coordinateToPrice(center + barSpacing / 2);
   if (p0 == null || p1 == null || !Number.isFinite(p0) || !Number.isFinite(p1)) return null;
-  const priceRange = Math.abs(p1 - p0);
-  if (priceRange <= 0) return null;
-  return (barSpacing * paneH) / priceRange;
+  const pricePerBar = Math.abs(p1 - p0);
+  return pricePerBar > 0 ? pricePerBar : null;
 }
 
 /**
@@ -24,17 +25,12 @@ export function enforcePriceBarRatio(chart, series, priceScaleId, targetRatio) {
   if (!Number.isFinite(targetRatio) || targetRatio <= 0) return null;
   const measured = measurePriceBarRatio(chart, series);
   if (measured == null) return null;
-  const k = measured / targetRatio;
-  if (Math.abs(k - 1) < 0.001) return measured;
+  const factor = targetRatio / measured;
+  if (Math.abs(factor - 1) < 0.001) return measured;
 
   const ps = chart.priceScale(priceScaleId);
-  const { scaleMargins } = ps.options();
-  const top = scaleMargins?.top ?? 0.08;
-  const bottom = scaleMargins?.bottom ?? 0.04;
-  let visible = Math.max(0.04, 1 - top - bottom);
-  visible = Math.max(0.04, Math.min(0.96, visible * k));
-  const pad = (1 - visible) / 2;
-  ps.applyOptions({ autoScale: false, scaleMargins: { top: pad, bottom: pad } });
+  ps.applyOptions({ autoScale: false });
+  ps.scaleAroundCenter(factor);
   return measurePriceBarRatio(chart, series);
 }
 
@@ -49,6 +45,6 @@ export function enforcePriceBarRatioOnPriceZoom(chart, series, targetRatio) {
   const ts = chart.timeScale();
   const barSpacing = ts.options().barSpacing ?? 8;
   const minSpacing = ts.options().minBarSpacing ?? 3;
-  const next = barSpacing * (measured / targetRatio);
+  const next = barSpacing * (targetRatio / measured);
   ts.applyOptions({ barSpacing: Math.max(minSpacing, next) });
 }

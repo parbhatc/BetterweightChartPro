@@ -186,10 +186,18 @@ export function mountChartSettings(opts) {
   }
 
   function setDraft(section, key, value, { skipHistory = false, skipRender = false } = {}) {
+    const unlinksSymbolLineColor = section === "scales"
+      && (key === "symbolLabelLineUpColor" || key === "symbolLabelLineDownColor")
+      && getDraft().scales?.symbolLabelLineFollowBodyColors !== false;
+    if (unlinksSymbolLineColor) {
+      if (!skipHistory) store.markHistory();
+      if (draft?.scales) draft.scales.symbolLabelLineFollowBodyColors = false;
+      store.set("scales", "symbolLabelLineFollowBodyColors", false, { skipHistory: true });
+    }
     if (draft?.[section]) {
       draft[section][key] = value;
     }
-    store.set(section, key, value, { skipHistory });
+    store.set(section, key, value, { skipHistory: skipHistory || unlinksSymbolLineColor });
     applyLive();
     if (colorPicker.isOpen()) {
       dialogEl
@@ -278,8 +286,23 @@ export function mountChartSettings(opts) {
     renderPanel();
   }
 
+  function effectiveSymbolLineColor(key) {
+    const current = getDraft();
+    const sc = current.scales ?? {};
+    if (sc.symbolLabelLineFollowBodyColors !== false) {
+      return key === "symbolLabelLineDownColor"
+        ? current.symbol?.bodyDownColor ?? "#f23645"
+        : current.symbol?.bodyUpColor ?? "#089981";
+    }
+    return sc[key] ?? (key === "symbolLabelLineDownColor" ? "#f23645" : "#089981");
+  }
+
   function colorSwatchBtn(section, key, { alpha = false, disabled = false } = {}) {
-    const raw = getDraft()[section]?.[key] ?? "#2962ff";
+    const isSymbolLineColor = section === "scales"
+      && (key === "symbolLabelLineUpColor" || key === "symbolLabelLineDownColor");
+    const raw = isSymbolLineColor
+      ? effectiveSymbolLineColor(key)
+      : getDraft()[section]?.[key] ?? "#2962ff";
     return `<button type="button" class="tv-set__swatch-btn${disabled ? " tv-set__swatch-btn--disabled" : ""}" data-color-pick data-section="${section}" data-key="${key}"${alpha ? ' data-alpha="true"' : ""}${disabled ? " disabled" : ""} style="background:${raw}" aria-label="Pick color"></button>`;
   }
 
@@ -579,7 +602,7 @@ export function mountChartSettings(opts) {
 
   function symbolLineStyleBtn(section) {
     const sc = getDraft()[section] ?? {};
-    const color = sc.symbolLabelLineUpColor ?? "#089981";
+    const color = effectiveSymbolLineColor("symbolLabelLineUpColor");
     const width = Number(sc.symbolLabelLineWidth) || 1;
     const style = Number(sc.symbolLabelLineStyle ?? 2);
     return `<button type="button" class="tv-set__line-color-btn tv-set__line-color-btn--symbol" data-line-width-pick data-section="${section}" data-width-key="symbolLabelLineWidth" data-style-key="symbolLabelLineStyle" data-preview-color-key="symbolLabelLineUpColor" aria-label="Line thickness and style">
@@ -928,7 +951,12 @@ export function mountChartSettings(opts) {
           const section = pickBtn.dataset.section;
           const key = pickBtn.dataset.key;
           if (!section || !key) return;
-          colorPicker.open(pickBtn, String(getDraft()[section]?.[key] ?? "#2962ff"), {
+          const isSymbolLineColor = section === "scales"
+            && (key === "symbolLabelLineUpColor" || key === "symbolLabelLineDownColor");
+          const initialColor = isSymbolLineColor
+            ? effectiveSymbolLineColor(key)
+            : getDraft()[section]?.[key] ?? "#2962ff";
+          colorPicker.open(pickBtn, String(initialColor), {
             alpha: pickBtn.dataset.alpha === "true",
             onChange: (value) => {
               const skipHistory = colorUndoMarked;
@@ -955,8 +983,10 @@ export function mountChartSettings(opts) {
           if (!section || !widthKey) return;
           const sc = getDraft()[section] ?? {};
           const previewColor = previewColorKey
-            ? String(sc[previewColorKey] ?? "#2962FF")
-            : String(sc.symbolLabelLineUpColor ?? "#089981");
+            ? String(previewColorKey === "symbolLabelLineUpColor"
+              ? effectiveSymbolLineColor(previewColorKey)
+              : sc[previewColorKey] ?? "#2962FF")
+            : String(effectiveSymbolLineColor("symbolLabelLineUpColor"));
           const isQuoteLineStyle = Boolean(styleKey && previewColorKey);
           colorPicker.openLine(
             lineWidthBtn,

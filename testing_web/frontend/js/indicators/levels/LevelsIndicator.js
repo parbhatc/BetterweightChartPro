@@ -20,6 +20,7 @@ import {
   htfPendingForLayers,
   htfSeriesRecomputeKey,
 } from "/js/indicators/security/htfPolicy.js";
+import { LEVEL_REFERENCE_PALETTE } from "./palette.js";
 
 const HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => {
   const hour = Math.floor(index / 2);
@@ -62,12 +63,12 @@ class LevelsIndicator extends BarScriptIndicator {
         section: "Sessions",
       }),
       createBool("previousDayEnabled", "PDH / PDL", false, { section: "Previous periods" }),
-      createColor("previousDayColor", "PDH / PDL color", { color: "#f59e0b", opacity: 100 }, {
+      createColor("previousDayColor", "PDH / PDL color", { color: LEVEL_REFERENCE_PALETTE.previousDay, opacity: 100 }, {
         section: "Previous periods",
         disabled: (inputs) => inputs.previousDayEnabled !== true,
       }),
       createBool("previousWeekEnabled", "PWH / PWL", false, { section: "Previous periods" }),
-      createColor("previousWeekColor", "PWH / PWL color", { color: "#38bdf8", opacity: 100 }, {
+      createColor("previousWeekColor", "PWH / PWL color", { color: LEVEL_REFERENCE_PALETTE.previousWeek, opacity: 100 }, {
         section: "Previous periods",
         disabled: (inputs) => inputs.previousWeekEnabled !== true,
       }),
@@ -82,7 +83,7 @@ class LevelsIndicator extends BarScriptIndicator {
         inline: true,
         disabled: (inputs) => inputs.midpointEnabled !== true,
       }),
-      createColor("midpointColor", "Midpoint color", { color: "#a3e635", opacity: 100 }, {
+      createColor("midpointColor", "Midpoint color", { color: LEVEL_REFERENCE_PALETTE.midpoint, opacity: 100 }, {
         section: "Session midpoint",
         disabled: (inputs) => inputs.midpointEnabled !== true,
       }),
@@ -107,11 +108,11 @@ class LevelsIndicator extends BarScriptIndicator {
       }),
       createInt("maxSessions", "Max session instances", 3, { min: 1, section: "Display limits" }),
       createBool("mergeConfluence", "Merge confluence levels", true, { section: "Confluence" }),
-      createColor("confHiColor", "Confluence high", { color: "#9400d3", opacity: 100 }, {
+      createColor("confHiColor", "Confluence high", { color: LEVEL_REFERENCE_PALETTE.confluenceHigh, opacity: 100 }, {
         section: "Confluence",
         inline: true,
       }),
-      createColor("confLoColor", "Confluence low", { color: "#ffaa00", opacity: 100 }, {
+      createColor("confLoColor", "Confluence low", { color: LEVEL_REFERENCE_PALETTE.confluenceLow, opacity: 100 }, {
         section: "Confluence",
         inline: true,
         disabled: (inputs) => inputs.mergeConfluence === false,

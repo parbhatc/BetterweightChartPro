@@ -1,5 +1,5 @@
 import { TickMarkType } from "../../core/enums.mjs";
-import { roundRectPath } from "../../core/utils.mjs";
+import { contrastTextColor, roundRectPath } from "../../core/utils.mjs";
 import { TIME_AXIS_HEIGHT } from "../../core/defaults.mjs";
 import { RenderTarget } from "../target.mjs";
 import { seriesLastValueColor } from "./seriesRenderer.mjs";
@@ -267,6 +267,15 @@ export function renderPriceAxes(model, context, tickCache) {
       context.rect(0, pane.top, model.width, pane.height);
       context.clip();
 
+      renderPriceAxisPrimitiveViews(
+        model,
+        context,
+        pane,
+        side,
+        x,
+        width,
+        "bottom",
+      );
       if (scale?.options.visible && scale.priceRange) {
         renderPriceScale(
           model,
@@ -287,6 +296,7 @@ export function renderPriceAxes(model, context, tickCache) {
         side,
         x,
         width,
+        "top",
       );
       context.restore();
     }
@@ -316,7 +326,6 @@ function renderPriceScale(
   }
 
   context.fillStyle = layout.textColor;
-  context.font = `${layout.fontSize}px ${layout.fontFamily}`;
   context.textBaseline = "middle";
   context.textAlign = side === "left" ? "right" : "left";
   const textX = side === "left" ? x + width - 8 : x + 8;
@@ -334,6 +343,7 @@ function renderPriceScale(
     ) {
       continue;
     }
+    context.font = `${tick.major ? "600 " : ""}${layout.fontSize}px ${layout.fontFamily}`;
     context.fillText(String(formatter(tick.price)), textX, y);
   }
 
@@ -368,7 +378,7 @@ function collectSeriesAxisLabels(pane, scale, labels) {
             y: pane.top + y,
             text: series.priceFormatter()(last),
             bgColor: seriesLastValueColor(series),
-            textColor: "#ffffff",
+            textColor: contrastTextColor(seriesLastValueColor(series)),
             subtitle: "",
             title: "",
             priority: 0,
@@ -389,7 +399,9 @@ function collectSeriesAxisLabels(pane, scale, labels) {
         text: options.axisLabelText
           || series.priceFormatter()(options.price),
         bgColor: options.axisLabelColor || options.color,
-        textColor: options.axisLabelTextColor || "#ffffff",
+        textColor: options.axisLabelTextColor || contrastTextColor(
+          options.axisLabelColor || options.color,
+        ),
         subtitle: options.axisSubtitleText || "",
         title,
         priority: title === "Ask" ? 1 : title === "Bid" ? 2 : 0,
@@ -405,6 +417,7 @@ function renderPriceAxisPrimitiveViews(
   _side,
   x,
   width,
+  zOrder,
 ) {
   for (const series of pane.series) {
     for (const primitive of series.overlays) {
@@ -414,6 +427,8 @@ function renderPriceAxisPrimitiveViews(
       if (!views) continue;
 
       for (const view of views) {
+        const viewZOrder = typeof view.zOrder === "function" ? view.zOrder() : "top";
+        if (viewZOrder !== zOrder) continue;
         const renderer = view.renderer?.();
         if (!renderer || typeof renderer.draw !== "function") continue;
 

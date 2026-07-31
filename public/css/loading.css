@@ -37,6 +37,17 @@
   animation: app-loader-spin 0.8s linear infinite;
 }
 
+/* Initial chart boot: do not leave half-mounted controls around the spinner. */
+.tv-app--loading .tv-toolbar,
+.tv-app:has(.tv-stage[aria-busy="true"]) .tv-toolbar {
+  display: none;
+}
+
+.tv-app--loading .drawing-toolbar,
+.tv-app:has(.tv-stage[aria-busy="true"]) .drawing-toolbar {
+  display: none;
+}
+
 @keyframes app-loader-spin {
   to {
     transform: rotate(360deg);

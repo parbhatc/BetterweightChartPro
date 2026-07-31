@@ -455,13 +455,16 @@ export class BaseIndicator {
    */
   static createInstance(paneIndex) {
     if (!this.enabled || !this.id) return null;
+    const inputs = { ...this.defaultInputs() };
+    const style = { ...this.defaultStyle() };
+    this.mergeStyleDefaults(style, inputs);
     return {
       instanceId: `${this.id}_${Math.random().toString(36).slice(2, 9)}`,
       defId: this.id,
       type: this.id,
       paneIndex,
-      inputs: { ...this.defaultInputs() },
-      style: { ...this.defaultStyle() },
+      inputs,
+      style,
       visibility: this.defaultVisibility(),
       hidden: false,
     };
@@ -603,7 +606,10 @@ export class BaseIndicator {
       if (style[key] === undefined) style[key] = val;
     }
     if (this._hasInstanceHook("mergeStyleDefaults")) {
-      this._definitionInstance.mergeStyleDefaults(style, inputValues);
+      const merged = this._definitionInstance.mergeStyleDefaults(style, inputValues);
+      if (merged && merged !== style && typeof merged === "object") {
+        Object.assign(style, merged);
+      }
     }
     return style;
   }

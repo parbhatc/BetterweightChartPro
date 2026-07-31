@@ -11,7 +11,7 @@ import { attachStudyPaneLegendOverlay } from "../../../indicators/ui/studyPaneLe
 import { attachStudyPaneScaleGuards } from "../../../chart/pane/studyScale.js";
 import { getPaneChartView } from "../../../chart/pane/viewCache.js";
 import { replayBarIndexForUtcTime } from "../../../replay/persist.js";
-import { precisionFromSettings } from "../../../chart/timezone/list.js";
+import { precisionFromSettings, resolveTimezone } from "../../../chart/timezone/list.js";
 import { listIndicators, getIndicatorClass } from "../../../indicators/catalog.js";
 import { wireIndicatorLegendCrosshair } from "../../../indicators/crosshairLegend.js";
 import { createIndicatorDataLoader } from "./indicatorDataLoader.js";
@@ -91,6 +91,7 @@ export function attachIndicatorsBoot(ctx) {
     onChange: () => onControllerChange(),
     getOverlayContext: (pane) => {
       const newsCtx = indicatorData.newsContextForPane(pane);
+      const symbolSettings = ctx.settingsStore.get().symbol ?? {};
       return {
         ...createSecurityContext({
           pane,
@@ -116,6 +117,10 @@ export function attachIndicatorsBoot(ctx) {
           indicatorData.isCompareDataUnavailable(symbol, resolution ?? pane.resolution),
         isReplayLocked: () => ctx.replayEngine?.isReplayLocked?.() ?? false,
         replayHostControlled: Boolean(ctx.opts?.replayHostControlled),
+        chartTimeZone: resolveTimezone(
+          symbolSettings.timezone,
+          pane.symbolInfo ?? ctx.symbolInfo,
+        ),
         getPlaybackAnchorSec: (resolution) =>
           typeof ctx.opts?.getPlaybackAnchorSec === "function"
             ? ctx.opts.getPlaybackAnchorSec(resolution ?? pane.resolution)

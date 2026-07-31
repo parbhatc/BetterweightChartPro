@@ -292,7 +292,10 @@ export function defineIndicator(configOrClass) {
     /** @param {object} style @param {object} inputValues */
     static mergeStyleDefaults(style, inputValues = {}) {
       super.mergeStyleDefaults(style, inputValues);
-      if (config.mergeStyleDefaults) return config.mergeStyleDefaults(style, inputValues);
+      if (config.mergeStyleDefaults) {
+        const merged = config.mergeStyleDefaults(style, inputValues);
+        if (merged && merged !== style && typeof merged === "object") Object.assign(style, merged);
+      }
       return style;
     }
 

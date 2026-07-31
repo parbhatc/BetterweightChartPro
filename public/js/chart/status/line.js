@@ -125,15 +125,25 @@ function captureStatusLineView(mainEl, structureKey, priceClass, priceColor, cha
 /** @param {HTMLElement} el @param {object} settings */
 export function applyStatusLineAppearance(el, settings) {
   const sl = settings?.statusLine ?? {};
+  const chartTextColor = sl.useChartTextColor
+    ? String(settings?.canvas?.scalesTextColor ?? "").trim()
+    : "";
   const showBackground = Boolean(sl.showBackground);
   const pct = showBackground
     ? Math.max(0, Math.min(100, Number(sl.backgroundOpacity) || 0))
     : 0;
-  const appearanceKey = `${showBackground ? 1 : 0}|${pct}`;
+  const appearanceKey = `${showBackground ? 1 : 0}|${pct}|${chartTextColor}`;
   if (statusLineAppearanceKeys.get(el) === appearanceKey) return;
   statusLineAppearanceKeys.set(el, appearanceKey);
 
   el.style.boxShadow = "none";
+  if (chartTextColor) {
+    el.style.setProperty("--tv-text", chartTextColor);
+    el.style.setProperty("--tv-muted", chartTextColor);
+  } else {
+    el.style.removeProperty("--tv-text");
+    el.style.removeProperty("--tv-muted");
+  }
   if (showBackground) {
     const mix = Math.round(100 - pct * 0.82);
     el.style.setProperty("--status-line-bg", `color-mix(in srgb, var(--tv-bg) ${mix}%, transparent)`);
@@ -228,7 +238,9 @@ export function renderStatusLine(el, opts) {
   const colorOnPrev = Boolean(sym.colorBarsOnPrevClose);
   const barUp = isBarUp(bar, prevBar, colorOnPrev);
   const priceCls = barPriceClass(barUp);
-  const priceColor = candleValueColor(sym, barUp);
+  const priceColor = sl.useChartTextColor
+    ? (settings.canvas?.scalesTextColor ?? candleValueColor(sym, barUp))
+    : candleValueColor(sym, barUp);
 
   const formatted = {
     open: sl.showOHLC ? fmtNum(bar.open, precision) : "",
@@ -311,8 +323,13 @@ export function renderStatusLine(el, opts) {
 
     let html = "";
     if (metaParts.length || valueParts.length) {
-      const meta = metaParts.length ? `<span class="status-line__meta">${metaParts.join("")}</span>` : "";
-      html = `<div class="status-line__item status-line__item--series"><div class="status-line__flow">${meta}${valueParts.join("")}</div></div>`;
+      const meta = metaParts.length
+        ? `<div class="status-line__meta">${metaParts.join("")}</div>`
+        : "";
+      const values = valueParts.length
+        ? `<div class="status-line__values">${valueParts.join("")}</div>`
+        : "";
+      html = `<div class="status-line__item status-line__item--series"><div class="status-line__flow">${meta}${values}</div></div>`;
     }
     mainEl.innerHTML = html;
     view = captureStatusLineView(mainEl, structureKey, priceCls, priceColor, changeClass);

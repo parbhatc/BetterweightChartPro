@@ -77,8 +77,25 @@ export function computePositionStatValues(drawing, precision, bars = []) {
   const slAmount = Math.round(slOffset * qty);
 
   let openClosedPL = 0;
+  let isClosed = false;
+  let closeAtTarget = false;
+  for (const bar of bars) {
+    if (Number(bar?.time) < geom.tStart) continue;
+    const hitTarget = geom.isLong
+      ? Number(bar?.high) >= geom.targetPrice
+      : Number(bar?.low) <= geom.targetPrice;
+    const hitStop = geom.isLong
+      ? Number(bar?.low) <= geom.stopPrice
+      : Number(bar?.high) >= geom.stopPrice;
+    if (!hitTarget && !hitStop) continue;
+    isClosed = true;
+    closeAtTarget = hitTarget && !hitStop;
+    break;
+  }
   const lastBar = bars[bars.length - 1];
-  if (lastBar?.close != null) {
+  if (isClosed) {
+    openClosedPL = (closeAtTarget ? geom.reward : -geom.risk) * qty;
+  } else if (lastBar?.close != null) {
     openClosedPL = (lastBar.close - entry) * qty * (geom.isLong ? 1 : -1);
   }
   const plSign = openClosedPL >= 0 ? "" : "-";
@@ -90,6 +107,7 @@ export function computePositionStatValues(drawing, precision, bars = []) {
     tpAmount: String(tpAmount),
     openClosedPL: `${plSign}${fmtDrawingPrice(Math.abs(openClosedPL), precision)}`,
     openClosedPLRaw: openClosedPL,
+    isClosed,
     qty: formatPositionQty(qty, qtyPrecision),
     riskRewardRatio: geom.rr.toFixed(2).replace(/\.00$/, ""),
     slPriceOffset: fmtDrawingPrice(slOffset, precision),
@@ -104,7 +122,9 @@ export function buildPositionCenterStatLines(fields, values) {
   /** @type {string[]} */
   const lines = [];
   const row1 = [];
-  if (fields.openClosedPL) row1.push(`Closed P&L: ${values.openClosedPL}`);
+  if (fields.openClosedPL) {
+    row1.push(`${values.isClosed ? "Closed" : "Open"} P&L: ${values.openClosedPL}`);
+  }
   if (fields.qty) row1.push(`Qty: ${values.qty}`);
   if (row1.length) lines.push(row1.join(", "));
   if (fields.riskRewardRatio) lines.push(`Risk/Reward Ratio: ${values.riskRewardRatio}`);

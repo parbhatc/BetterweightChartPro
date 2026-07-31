@@ -40,13 +40,13 @@ export function positionAnchorPoints(drawing) {
   const geom = positionGeometry(drawing);
   if (!geom) return drawing.points;
   const { tStart, tEnd, entryPrice, targetPrice, stopPrice } = geom;
+  // TradingView exposes four controls: target-left, entry-left, width at
+  // entry-right, and stop-left. Target-right/stop-right are not anchors.
   return [
     { time: tStart, price: targetPrice },
-    { time: tEnd, price: targetPrice },
-    { time: tEnd, price: stopPrice },
-    { time: tStart, price: stopPrice },
     { time: tStart, price: entryPrice },
     { time: tEnd, price: entryPrice },
+    { time: tStart, price: stopPrice },
   ];
 }
 

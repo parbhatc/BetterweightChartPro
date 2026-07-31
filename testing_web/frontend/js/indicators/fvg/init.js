@@ -10,6 +10,16 @@ import {
   debugFvgInitSkip,
 } from "./fvgDebug.js";
 import { buildCompareLayerSeries, buildLayerSeries, scanLayerSeries } from "./layers.js";
+import {
+  DEFAULT_FVG_BEAR_COLOR,
+  DEFAULT_FVG_BORDER_OPACITY,
+  DEFAULT_FVG_BULL_COLOR,
+  DEFAULT_FVG_FILL_OPACITY,
+  DEFAULT_FVG_TAP_BORDER_COLOR,
+  DEFAULT_IFVG_COLOR,
+  DEFAULT_IFVG_FILL_OPACITY,
+  resolveDefaultIfvgSetting,
+} from "./palette.js";
 
 /** Pine-style init — runs once before the bar loop. */
 export function initFvgEngine(script) {
@@ -44,8 +54,27 @@ export function initFvgEngine(script) {
   const borderStyle = String(inputs.borderStyle ?? "solid");
   const borderWidth = Math.max(1, Number(inputs.borderWidth) || 1);
   const borderDash = borderStyle === "dotted" ? [2, 2] : borderStyle === "dashed" ? [6, 4] : [];
-  const bullBorderOp = inputs.bullBorderColorOpacity !== undefined ? Number(inputs.bullBorderColorOpacity) : 50;
-  const bearBorderOp = inputs.bearBorderColorOpacity !== undefined ? Number(inputs.bearBorderColorOpacity) : 50;
+  const bullBorderOp = inputs.bullBorderColorOpacity !== undefined
+    ? Number(inputs.bullBorderColorOpacity)
+    : DEFAULT_FVG_BORDER_OPACITY;
+  const bearBorderOp = inputs.bearBorderColorOpacity !== undefined
+    ? Number(inputs.bearBorderColorOpacity)
+    : DEFAULT_FVG_BORDER_OPACITY;
+  const ifvgSetting = resolveDefaultIfvgSetting(
+    inputs.ifvgBoxColor,
+    inputs.ifvgBoxColorOpacity,
+  );
+  const ifvgInputs = {
+    ...inputs,
+    ifvgBoxColor: ifvgSetting.color,
+    ifvgBoxColorOpacity: ifvgSetting.opacity,
+  };
+  const ifvgFill = inputsColorWithOpacity(
+    ifvgInputs,
+    "ifvgBoxColor",
+    DEFAULT_IFVG_COLOR,
+    DEFAULT_IFVG_FILL_OPACITY,
+  );
 
   const lastChartTime = script.chartBars.at(-1)?.time;
   if (lastChartTime == null) {
@@ -124,13 +153,32 @@ export function initFvgEngine(script) {
     ifvgLabel: String(inputs.ifvgLabel ?? "IFVG"),
     borderWidth,
     borderDash,
-    bullFill: inputsColorWithOpacity(inputs, "bullBoxColor", "#00897b", 15),
-    bearFill: inputsColorWithOpacity(inputs, "bearBoxColor", "#880e4f", 15),
+    bullFill: inputsColorWithOpacity(
+      inputs,
+      "bullBoxColor",
+      DEFAULT_FVG_BULL_COLOR,
+      DEFAULT_FVG_FILL_OPACITY,
+    ),
+    bearFill: inputsColorWithOpacity(
+      inputs,
+      "bearBoxColor",
+      DEFAULT_FVG_BEAR_COLOR,
+      DEFAULT_FVG_FILL_OPACITY,
+    ),
     bullBorder:
-      bullBorderOp > 0 ? inputsColorWithOpacity(inputs, "bullBorderColor", "#00897b", bullBorderOp) : null,
+      bullBorderOp > 0
+        ? inputsColorWithOpacity(inputs, "bullBorderColor", DEFAULT_FVG_BULL_COLOR, bullBorderOp)
+        : null,
     bearBorder:
-      bearBorderOp > 0 ? inputsColorWithOpacity(inputs, "bearBorderColor", "#880e4f", bearBorderOp) : null,
-    ifvgColor: inputsColorWithOpacity(inputs, "ifvgBoxColor", "#ffff00", 20),
+      bearBorderOp > 0
+        ? inputsColorWithOpacity(inputs, "bearBorderColor", DEFAULT_FVG_BEAR_COLOR, bearBorderOp)
+        : null,
+    tapBorder: inputs.showTapBorder === true
+      ? inputsColorWithOpacity(inputs, "tapBorderColor", DEFAULT_FVG_TAP_BORDER_COLOR, 100)
+      : null,
+    ifvgColor: ifvgFill,
+    ifvgBorder: ifvgSetting.usesDefault ? null : ifvgFill,
+    ifvgTextColor: ifvgSetting.color,
     partialFill: inputsColorWithOpacity(inputs, "partialCloseColor", "#ff9800", 20),
     formingBullFill: inputsColorWithOpacity(inputs, "formingBullColor", "#00bcd4", 25),
     formingBearFill: inputsColorWithOpacity(inputs, "formingBearColor", "#ab47bc", 25),
