@@ -6,6 +6,8 @@ import PivotPointsHlIndicator from "./pivot/PivotPointsHlIndicator.js";
 import SmtIndicator from "./smt/SmtIndicator.js";
 import MarketStructureIndicator from "./marketStructure/MarketStructureIndicator.js";
 import CisdIndicator from "./cisd/CisdIndicator.js";
+import HtfPowerOfThreeIndicator from "./htfPowerOfThree/HtfPowerOfThreeIndicator.js";
+import LiquidityRunsIndicator from "./liquidityRuns/LiquidityRunsIndicator.js";
 import EqualHighLowIndicator from "./equalHighLow/EqualHighLowIndicator.js";
 import VwapIndicator from "./vwap/VwapIndicator.js";
 import BollingerBandsIndicator from "./bollingerBands/BollingerBandsIndicator.js";
@@ -22,6 +24,8 @@ export const ALL_INDICATORS = [
   SmtIndicator,
   MarketStructureIndicator,
   CisdIndicator,
+  HtfPowerOfThreeIndicator,
+  LiquidityRunsIndicator,
   EqualHighLowIndicator,
   VwapIndicator,
   BollingerBandsIndicator,
@@ -38,6 +42,8 @@ export {
   SmtIndicator,
   MarketStructureIndicator,
   CisdIndicator,
+  HtfPowerOfThreeIndicator,
+  LiquidityRunsIndicator,
   EqualHighLowIndicator,
   VwapIndicator,
   BollingerBandsIndicator,

@@ -2,8 +2,15 @@ import { safePriceToY } from "../../chart/coords/timeScale.js";
 import { applyColorOpacity } from "../../ui/color/picker.js";
 import { resolveOverlayTimeMapping, createOverlayTimeToXFromMapping } from "./overlayMapBars.js";
 
-const LABEL_FONT =
-  `11px -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif`;
+const LABEL_FONT_FAMILY =
+  `-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif`;
+
+/** @param {object} item */
+function labelFont(item) {
+  const size = Math.max(8, Math.min(18, Number(item.fontSize) || 11));
+  const weight = Number(item.fontWeight) || 400;
+  return `${weight} ${size}px ${LABEL_FONT_FAMILY}`;
+}
 
 /** @param {object} box @param {number} left @param {number} right @param {number} w @param {(t: number) => number | null} timeToX @param {number} pad */
 function labelXInBox(box, left, right, w, timeToX, pad) {
@@ -33,6 +40,33 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
   const x2End = box.extendRight ? null : timeToX(box.timeEnd);
   const x2 = box.extendRight ? rightX : x2End;
   const yTop = priceToY(box.priceTop);
+
+  if (box.kind === "line") {
+    if (x1 == null || x2 == null || yTop == null || x1 > x2 + 2) return;
+    ctx.save();
+    ctx.strokeStyle = box.lineColor ?? box.borderColor ?? box.fillColor ?? "#787b86";
+    ctx.lineWidth = Math.max(1, Number(box.lineWidth) || 1);
+    ctx.setLineDash(Array.isArray(box.lineDash) ? box.lineDash : []);
+    ctx.beginPath();
+    ctx.moveTo(x1, yTop);
+    ctx.lineTo(x2, yTop);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (box.kind === "label") {
+    if (x1 == null || yTop == null || !box.label) return;
+    ctx.save();
+    ctx.font = labelFont(box);
+    ctx.fillStyle = box.textColor ?? "#131722";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = box.labelAlign === "right" ? "right" : box.labelAlign === "center" ? "center" : "left";
+    ctx.fillText(String(box.label), x1 + (Number(box.labelOffsetX) || 0), yTop);
+    ctx.restore();
+    return;
+  }
+
   const yBot = priceToY(box.priceBottom);
   if (x1 == null || x2 == null || yTop == null || yBot == null) return;
   // Skip draw when start/end coords disagree (stale mapBars during history restore).
@@ -59,7 +93,7 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
   }
 
   if (box.showLabel && box.label) {
-    ctx.font = LABEL_FONT;
+    ctx.font = labelFont(box);
     ctx.fillStyle = box.textColor ?? "#00e676";
     ctx.textBaseline = "middle";
     const midY = top + h / 2;
@@ -96,9 +130,10 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
 }
 
 class BoxesPaneRenderer {
-  /** @param {() => object} getData */
-  constructor(getData) {
+  /** @param {() => object} getData @param {(box: object) => boolean} filter */
+  constructor(getData, filter) {
     this._getData = getData;
+    this._filter = filter;
   }
 
   /** @param {import("fancy-canvas").CanvasRenderingTarget2D} target */
@@ -110,6 +145,7 @@ class BoxesPaneRenderer {
       const rightX = mediaSize.width;
       const pad = 4;
       for (const box of boxes) {
+        if (!this._filter(box)) continue;
         const x1 = timeToX(box.timeStart);
         const x2End = box.extendRight ? null : timeToX(box.timeEnd);
         const x2 = box.extendRight ? rightX : x2End;
@@ -124,17 +160,22 @@ class BoxesPaneRenderer {
 }
 
 class BoxesPaneView {
-  /** @param {BoxesPrimitive} source */
-  constructor(source) {
+  /** @param {BoxesPrimitive} source @param {"bottom" | "top"} order */
+  constructor(source, order) {
     this._source = source;
+    this._order = order;
   }
 
   zOrder() {
-    return "bottom";
+    return this._order;
   }
 
   renderer() {
-    return new BoxesPaneRenderer(() => this._source.drawData());
+    const top = this._order === "top";
+    return new BoxesPaneRenderer(
+      () => this._source.drawData(),
+      (box) => (box.zOrder === "top") === top,
+    );
   }
 }
 
@@ -152,13 +193,22 @@ function boxesEqual(a, b) {
       Boolean(x.extendRight) !== Boolean(y.extendRight) ||
       x.priceTop !== y.priceTop ||
       x.priceBottom !== y.priceBottom ||
+      x.kind !== y.kind ||
       x.fillColor !== y.fillColor ||
       x.borderColor !== y.borderColor ||
       x.borderWidth !== y.borderWidth ||
       String(x.borderDash ?? "") !== String(y.borderDash ?? "") ||
+      x.lineColor !== y.lineColor ||
+      x.lineWidth !== y.lineWidth ||
+      String(x.lineDash ?? "") !== String(y.lineDash ?? "") ||
       Boolean(x.showLabel) !== Boolean(y.showLabel) ||
       x.label !== y.label ||
-      x.textColor !== y.textColor
+      x.textColor !== y.textColor ||
+      x.fontSize !== y.fontSize ||
+      x.fontWeight !== y.fontWeight ||
+      x.labelAlign !== y.labelAlign ||
+      x.labelOffsetX !== y.labelOffsetX ||
+      x.zOrder !== y.zOrder
     ) {
       return false;
     }
@@ -182,7 +232,10 @@ class BoxesPrimitive {
     this._requestUpdate = null;
     /** @type {(() => void) | null} */
     this._unsub = null;
-    this._paneView = new BoxesPaneView(this);
+    this._paneViews = [
+      new BoxesPaneView(this, "bottom"),
+      new BoxesPaneView(this, "top"),
+    ];
   }
 
   /** @param {object[]} boxes @param {{ mapBars?: object[], barSec?: number, lastRealChartTime?: number, timeAdapter?: ReturnType<import("../../chart/time/timeAdapter.js").createTimeAdapter> } | null} [timeCtx] @param {{ geometryUnchanged?: boolean, skipRedraw?: boolean }} [opts] */
@@ -239,7 +292,7 @@ class BoxesPrimitive {
   updateAllViews() {}
 
   paneViews() {
-    return [this._paneView];
+    return this._paneViews;
   }
 
   drawData() {

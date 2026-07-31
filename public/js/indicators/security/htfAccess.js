@@ -3,6 +3,7 @@
 // Fetching/storing/replay-anchor handling lives in app/bar/htfBarCache.js.
 import { normalizeResolutionId } from "../../chart/resolutionFormat.js";
 import { resolutionSec } from "../../chart/resolutions.js";
+import { alignedHtfBucketOpen } from "./sessionBuckets.js";
 
 // The app cache registers its reader when boot code loads. Keeping this module
 // independent from app/debug/catalog modules prevents an ESM cycle when hosts
@@ -89,7 +90,7 @@ export function rebuildFormingBucket(hit, ctx, symbol, tfSec) {
 
   const chartTail = chartUtc.at(-1)?.time;
   if (chartTail == null) return hit;
-  const bucketOpen = Math.floor(chartTail / tfSec) * tfSec;
+  const bucketOpen = alignedHtfBucketOpen(chartTail, tfSec, ctx.symbolInfo);
 
   let open = null;
   let high = -Infinity;
