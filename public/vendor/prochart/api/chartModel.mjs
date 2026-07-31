@@ -362,6 +362,13 @@ export class ChartModel {
     return { width: this.paneWidth(), height: pane ? pane.height : 0 };
   }
 
+  isPointInPlot(x, y) {
+    return x >= (this._leftW || 0)
+      && x < this.width - (this._rightW || 0)
+      && y >= 0
+      && y < this.height - this.timeAxisHeight();
+  }
+
   _layoutPanes() {
     const totalH = this.height - this.timeAxisHeight();
     const seps = Math.max(0, this.panes.length - 1) * SEPARATOR_H;

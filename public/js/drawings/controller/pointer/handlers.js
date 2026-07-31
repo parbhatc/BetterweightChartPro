@@ -723,6 +723,7 @@ export function createPointerHandlers(api) {
     if (!api.isValuesTooltipPinned?.()) activeLongPressPointer = null;
     if (!api.isValuesTooltipPinned?.()) api.hideValuesTooltip();
     api.setHoveredDrawing(null);
+    if (api.shouldSyncDrawCrosshair?.()) api.clearDrawCrosshair?.();
     if (["dot", "demonstration"].includes(api.getActiveTool())) {
       api.hideCursorMark();
     }

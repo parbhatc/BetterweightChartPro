@@ -16,6 +16,14 @@ import {
   safePriceToY,
 } from "../coords/timeScale.js";
 
+/** Keep a tracked drawing cursor under the finger at sub-bar precision. */
+export function scrollTrackingMediaPosition(anchorX, anchorY, dx, dy, paneW, paneH, pad = 2) {
+  return {
+    x: Math.max(pad, Math.min(paneW - pad, anchorX + dx)),
+    y: Math.max(pad, Math.min(paneH - pad, anchorY + dy)),
+  };
+}
+
 /**
  * @param {object} opts
  * @param {object[]} opts.utcBars
@@ -168,30 +176,7 @@ export function createTimeAdapter({ utcBars, chartBars, mapBars, barSec }) {
      * @param {number} paneH
      */
     scrollMedia(chart, series, dx, dy, anchorX, anchorY, paneW, paneH) {
-      const pad = 2;
-      const ts = chart.timeScale();
-      const barSpacing = ts.options().barSpacing ?? 8;
-
-      const anchorPoint = pixelToPoint(chart, series, mapBars, barSec, anchorX, anchorY, realLastChartTime);
-      if (!anchorPoint) return null;
-
-      const barDelta = Math.round(dx / barSpacing);
-      const logical = timeToLogical(mapBars, barSec, anchorPoint.time);
-      if (logical == null || !Number.isFinite(logical)) return null;
-      const newChartTime = logicalToChartTime(mapBars, barSec, logical + barDelta);
-
-      const newMediaY = Math.max(pad, Math.min(paneH - pad, anchorY + dy));
-      const newPrice = series.coordinateToPrice(newMediaY);
-      if (newChartTime == null || newPrice == null || !Number.isFinite(newPrice)) return null;
-
-      const newMediaX = chartXAt(ts, mapBars, barSec, undefined, newChartTime, realLastChartTime);
-      const newMediaYFromPrice = safePriceToY(series, newPrice);
-      if (newMediaX == null || newMediaYFromPrice == null) return null;
-
-      return {
-        x: Math.max(pad, Math.min(paneW - pad, newMediaX)),
-        y: Math.max(pad, Math.min(paneH - pad, newMediaYFromPrice)),
-      };
+      return scrollTrackingMediaPosition(anchorX, anchorY, dx, dy, paneW, paneH);
     },
   };
 

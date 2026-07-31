@@ -59,6 +59,10 @@ export class ChartApi {
     return this._model.paneSize(paneIndex);
   }
 
+  isPointInPlot(x, y) {
+    return this._model.isPointInPlot(x, y);
+  }
+
   timeScale() {
     return this._model.timeScaleApi;
   }
@@ -130,6 +134,10 @@ export class ChartApi {
 
   setCrosshairPosition(price, time, series) {
     this._model.setCrosshairPosition(price, time, series);
+  }
+
+  setCrosshairPositionAtCoordinate(x, y) {
+    this._model.updateCrosshair(x, y);
   }
 
   clearCrosshairPosition() {

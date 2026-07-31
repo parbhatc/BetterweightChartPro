@@ -226,8 +226,13 @@ test("series, pane, and chart facades delegate domain behavior", () => {
       return "pane";
     },
     removePane: (index) => chartCalls.push(["remove", index]),
+    updateCrosshair: (x, y) => chartCalls.push(["crosshair", x, y]),
+    isPointInPlot: (x, y) => x < 700 && y < 500,
   });
   assert.equal(chartApi.addPane(), "pane");
   chartApi.removePane(2);
-  assert.deepEqual(chartCalls, ["add", ["remove", 2]]);
+  chartApi.setCrosshairPositionAtCoordinate(140, 260);
+  assert.equal(chartApi.isPointInPlot(650, 450), true);
+  assert.equal(chartApi.isPointInPlot(750, 450), false);
+  assert.deepEqual(chartCalls, ["add", ["remove", 2], ["crosshair", 140, 260]]);
 });

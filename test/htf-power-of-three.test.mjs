@@ -27,6 +27,7 @@ function context(chartBars, securityBars = []) {
       currency_code: "USD",
     },
     utcBars: chartBars,
+    nowSec: chartBars.at(-1)?.time,
     getSecurityBars: () => ({
       utcBars: securityBars,
       chartBars: securityBars,
@@ -49,6 +50,35 @@ test("HTF Power of Three is registered with the observed defaults", () => {
   assert.equal(instance.style.bearBodyColor, "#000000");
   assert.equal(instance.style.bullBodyColorOpacity, 100);
   assert.equal(instance.style.bearBodyColorOpacity, 100);
+  assert.equal(instance.style.openLineColor, "#5e6977");
+  assert.equal(instance.style.openLineColorOpacity, 100);
+  assert.equal(instance.style.highLowLineColor, "#5e6977");
+  assert.equal(instance.style.highLowLineColorOpacity, 100);
+});
+
+test("HTF Power of Three migrates only its former low-contrast projection lines", () => {
+  const definition = new HtfPowerOfThreeIndicator();
+  const migrated = definition.mergeStyleDefaults({
+    openLineColor: "#787b86",
+    openLineColorOpacity: 50,
+    highLowLineColor: "#787B86",
+    highLowLineColorOpacity: 50,
+  });
+  assert.equal(migrated.openLineColor, "#5e6977");
+  assert.equal(migrated.openLineColorOpacity, 100);
+  assert.equal(migrated.highLowLineColor, "#5e6977");
+  assert.equal(migrated.highLowLineColorOpacity, 100);
+
+  const custom = definition.mergeStyleDefaults({
+    openLineColor: "#123456",
+    openLineColorOpacity: 35,
+    highLowLineColor: "#654321",
+    highLowLineColorOpacity: 80,
+  });
+  assert.equal(custom.openLineColor, "#123456");
+  assert.equal(custom.openLineColorOpacity, 35);
+  assert.equal(custom.highLowLineColor, "#654321");
+  assert.equal(custom.highLowLineColorOpacity, 80);
 });
 
 test("HTF Power of Three projects a live aggregate candle, levels, prices, and range", () => {
@@ -145,7 +175,7 @@ test("HTF Power of Three maps info-table inputs to fixed pane anchors", () => {
   assert.ok(table.every((item) => item.screenHeight === 20));
 });
 
-test("HTF Power of Three supports countdown and hidden close-time rows", () => {
+test("HTF Power of Three supports exact, countdown, combined, and hidden close-time rows", () => {
   const chartBars = [bar(14400, 100, 109, 99, 106)];
   const instance = HtfPowerOfThreeIndicator.createInstance(0);
   instance.inputs = { ...instance.inputs, closeTimeMode: "countdown" };
@@ -160,6 +190,17 @@ test("HTF Power of Three supports countdown and hidden close-time rows", () => {
   assert.equal(countdownTable[2].countdownTo, 28800);
   assert.equal(formatCountdownLabel(28800, 22500), "Closes in: 1:45:00");
 
+  instance.inputs.closeTimeMode = "both";
+  const combinedTable = HtfPowerOfThreeIndicator.computeOverlay(
+    chartBars,
+    chartBars,
+    instance,
+    context(chartBars),
+  ).filter((item) => item.kind === "screen-box");
+  assert.equal(combinedTable.length, 4);
+  assert.equal(combinedTable[2].label, "Closes: 8:00 AM");
+  assert.equal(combinedTable[3].countdownTo, 28800);
+
   instance.inputs.closeTimeMode = "off";
   const hiddenTable = HtfPowerOfThreeIndicator.computeOverlay(
     chartBars,
@@ -168,6 +209,26 @@ test("HTF Power of Three supports countdown and hidden close-time rows", () => {
     context(chartBars),
   ).filter((item) => item.kind === "screen-box");
   assert.equal(hiddenTable.length, 2);
+});
+
+test("HTF Power of Three derives close time from the active bucket instead of stale HTF data", () => {
+  const liveNow = Date.parse("2026-07-31T17:15:00Z") / 1000;
+  const chartBars = [bar(liveNow - 60, 100, 109, 99, 106)];
+  const staleHtf = [bar(Date.parse("2026-07-31T08:00:00Z") / 1000, 90, 110, 85, 100)];
+  const instance = HtfPowerOfThreeIndicator.createInstance(0);
+  instance.inputs = { ...instance.inputs, closeTimeMode: "countdown" };
+  const ctx = context(chartBars, staleHtf);
+  ctx.nowSec = liveNow;
+
+  const countdownRow = HtfPowerOfThreeIndicator.computeOverlay(
+    chartBars,
+    chartBars,
+    instance,
+    ctx,
+  ).find((item) => item.kind === "screen-box" && item.countdownTo != null);
+
+  assert.equal(countdownRow.countdownTo, Date.parse("2026-07-31T20:00:00Z") / 1000);
+  assert.equal(formatCountdownLabel(countdownRow.countdownTo, liveNow), "Closes in: 2:45:00");
 });
 
 test("HTF Power of Three aligns intraday buckets to the exchange session", () => {

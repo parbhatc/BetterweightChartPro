@@ -21,6 +21,14 @@ export function attachCrosshair(ctx) {
     ctx.drawCrosshairDot.hidden = true;
   }
 
+  function showDrawCrosshairDotAtMedia(media = ctx.drawCrosshairMedia) {
+    if (!media) return false;
+    ctx.drawCrosshairDot.style.left = `${media.x}px`;
+    ctx.drawCrosshairDot.style.top = `${media.y}px`;
+    ctx.drawCrosshairDot.hidden = false;
+    return true;
+  }
+
   function resolveCrosshairPointFromClient(clientX, clientY) {
     const c = coord();
     if (!c) return null;
@@ -32,6 +40,33 @@ export function attachCrosshair(ctx) {
       clientY,
       ctx.magnetMode,
     );
+  }
+
+  function mediaPointFromClient(clientX, clientY) {
+    const rect = ctx.container.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  function isMediaPointInPlot(media) {
+    if (typeof ctx.chart.isPointInPlot === "function") {
+      return ctx.chart.isPointInPlot(media.x, media.y);
+    }
+    const rect = ctx.container.getBoundingClientRect();
+    return media.x >= 0 && media.x < rect.width && media.y >= 0 && media.y < rect.height;
+  }
+
+  function hideDrawCrosshairOutsidePlot(media) {
+    if (isMediaPointInPlot(media)) return false;
+    clearDrawCrosshair();
+    return true;
+  }
+
+  function setCrosshairAtMedia(media, point) {
+    if (typeof ctx.chart.setCrosshairPositionAtCoordinate === "function") {
+      ctx.chart.setCrosshairPositionAtCoordinate(media.x, media.y);
+      return;
+    }
+    ctx.chart.setCrosshairPosition(point.price, point.time, ctx.series);
   }
 
   function rememberNativeDrawCrosshairFromParam(param) {
@@ -82,6 +117,12 @@ export function attachCrosshair(ctx) {
     }
     if (!shouldSyncDrawCrosshair() || !ctx.pinnedDrawCrosshair) {
       hideDrawCrosshairDot();
+      return;
+    }
+    if (ctx.drawCrosshairMedia) {
+      ctx.drawCrosshairDot.style.left = `${ctx.drawCrosshairMedia.x}px`;
+      ctx.drawCrosshairDot.style.top = `${ctx.drawCrosshairMedia.y}px`;
+      ctx.drawCrosshairDot.hidden = false;
       return;
     }
     const { barSec } = ctx.getContext();
@@ -183,7 +224,7 @@ export function attachCrosshair(ctx) {
     ctx.lastNativeDrawCrosshair = { price: point.price, time: point.time };
     ctx.anchoringDrawCrosshair = true;
     try {
-      ctx.chart.setCrosshairPosition(point.price, point.time, ctx.series);
+      setCrosshairAtMedia(ctx.drawCrosshairMedia, point);
     } finally {
       ctx.anchoringDrawCrosshair = false;
     }
@@ -197,8 +238,9 @@ export function attachCrosshair(ctx) {
 
   function setDrawCrosshairAtClient(clientX, clientY) {
     if (!shouldSyncDrawCrosshair()) return;
-    const rect = ctx.container.getBoundingClientRect();
-    ctx.drawCrosshairMedia = { x: clientX - rect.left, y: clientY - rect.top };
+    const media = mediaPointFromClient(clientX, clientY);
+    if (hideDrawCrosshairOutsidePlot(media)) return;
+    ctx.drawCrosshairMedia = media;
     syncDrawCrosshairAtMediaAnchor();
   }
 
@@ -226,6 +268,22 @@ export function attachCrosshair(ctx) {
     ctx.unsubDrawCrosshairDotSync();
     const onMove = (param) => {
       if (ctx.applyingCrosshairSync) return;
+      // The chart emits an empty point when its native cursor is hidden (for
+      // example during a trackpad range update or after leaving the plot).
+      // Preserve the marker through transient range redraws; pointerleave and
+      // axis entry explicitly clear the stored media point.
+      if (!param?.point) {
+        if (
+          shouldSyncDrawCrosshair() &&
+          ctx.drawCrosshairMedia &&
+          isMediaPointInPlot(ctx.drawCrosshairMedia)
+        ) {
+          showDrawCrosshairDotAtMedia();
+        } else {
+          hideDrawCrosshairDot();
+        }
+        return;
+      }
       if (COARSE_POINTER_MQ.matches && shouldSyncDrawCrosshair()) {
         if (ctx.drawCrosshairMedia) {
           syncDrawCrosshairDotFromChart({
@@ -234,13 +292,13 @@ export function attachCrosshair(ctx) {
           });
           return;
         }
-        if (param?.point && param.time != null) {
+        if (param.time != null) {
           rememberNativeDrawCrosshairFromParam(param);
           syncDrawCrosshairDotFromChart(param);
         }
         return;
       }
-      if (param?.point && param.time != null) rememberNativeDrawCrosshairFromParam(param);
+      if (param.time != null) rememberNativeDrawCrosshairFromParam(param);
     };
     const onRange = () => {
       if (ctx.drawCrosshairMedia && shouldSyncDrawCrosshair()) syncDrawCrosshairAtMediaAnchor();
@@ -269,22 +327,29 @@ export function attachCrosshair(ctx) {
 
   function syncDrawCrosshair(clientX, clientY) {
     if (!shouldSyncDrawCrosshair() || COARSE_POINTER_MQ.matches) return;
+    const media = mediaPointFromClient(clientX, clientY);
+    if (hideDrawCrosshairOutsidePlot(media)) return;
     const point = resolveCrosshairPointFromClient(clientX, clientY);
     if (!point) return;
+    ctx.drawCrosshairMedia = media;
     ctx.pinnedDrawCrosshair = { price: point.price, time: point.time };
     ctx.lastNativeDrawCrosshair = { price: point.price, time: point.time };
-    ctx.chart.setCrosshairPosition(point.price, point.time, ctx.series);
+    setCrosshairAtMedia(ctx.drawCrosshairMedia, point);
     syncDrawCrosshairDot();
     emitCrosshairSync();
   }
 
   function repinDrawCrosshair() {
     if (!shouldSyncDrawCrosshair() || COARSE_POINTER_MQ.matches || !ctx.pinnedDrawCrosshair) return;
-    ctx.chart.setCrosshairPosition(
-      ctx.pinnedDrawCrosshair.price,
-      ctx.pinnedDrawCrosshair.time,
-      ctx.series,
-    );
+    if (ctx.drawCrosshairMedia) {
+      setCrosshairAtMedia(ctx.drawCrosshairMedia, ctx.pinnedDrawCrosshair);
+    } else {
+      ctx.chart.setCrosshairPosition(
+        ctx.pinnedDrawCrosshair.price,
+        ctx.pinnedDrawCrosshair.time,
+        ctx.series,
+      );
+    }
     syncDrawCrosshairDot();
   }
 
@@ -313,7 +378,7 @@ export function attachCrosshair(ctx) {
     const point = resolveCrosshairPointFromClient(clientX, clientY);
     if (!point) return;
     ctx.lastNativeDrawCrosshair = { price: point.price, time: point.time };
-    ctx.chart.setCrosshairPosition(point.price, point.time, ctx.series);
+    setCrosshairAtMedia(mediaPointFromClient(clientX, clientY), point);
     emitCrosshairSync();
   }
 

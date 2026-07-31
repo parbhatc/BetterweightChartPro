@@ -130,7 +130,7 @@
 }
 
 .status-line:not(.status-line--bg) .status-line__item {
-  background: transparent;
+  background: color-mix(in srgb, var(--tv-bg) 15%, transparent);
 }
 
 .status-line:not(.status-line--bg) .status-line__item + .status-line__item {

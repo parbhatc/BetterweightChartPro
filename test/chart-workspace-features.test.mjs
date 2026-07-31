@@ -37,6 +37,7 @@ import {
 } from "../public/js/app/boot/chart/indicatorReload.js";
 import {
   bindEvents,
+  chartCursorForZone,
   TOUCH_TRACKING_CANCEL_DISTANCE,
   TOUCH_TRACKING_LONG_PRESS_MS,
   trackingCrosshairPosition,
@@ -46,6 +47,7 @@ import {
   statusPointerRefreshesDuringPan,
   statusPointerSelectsHover,
 } from "../public/js/chart/status/hover.js";
+import { scrollTrackingMediaPosition } from "../public/js/chart/time/timeAdapter.js";
 
 test("resolution cache does not leak candles between chart widgets", () => {
   clearResolutionCache();
@@ -408,7 +410,8 @@ test("appearance exposes Default and Gray chart-only palettes and never enables 
   assert.equal(theme.canvas.gridLinesMode, "none");
   assert.equal(theme.canvas.scalesTextColor, "#0f0f0f");
   assert.equal(theme.canvas.scalesFontSize, "12");
-  assert.equal(theme.canvas.crosshairColor, "#9c9c9c");
+  assert.equal(theme.canvas.crosshairColor, "#000000");
+  assert.equal(theme.canvas.crosshairOpacity, 50);
   assert.equal(theme.canvas.marginBottom, 8);
   assert.equal(theme.symbol.bodyUpColor, "#b2b5be");
   assert.equal(theme.symbol.bodyDownColor, "#434651");
@@ -427,6 +430,7 @@ test("appearance exposes Default and Gray chart-only palettes and never enables 
     "backgroundColor",
     "backgroundType",
     "crosshairColor",
+    "crosshairOpacity",
     "gridLinesMode",
     "marginBottom",
     "marginRight",
@@ -496,6 +500,29 @@ test("saved legacy dark Basic styles migrate without replacing custom colors", (
   });
 });
 
+test("saved Gray charts migrate the former pale crosshair without touching custom colors", () => {
+  const settings = createChartSettings();
+  settings.replace({
+    canvas: {
+      appearancePreset: "theme",
+      crosshairColor: "#9c9c9c",
+      crosshairOpacity: 100,
+    },
+  });
+  assert.equal(settings.get().canvas.crosshairColor, "#000000");
+  assert.equal(settings.get().canvas.crosshairOpacity, 50);
+
+  settings.replace({
+    canvas: {
+      appearancePreset: "theme",
+      crosshairColor: "#123456",
+      crosshairOpacity: 75,
+    },
+  });
+  assert.equal(settings.get().canvas.crosshairColor, "#123456");
+  assert.equal(settings.get().canvas.crosshairOpacity, 75);
+});
+
 test("overlapping close, ask, and bid labels remain sorted by price", () => {
   const model = { options: { layout: { fontSize: 12 } } };
   const labels = layoutAxisLabels(model, [
@@ -550,6 +577,24 @@ test("mobile tracking moves both crosshair lines by gesture delta without jumpin
     ),
     { x: 0, y: 180 },
   );
+});
+
+test("drawing scroll tracking follows sub-bar horizontal movement exactly", () => {
+  assert.deepEqual(
+    scrollTrackingMediaPosition(100, 200, 3, -7, 800, 600),
+    { x: 103, y: 193 },
+  );
+  assert.deepEqual(
+    scrollTrackingMediaPosition(100, 200, -500, 900, 800, 600),
+    { x: 2, y: 598 },
+  );
+});
+
+test("price and time axes use TradingView's directional resize cursors", () => {
+  assert.equal(chartCursorForZone("plot"), "");
+  assert.equal(chartCursorForZone("left"), "ns-resize");
+  assert.equal(chartCursorForZone("right"), "ns-resize");
+  assert.equal(chartCursorForZone("time"), "ew-resize");
 });
 
 test("plot pan input is coalesced to one chart update per animation frame", () => {
@@ -679,6 +724,17 @@ test("plot pan input is coalesced to one chart update per animation frame", () =
     assert.deepEqual(scrollCalls, [-30]);
     assert.deepEqual(pricePanCalls, [-15]);
     assert.deepEqual(crosshairCalls, [{ x: 130, y: 115 }]);
+
+    dispatch("wheel", {
+      buttons: 0,
+      clientX: 300,
+      clientY: 220,
+      deltaX: 24,
+      deltaY: 1,
+      deltaMode: 0,
+    });
+    assert.deepEqual(scrollCalls, [-30, 24]);
+    assert.deepEqual(crosshairCalls.at(-1), { x: 300, y: 220 });
 
     dispatch("pointerdown");
     dispatch("pointermove", { clientX: 140, clientY: 120 });

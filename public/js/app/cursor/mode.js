@@ -45,7 +45,7 @@ export function applyCursorMode(chart, el, tool, isCursor, series, themeCrosshai
 
   const hideLines = tool === "eraser" || tool === "arrow";
   const dotCenter = tool === "dot" || tool === "demonstration";
-  const drawBlue = !isCursor && !hideLines;
+  const drawingMode = !isCursor && !hideLines;
 
   const mode = hideLines
     ? CrosshairMode.Hidden
@@ -57,16 +57,14 @@ export function applyCursorMode(chart, el, tool, isCursor, series, themeCrosshai
   function lineOpts(visible) {
     const opts = { visible, labelVisible: visible };
     if (!visible) return opts;
-    if (drawBlue) {
-      opts.color = TV_DRAW_CROSSHAIR;
-      opts.labelBackgroundColor = TV_DRAW_CROSSHAIR;
-      return opts;
-    }
     if (themeCrosshair) {
       opts.color = themeCrosshair.color;
       opts.width = themeCrosshair.width;
       opts.style = themeCrosshair.style;
       opts.labelBackgroundColor = themeCrosshair.labelBg;
+    } else if (drawingMode) {
+      opts.color = TV_DRAW_CROSSHAIR;
+      opts.labelBackgroundColor = TV_DRAW_CROSSHAIR;
     }
     return opts;
   }
@@ -81,8 +79,8 @@ export function applyCursorMode(chart, el, tool, isCursor, series, themeCrosshai
 
   if (series) {
     series.applyOptions({
-      crosshairMarkerVisible: !dotCenter && (isCursor || drawBlue),
-      ...(drawBlue
+      crosshairMarkerVisible: !dotCenter && (isCursor || drawingMode),
+      ...(drawingMode
         ? {
             crosshairMarkerBorderColor: TV_DRAW_CROSSHAIR,
             crosshairMarkerBackgroundColor: TV_DRAW_CROSSHAIR,

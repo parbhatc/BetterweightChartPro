@@ -45,6 +45,17 @@ function normalizeSettings(next) {
       merged.canvas[key] = replacement;
     }
   }
+  // Gray originally used an opaque light-gray crosshair, which looked washed
+  // out over its warm background. Migrate only that exact preset default to
+  // TradingView's darker, half-opacity treatment and preserve custom colors.
+  if (
+    merged.canvas.appearancePreset === "theme" &&
+    String(next.canvas?.crosshairColor ?? "").toLowerCase() === "#9c9c9c" &&
+    Number(next.canvas?.crosshairOpacity ?? 100) === 100
+  ) {
+    merged.canvas.crosshairColor = "#000000";
+    merged.canvas.crosshairOpacity = 50;
+  }
   // Version 1 briefly shipped bid/ask labels and lines enabled by default.
   // Move those profiles back to the quieter opt-in default once; version 2
   // then preserves every explicit user choice.

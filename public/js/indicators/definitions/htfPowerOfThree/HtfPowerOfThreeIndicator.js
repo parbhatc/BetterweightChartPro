@@ -9,7 +9,7 @@ import {
 } from "../../builders.js";
 import { resolutionSec, resolutionShortLabel } from "../../../chart/resolutions.js";
 import { etParts } from "../../../core/etTime.js";
-import { resolveHtfSeries } from "../../security/htfAccess.js";
+import { ctxPlaybackAnchorSec, resolveHtfSeries } from "../../security/htfAccess.js";
 import { alignedHtfBucketOpen } from "../../security/sessionBuckets.js";
 import { formatSymbolPrice, tickSizeFromSymbol } from "../../symbol.js";
 import { styleColorWithOpacity } from "../../styleColor.js";
@@ -21,11 +21,29 @@ const COLORS = {
   bearBorder: "#000000",
   bullWick: "#5d606b",
   bearWick: "#5d606b",
-  projection: "#787b86",
+  projection: "#5e6977",
   priceText: "#d1d4dc",
   infoBg: "#d1d4dc",
   infoText: "#000000",
 };
+
+const LEGACY_PROJECTION_COLOR = "#787b86";
+const LEGACY_PROJECTION_OPACITY = 50;
+const PROJECTION_OPACITY = 100;
+
+function projectionStyle(style, key) {
+  const opacityKey = `${key}Opacity`;
+  const color = style[key];
+  const opacity = style[opacityKey];
+  const usesLegacyDefault = (color == null || String(color).toLowerCase() === LEGACY_PROJECTION_COLOR)
+    && (opacity == null || Number(opacity) === LEGACY_PROJECTION_OPACITY);
+  return usesLegacyDefault
+    ? { [key]: COLORS.projection, [opacityKey]: PROJECTION_OPACITY }
+    : {
+        [key]: color ?? COLORS.projection,
+        [opacityKey]: opacity ?? PROJECTION_OPACITY,
+      };
+}
 
 const PRICE_TEXT_SIZES = {
   small: 10,
@@ -114,9 +132,19 @@ function po3PriceText(price, symbolInfo) {
     .replace(/\.0+$/, "");
 }
 
-function closeAtUnix(bar, timeframe) {
+function closeAtUnix(bar, timeframe, ctx) {
   const tfSec = resolutionSec(timeframe);
-  if (!tfSec || !Number.isFinite(Number(bar?.time))) return null;
+  if (!tfSec) return null;
+
+  const playbackAnchor = ctxPlaybackAnchorSec(ctx);
+  const configuredNow = Number(ctx?.nowSec);
+  const reference = playbackAnchor
+    ?? (Number.isFinite(configuredNow) ? configuredNow : Date.now() / 1000);
+  if (Number.isFinite(reference)) {
+    return alignedHtfBucketOpen(reference, tfSec, ctx?.symbolInfo) + tfSec;
+  }
+
+  if (!Number.isFinite(Number(bar?.time))) return null;
   return Number(bar.time) + tfSec;
 }
 
@@ -200,7 +228,7 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
         min: 1,
         section: "LTF Projections (Live PO3)",
       }),
-      createColor("openLineColor", "Open line", { color: COLORS.projection, opacity: 50 }, {
+      createColor("openLineColor", "Open line", { color: COLORS.projection, opacity: PROJECTION_OPACITY }, {
         section: "LTF Projections (Live PO3)",
         store: "style",
       }),
@@ -209,7 +237,7 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
         min: 1,
         section: "LTF Projections (Live PO3)",
       }),
-      createColor("highLowLineColor", "L/H lines", { color: COLORS.projection, opacity: 50 }, {
+      createColor("highLowLineColor", "L/H lines", { color: COLORS.projection, opacity: PROJECTION_OPACITY }, {
         section: "LTF Projections (Live PO3)",
         store: "style",
       }),
@@ -231,6 +259,7 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
       createSelect("closeTimeMode", "Close time", "exact", [
         { id: "exact", label: "Exact time" },
         { id: "countdown", label: "Countdown" },
+        { id: "both", label: "Exact time + countdown" },
         { id: "off", label: "Off" },
       ], { section: "PO3 Info Table" }),
       inlinePair(
@@ -257,10 +286,8 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
       bullWickColorOpacity: style.bullWickColorOpacity ?? 100,
       bearWickColor: style.bearWickColor ?? COLORS.bearWick,
       bearWickColorOpacity: style.bearWickColorOpacity ?? 100,
-      openLineColor: style.openLineColor ?? COLORS.projection,
-      openLineColorOpacity: style.openLineColorOpacity ?? 50,
-      highLowLineColor: style.highLowLineColor ?? COLORS.projection,
-      highLowLineColorOpacity: style.highLowLineColorOpacity ?? 50,
+      ...projectionStyle(style, "openLineColor"),
+      ...projectionStyle(style, "highLowLineColor"),
       priceTextColor: style.priceTextColor ?? COLORS.priceText,
       priceTextColorOpacity: style.priceTextColorOpacity ?? 100,
       infoBgColor: style.infoBgColor ?? COLORS.infoBg,
@@ -353,8 +380,18 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
     const bodyColor = styleColorWithOpacity(style, `${side}BodyColor`, COLORS[`${side}Body`], 100);
     const borderColor = styleColorWithOpacity(style, `${side}BorderColor`, COLORS[`${side}Border`], 100);
     const wickColor = styleColorWithOpacity(style, `${side}WickColor`, COLORS[`${side}Wick`], 100);
-    const openLineColor = styleColorWithOpacity(style, "openLineColor", COLORS.projection, 50);
-    const highLowLineColor = styleColorWithOpacity(style, "highLowLineColor", COLORS.projection, 50);
+    const openLineColor = styleColorWithOpacity(
+      style,
+      "openLineColor",
+      COLORS.projection,
+      PROJECTION_OPACITY,
+    );
+    const highLowLineColor = styleColorWithOpacity(
+      style,
+      "highLowLineColor",
+      COLORS.projection,
+      PROJECTION_OPACITY,
+    );
     const priceTextColor = styleColorWithOpacity(style, "priceTextColor", COLORS.priceText, 100);
     const infoBgColor = styleColorWithOpacity(style, "infoBgColor", COLORS.infoBg, 100);
     const infoTextColor = styleColorWithOpacity(style, "infoTextColor", COLORS.infoText, 100);
@@ -425,16 +462,21 @@ class HtfPowerOfThreeIndicator extends BarScriptIndicator {
       const vertical = inputs.infoVertical ?? "middle";
       const tfLabel = resolutionShortLabel(inputs.htfTimeframe ?? "240").toUpperCase();
       const closeMode = inputs.closeTimeMode ?? (inputs.showCloseTime === false ? "off" : "exact");
-      const closeAt = closeAtUnix(bar, inputs.htfTimeframe ?? "240");
-      const closeRow = closeMode === "countdown" && closeAt != null
-        ? { label: "", fontWeight: 400, countdownTo: closeAt }
-        : closeMode === "exact" && closeAt != null
-          ? { label: closeTimeText(closeAt, ctx), fontWeight: 400 }
-          : null;
+      const closeAt = closeAtUnix(bar, inputs.htfTimeframe ?? "240", ctx);
+      const closeRows = closeAt == null || closeMode === "off"
+        ? []
+        : [
+            ...(closeMode === "exact" || closeMode === "both"
+              ? [{ label: closeTimeText(closeAt, ctx), fontWeight: 400 }]
+              : []),
+            ...(closeMode === "countdown" || closeMode === "both"
+              ? [{ label: "", fontWeight: 400, countdownTo: closeAt }]
+              : []),
+          ];
       const rows = [
         { label: `${tfLabel} CANDLE PO3\u00b0`, fontWeight: 600 },
         { label: `Range: ${rangeText(range, inputs.rangeMode, tickSize, ctx.symbolInfo)}`, fontWeight: 400 },
-        ...(closeRow ? [closeRow] : []),
+        ...closeRows,
       ];
       const tableBase = {
         kind: "screen-box",

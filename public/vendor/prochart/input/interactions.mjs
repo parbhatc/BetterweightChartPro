@@ -16,6 +16,14 @@ export const TOUCH_TRACKING_CANCEL_DISTANCE = 5;
 /** TradingView desktop drags stop on pointer release; touch swipes retain momentum. */
 export const TRADINGVIEW_KINETIC_SCROLL = Object.freeze({ mouse: false, touch: true });
 
+/** Match TradingView's axis scale affordances: time stretches horizontally,
+ * while price rescales vertically. */
+export function chartCursorForZone(zone) {
+  if (zone === "time") return "ew-resize";
+  if (zone === "left" || zone === "right") return "ns-resize";
+  return "";
+}
+
 /** Lightweight Charts tracking-mode movement: preserve the crosshair origin
  * and add only the current gesture delta on both axes. */
 export function trackingCrosshairPosition(origin, gestureStart, current, bounds = {}) {
@@ -73,6 +81,12 @@ export function bindEvents(m) {
     if ((m._rightW || 0) > 0 && cx >= rightX) return "right";
     if ((m._leftW || 0) > 0 && cx <= (m._leftW || 0)) return "left";
     return "plot";
+  };
+
+  const updateAxisHoverCursor = (event, cachedPoint) => {
+    if (event.pointerType !== "mouse" || !el.style) return;
+    const zone = dragging?.zone ?? zoneAt(event, cachedPoint);
+    el.style.cursor = chartCursorForZone(zone);
   };
 
   const applyPendingPlotPan = () => {
@@ -186,6 +200,7 @@ export function bindEvents(m) {
       return;
     }
     const point = inputPoint(e);
+    updateAxisHoverCursor(e, point);
     const pos = rectPos(e, point);
     if (dragging) {
       const dx = e.clientX - dragging.lastX;
@@ -324,6 +339,7 @@ export function bindEvents(m) {
   listen("pointercancel", endPointer);
   listen("pointerleave", (e) => {
     m.invalidateInputRootRect?.();
+    if (el.style) el.style.cursor = "";
     if (!dragging && !(e.pointerType === "touch" && touchCrosshairPinned)) m.clearCrosshair();
   });
 
@@ -353,12 +369,17 @@ export function bindEvents(m) {
       let dx = e.deltaX;
       if (e.deltaMode === 1) { dy *= 16; dx *= 16; }
       else if (e.deltaMode === 2) { dy *= m.height; dx *= m.width; }
+      const pos = rectPos(e);
       if (Math.abs(dx) > Math.abs(dy)) {
-        if (scrollOn) m.timeScale.scrollBy(dx);
+        if (scrollOn) {
+          m.timeScale.scrollBy(dx);
+          // Trackpads pan without emitting pointermove. Re-map the stationary
+          // cursor so its time label and hover state follow the new viewport.
+          m.updateCrosshair(pos.x, pos.y, e);
+        }
         return;
       }
       if (!scaleOn) return;
-      const pos = rectPos(e);
       // TV zoom speed: ×1.1 per wheel notch (deltaY 100), anchored at cursor
       const factor = Math.pow(WHEEL_ZOOM_BASE, -dy / 100);
       m.timeScale.zoomAt(pos.x, factor);
@@ -379,6 +400,7 @@ export function bindEvents(m) {
     dragging = null;
     pinch = null;
     pointers.clear();
+    if (el.style) el.style.cursor = "";
     for (const { type, listener, options } of eventBindings) {
       el.removeEventListener(type, listener, options);
     }

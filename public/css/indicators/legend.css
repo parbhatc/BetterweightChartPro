@@ -47,7 +47,7 @@
   border-color: transparent;
   background: color-mix(
     in srgb,
-    var(--status-line-bg, var(--tv-bg)) 30%,
+    var(--status-line-bg, var(--tv-bg)) 15%,
     transparent
   );
   backdrop-filter: blur(6px);
@@ -107,7 +107,11 @@
 }
 
 .study-legend__item.is-hidden {
-  opacity: 0.55;
+  opacity: 0.15;
+}
+
+.study-legend__item.is-hidden:is(:hover, :focus-within, .is-selected, .is-expanded) {
+  opacity: 1;
 }
 
 .study-legend__main {
@@ -386,5 +390,30 @@
   .study-legend__action svg {
     width: 1rem;
     height: 1rem;
+  }
+}
+
+/* A narrow chart can still be driven by a precise laptop pointer. Keep the
+   compact touch layout, but do not require selecting a study before its
+   controls become available to mouse and trackpad users. */
+@media (max-width: 768px) and (hover: hover) and (pointer: fine) {
+  .study-legend__item:hover .study-legend__tail,
+  .study-legend__item:focus-within .study-legend__tail,
+  .study-legend__item.is-expanded .study-legend__tail {
+    display: inline-flex;
+  }
+
+  .study-legend__item:hover .study-legend__actions,
+  .study-legend__item:focus-within .study-legend__actions,
+  .study-legend__item.is-expanded .study-legend__actions {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .study-legend__item:hover,
+  .study-legend__item:focus-within,
+  .study-legend__item.is-expanded {
+    padding: 2px calc(5.25rem + 12px) 2px 4px;
   }
 }
