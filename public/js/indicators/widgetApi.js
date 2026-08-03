@@ -1,5 +1,5 @@
-import { listIndicators, getIndicatorClass, registerIndicator } from "./catalog.js";
-import { defineIndicator } from "./defineIndicator.js";
+import { listIndicators, getIndicatorClass, registerIndicatorDefinition } from "./catalog.js";
+import { createCustomIndicator, loadCustomIndicatorSpecs } from "./custom/definitions.js";
 
 /**
  * Host-facing indicator helpers: `widget.indicators.add("ema")`, `.remove("ema")`, …
@@ -97,12 +97,18 @@ export function createIndicatorsApi(opts) {
 
   /** Register a class or small config object at runtime. Returns its id. */
   function register(configOrClass) {
-    const Indicator =
-      typeof configOrClass === "function" && typeof configOrClass.createInstance === "function"
-        ? configOrClass
-        : defineIndicator(configOrClass);
-    registerIndicator(Indicator);
-    return Indicator.id;
+    return registerIndicatorDefinition(configOrClass).id;
+  }
+
+  /**
+   * Create a reusable formula indicator and optionally add it immediately.
+   * @param {{ title: string, formula: string, color?: string, placement?: "chart"|"pane", id?: string }} spec
+   * @param {{ persist?: boolean, add?: boolean, paneIndex?: number }} [options]
+   */
+  function create(spec, options = {}) {
+    const saved = createCustomIndicator(spec, { persist: options.persist !== false });
+    const instanceId = options.add === false ? null : add(saved.id, { paneIndex: options.paneIndex });
+    return { ...saved, instanceId };
   }
 
   /**
@@ -117,5 +123,16 @@ export function createIndicatorsApi(opts) {
     ensureData?.();
   }
 
-  return { add, remove, clear, list, available, register, patch, get: (id) => controller()?.getInstance?.(id) ?? null };
+  return {
+    add,
+    remove,
+    clear,
+    list,
+    available,
+    register,
+    create,
+    custom: () => loadCustomIndicatorSpecs(),
+    patch,
+    get: (id) => controller()?.getInstance?.(id) ?? null,
+  };
 }

@@ -1,7 +1,7 @@
 export { BaseIndicator } from "./BaseIndicator.js";
 export { BarScriptIndicator } from "./BarScriptIndicator.js";
 export { ComputeIndicator } from "./ComputeIndicator.js";
-export { defineIndicator, indicator } from "./defineIndicator.js";
+export { defineIndicator, indicator, scriptIndicator } from "./defineIndicator.js";
 export {
   plot,
   fill,
@@ -46,10 +46,21 @@ export {
   listIndicators,
   getIndicatorClass,
   registerIndicator,
+  registerIndicatorDefinition,
   createIndicatorInstance,
 } from "./catalog.js";
 export { createIndicatorController } from "./controller.js";
 export { createIndicatorsApi } from "./widgetApi.js";
+export {
+  createCustomIndicator,
+  customIndicatorClass,
+  loadCustomIndicatorSpecs,
+  normalizeCustomIndicatorSpec,
+  registerCustomIndicator,
+  registerStoredCustomIndicators,
+  saveCustomIndicatorSpec,
+} from "./custom/definitions.js";
+export { compileIndicatorFormula, parseIndicatorFormula } from "./custom/formula.js";
 export { firstBarIndexAtOrAfter, lastBarIndexAtOrBefore } from "./script/barIndex.js";
 export {
   createMatrix,
@@ -59,3 +70,10 @@ export {
   takenLiquidityKey,
 } from "./script/liquidityMatrix.js";
 export { bindOverlayEngine } from "./script/overlayEngine.js";
+export { runIncrementalOverlay, incrementalOverlayNeedsRefresh } from "./script/incrementalOverlay.js";
+export { indicatorPresetPatch, registerIndicatorPresetProvider } from "./presets.js";
+export {
+  registerCustomInputReader,
+  registerCustomInputRenderer,
+  registerCustomSettingsClickHandler,
+} from "./ui/customInputPanels.js";

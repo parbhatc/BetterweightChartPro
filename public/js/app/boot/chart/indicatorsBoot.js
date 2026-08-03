@@ -18,11 +18,15 @@ import { createIndicatorDataLoader } from "./indicatorDataLoader.js";
 import { createSecurityContext } from "../../bar/requestSecurity.js";
 import { symbolLabelAnchorsForPane } from "../../../chart/scale/symbolLabelAnchors.js";
 import { indicatorDebug, indicatorDebugRefresh } from "../../../debug/chart/indicators.js";
+import { indicatorPresetPatch } from "../../../indicators/presets.js";
+import { createCustomIndicator, registerStoredCustomIndicators } from "../../../indicators/custom/definitions.js";
 
 /**
  * @param {import("./state.js").BootContext} ctx
  */
 export function attachIndicatorsBoot(ctx) {
+  // Runtime definitions must exist before a saved layout restores its instances.
+  registerStoredCustomIndicators();
   function useStackedScaleLabels() {
     return ctx.settingsStore.get().scales?.noOverlappingLabels !== false;
   }
@@ -88,6 +92,10 @@ export function attachIndicatorsBoot(ctx) {
       return paneBarsForOverlay(pane, view.utcBars, view.chartBars);
     },
     useStackedScaleLabels,
+    getPresetPatch: (defId) => indicatorPresetPatch(
+      defId,
+      ctx.settingsStore.get().indicators?.appearancePreset ?? "none",
+    ),
     onChange: () => onControllerChange(),
     getOverlayContext: (pane) => {
       const newsCtx = indicatorData.newsContextForPane(pane);
@@ -151,6 +159,7 @@ export function attachIndicatorsBoot(ctx) {
       addIndicatorFromLibrary(defId);
     },
     onFavoritesChange: () => renderIndicatorFavorites(),
+    onCreate: (spec) => createCustomIndicator(spec).id,
   });
 
   const settings = createIndicatorSettingsDialog({
@@ -551,12 +560,16 @@ export function attachIndicatorsBoot(ctx) {
     if (!favoritesEl) return;
     const favIds = loadIndicatorFavorites();
     const favDefs = listIndicators().filter((Indicator) => favIds.includes(Indicator.id));
-    favoritesEl.innerHTML = favDefs
-      .map(
-        (Indicator) =>
-          `<button type="button" class="tv-chart-tools__fav-pill" data-def="${Indicator.id}" title="${Indicator.title}" aria-label="Add ${Indicator.title}">${Indicator.shortTitle || Indicator.title}</button>`,
-      )
-      .join("");
+    favoritesEl.replaceChildren(...favDefs.map((Indicator) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tv-chart-tools__fav-pill";
+      button.dataset.def = Indicator.id;
+      button.title = Indicator.title;
+      button.setAttribute("aria-label", `Add ${Indicator.title}`);
+      button.textContent = Indicator.shortTitle || Indicator.title;
+      return button;
+    }));
     favoritesEl.hidden = favDefs.length === 0;
   }
 

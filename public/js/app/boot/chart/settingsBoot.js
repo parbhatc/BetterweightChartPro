@@ -10,6 +10,7 @@ import { withPreservedViewport } from "../../../chart/pane/viewport.js";
 import { mountChartSettings } from "../../../ui/chart/settings.js";
 import { loadShowMobilePlacementBar, saveShowMobilePlacementBar } from "../../../drawings/toolbars/utility/settings/store.js";
 import { applyCanvasPresetForTheme, chartAppearancePreset } from "../themes.js";
+import { indicatorPresetPatch, normalizeIndicatorPresetId } from "../../../indicators/presets.js";
 import { saveThemePreference } from "../../../ui/theme/store.js";
 import { chartThemeFallback } from "../themes.js";
 import { saveToolDefaults } from "../../../drawings/toolbars/defaults/store.js";
@@ -52,6 +53,10 @@ export function attachSettingsBoot(ctx) {
       },
       onAppearancePresetChange: (id) => {
         applyAppearancePreset(id);
+        chartSettings?.syncDraftFromStore?.();
+      },
+      onIndicatorPresetChange: (id) => {
+        applyIndicatorAppearancePreset(id);
         chartSettings?.syncDraftFromStore?.();
       },
       getDrawingSettings: () => ({
@@ -115,6 +120,13 @@ export function attachSettingsBoot(ctx) {
       saveToolDefaults("long-position", preset.position);
       saveToolDefaults("short-position", preset.position);
     }
+  }
+
+  function applyIndicatorAppearancePreset(id) {
+    const normalized = normalizeIndicatorPresetId(id);
+    ctx.settingsStore.set("indicators", "appearancePreset", normalized);
+    if (normalized === "none") return;
+    ctx.indicatorController?.applyPreset?.((defId) => indicatorPresetPatch(defId, normalized));
   }
 
   // A persisted chart preset must restore its drawing-tool palette too. The
@@ -227,6 +239,7 @@ export function attachSettingsBoot(ctx) {
     refreshWatermark,
     applyThemeMode,
     applyAppearancePreset,
+    applyIndicatorAppearancePreset,
     formatPrice,
     activePriceScaleId,
     applySettingsToChartLocal,

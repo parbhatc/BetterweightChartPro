@@ -29,14 +29,16 @@ export function defaultFvgPalette() {
  * @param {"fill" | "border"} role
  * @param {unknown} color
  * @param {unknown} opacity
+ * @param {string} [presetId]
  */
-export function migrateLegacyFvgSetting(side, role, color, opacity) {
+export function migrateLegacyFvgSetting(side, role, color, opacity, presetId = "") {
   const normalizedColor = String(color ?? "").toLowerCase();
   const normalizedOpacity = Number(opacity);
   const legacyOpacity = role === "border"
     ? 50
     : LEGACY_CHART_COLORS.has(normalizedColor) ? 20 : 15;
   if (
+    presetId === "dark" ||
     !LEGACY_FVG_COLORS[side].has(normalizedColor) ||
     !Number.isFinite(normalizedOpacity) ||
     normalizedOpacity !== legacyOpacity
@@ -49,12 +51,12 @@ export function migrateLegacyFvgSetting(side, role, color, opacity) {
   };
 }
 
-/** @param {unknown} color @param {unknown} opacity */
-export function resolveDefaultIfvgSetting(color, opacity) {
+/** @param {unknown} color @param {unknown} opacity @param {string} [presetId] */
+export function resolveDefaultIfvgSetting(color, opacity, presetId = "") {
   const normalizedColor = String(color ?? DEFAULT_IFVG_COLOR).toLowerCase();
   const normalizedOpacity = Number(opacity ?? DEFAULT_IFVG_FILL_OPACITY);
   const usesDefault =
-    normalizedOpacity === DEFAULT_IFVG_FILL_OPACITY &&
+    presetId !== "dark" && normalizedOpacity === DEFAULT_IFVG_FILL_OPACITY &&
     (normalizedColor === "#ffff00" || normalizedColor === DEFAULT_IFVG_COLOR);
   return {
     color: usesDefault ? DEFAULT_IFVG_COLOR : String(color),

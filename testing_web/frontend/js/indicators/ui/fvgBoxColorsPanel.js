@@ -33,24 +33,26 @@ function defaultGlobalBoxColors(inputs, tfKey) {
       inputs.bearBorderColorOpacity != null
         ? Number(inputs.bearBorderColorOpacity)
         : palette.borderOpacity,
-  });
+  }, String(inputs.indicatorAppearancePreset ?? ""));
 }
 
-/** @param {object} colors */
-function migrateLegacyFvgColors(colors) {
-  const bullFill = migrateLegacyFvgSetting("bull", "fill", colors.bullColor, colors.bullOpacity);
-  const bearFill = migrateLegacyFvgSetting("bear", "fill", colors.bearColor, colors.bearOpacity);
+/** @param {object} colors @param {string} [presetId] */
+function migrateLegacyFvgColors(colors, presetId = "") {
+  const bullFill = migrateLegacyFvgSetting("bull", "fill", colors.bullColor, colors.bullOpacity, presetId);
+  const bearFill = migrateLegacyFvgSetting("bear", "fill", colors.bearColor, colors.bearOpacity, presetId);
   const bullBorder = migrateLegacyFvgSetting(
     "bull",
     "border",
     colors.bullBorderColor,
     colors.bullBorderOpacity,
+    presetId,
   );
   const bearBorder = migrateLegacyFvgSetting(
     "bear",
     "border",
     colors.bearBorderColor,
     colors.bearBorderOpacity,
+    presetId,
   );
   return {
     bullColor: bullFill.color,
@@ -90,7 +92,7 @@ export function resolveFvgBoxColorsForTf(inputs, tfKey) {
     bearBorderOpacity: custom.bearBorderOpacity != null
       ? Number(custom.bearBorderOpacity)
       : defaults.bearBorderOpacity,
-  });
+  }, String(inputs.indicatorAppearancePreset ?? ""));
 }
 
 /**
@@ -131,7 +133,7 @@ function swatchButton(tfKey, side, role, colors) {
   const bg = applyColorOpacity(color, opacity);
   const label = `${side === "bull" ? "Bullish" : "Bearish"} ${role} color`;
   const key = `${side}-${role}`;
-  return `<button type="button" class="tv-ind-settings__fvg-box-color-btn" data-fvg-box-color-pick="${escapeAttr(tfKey)}|${key}" aria-label="${label}">
+  return `<button type="button" class="tv-ind-settings__host-box-color-btn" data-fvg-box-color-pick="${escapeAttr(tfKey)}|${key}" aria-label="${label}">
       <span class="tv-drawing-settings__color-swatch" data-fvg-box-swatch="${escapeAttr(tfKey)}|${key}" data-color="${escapeAttr(color)}" data-opacity="${opacity}" style="background:${bg}"></span>
     </button>`;
 }
@@ -156,10 +158,10 @@ export function renderFvgBoxColorsPanel(input, draftInputs, getTimeframeOptions)
       const tfKey = fvgBoxColorTfKey(tf);
       const tfLabel = timeframeOptionLabel(tf === "chart" ? "chart" : normalizeResolutionId(tf), options);
       const colors = resolveFvgBoxColorsForTf(draftInputs, tfKey);
-      return `<div class="tv-ind-settings__fvg-box-colors-row" data-fvg-box-color-row data-tf-key="${escapeAttr(tfKey)}">
-      <span class="tv-ind-settings__fvg-box-colors-label">${escapeHtml(row.label || tfLabel)}</span>
-      <span class="tv-ind-settings__fvg-box-colors-tf">${escapeHtml(tfLabel)}</span>
-      <div class="tv-ind-settings__fvg-box-colors-swatches"${disabledAttr ? " aria-disabled=\"true\"" : ""}>
+      return `<div class="tv-ind-settings__host-box-colors-row" data-fvg-box-color-row data-tf-key="${escapeAttr(tfKey)}">
+      <span class="tv-ind-settings__host-box-colors-label">${escapeHtml(row.label || tfLabel)}</span>
+      <span class="tv-ind-settings__host-box-colors-tf">${escapeHtml(tfLabel)}</span>
+      <div class="tv-ind-settings__host-box-colors-swatches"${disabledAttr ? " aria-disabled=\"true\"" : ""}>
         ${swatchButton(tfKey, "bull", "fill", colors)}
         ${swatchButton(tfKey, "bull", "border", colors)}
         ${swatchButton(tfKey, "bear", "fill", colors)}
@@ -169,11 +171,11 @@ export function renderFvgBoxColorsPanel(input, draftInputs, getTimeframeOptions)
     })
     .join("");
 
-  return `<div class="tv-ind-settings__fvg-box-colors${disabledClass}" data-fvg-box-colors-root data-fvg-box-colors-field="${input.id}">
-    <div class="tv-ind-settings__fvg-box-colors-cols" aria-hidden="true">
+  return `<div class="tv-ind-settings__host-box-colors${disabledClass}" data-fvg-box-colors-root data-fvg-box-colors-field="${input.id}">
+    <div class="tv-ind-settings__host-box-colors-cols" aria-hidden="true">
       <span>Label</span><span>Timeframe</span><span>Fill / border colors</span>
     </div>
-    <div class="tv-ind-settings__fvg-box-colors-list" data-fvg-box-colors-list>
+    <div class="tv-ind-settings__host-box-colors-list" data-fvg-box-colors-list>
       ${rowHtml || `<div class="tv-ind-settings__tf-rules-empty">Enable timeframes in the Timeframes section first.</div>`}
     </div>
   </div>`;

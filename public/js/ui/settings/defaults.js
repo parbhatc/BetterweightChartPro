@@ -102,6 +102,9 @@ export const DEFAULT_SETTINGS = {
     marginBottom: 4,
     marginRight: 10,
   },
+  indicators: {
+    appearancePreset: "none",
+  },
 };
 
 export const SETTINGS_SECTIONS = [
@@ -120,8 +123,15 @@ export const THEME_OPTIONS = [
 
 export const APPEARANCE_PRESET_OPTIONS = [
   { value: "default", label: "Default" },
-  { value: "none", label: "None / Custom" },
   { value: "theme", label: "Gray" },
+  { value: "dark", label: "Dark" },
+  { value: "none", label: "None / Custom" },
+];
+
+export const INDICATOR_PRESET_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "gray", label: "Gray" },
+  { value: "dark", label: "Dark" },
 ];
 
 export const BACKGROUND_TYPE_OPTIONS = [

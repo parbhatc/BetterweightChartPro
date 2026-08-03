@@ -31,12 +31,35 @@ export {
   resolveDatafeed,
 } from "./datafeed/index.js";
 export { createDatafeed as createBrowserDatafeed } from "./datafeed/client.js";
-export { registerIndicator, listIndicators, getIndicatorClass } from "./indicators/catalog.js";
-export { defineIndicator, indicator } from "./indicators/defineIndicator.js";
+export { registerIndicator, registerIndicatorDefinition, listIndicators, getIndicatorClass } from "./indicators/catalog.js";
+export { defineIndicator, indicator, scriptIndicator } from "./indicators/defineIndicator.js";
 export {
-  plot, fill, createInt, createFloat, createBool, createSelect, createSource, createColor,
+  plot, fill, createInput, createInt, createFloat, createBool, createSelect, createSource,
+  createText, createColor, createTimeframe, createSymbol, createField, inlinePair, calcInputs,
 } from "./indicators/builders.js";
+export {
+  getSecuritySeries,
+  requestSecuritySeries,
+  resolveHtfSeries,
+  mapHtfBarsToSeries,
+} from "./indicators/security/htfAccess.js";
+export { compareSymbol } from "./indicators/security/compareSymbol.js";
+export { bindOverlayEngine } from "./indicators/script/overlayEngine.js";
+export { runIncrementalOverlay, incrementalOverlayNeedsRefresh } from "./indicators/script/incrementalOverlay.js";
 export { createIndicatorsApi } from "./indicators/widgetApi.js";
+export { indicatorPresetPatch, registerIndicatorPresetProvider } from "./indicators/presets.js";
+export {
+  registerCustomInputReader,
+  registerCustomInputRenderer,
+  registerCustomSettingsClickHandler,
+} from "./indicators/ui/customInputPanels.js";
+export {
+  createCustomIndicator,
+  loadCustomIndicatorSpecs,
+  registerCustomIndicator,
+  registerStoredCustomIndicators,
+} from "./indicators/custom/definitions.js";
+export { compileIndicatorFormula, parseIndicatorFormula } from "./indicators/custom/formula.js";
 export { createTradingViewChartApi, createOrderLineManager, createPositionOverlay } from "./chart/orderLine/index.js";
 export { createExecutionShapeManager } from "./chart/executionShape/index.js";
 export { registerTradeContextActions,

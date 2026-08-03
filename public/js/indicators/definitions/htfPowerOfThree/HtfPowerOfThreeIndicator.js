@@ -35,7 +35,8 @@ function projectionStyle(style, key) {
   const opacityKey = `${key}Opacity`;
   const color = style[key];
   const opacity = style[opacityKey];
-  const usesLegacyDefault = (color == null || String(color).toLowerCase() === LEGACY_PROJECTION_COLOR)
+  const usesLegacyDefault = style.indicatorAppearancePreset !== "dark"
+    && (color == null || String(color).toLowerCase() === LEGACY_PROJECTION_COLOR)
     && (opacity == null || Number(opacity) === LEGACY_PROJECTION_OPACITY);
   return usesLegacyDefault
     ? { [key]: COLORS.projection, [opacityKey]: PROJECTION_OPACITY }

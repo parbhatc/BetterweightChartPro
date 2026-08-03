@@ -20,6 +20,7 @@ import {
   SETTINGS_UI_STORAGE_KEY,
   THEME_OPTIONS,
   APPEARANCE_PRESET_OPTIONS,
+  INDICATOR_PRESET_OPTIONS,
   resolveSettingsSection,
 } from "../settings/defaults.js";
 
@@ -63,6 +64,7 @@ function saveSettingsUiState(patch) {
  * @param {() => "dark" | "light"} [opts.getTheme]
  * @param {(mode: "dark" | "light") => void} [opts.onThemeChange]
  * @param {(preset: string) => void} [opts.onAppearancePresetChange]
+ * @param {(preset: string) => void} [opts.onIndicatorPresetChange]
  * @param {() => { showMobilePlacementBar?: boolean }} [opts.getDrawingSettings]
  * @param {() => boolean} [opts.getQuotesEnabled]
  * @param {() => number | null} [opts.getLivePriceBarRatio]
@@ -76,6 +78,7 @@ export function mountChartSettings(opts) {
     getTheme,
     onThemeChange,
     onAppearancePresetChange,
+    onIndicatorPresetChange,
     getDrawingSettings,
     getQuotesEnabled,
     getLivePriceBarRatio,
@@ -792,11 +795,15 @@ export function mountChartSettings(opts) {
   function appearanceSection() {
     const theme = getTheme?.() ?? "dark";
     const preset = getDraft().canvas?.appearancePreset ?? "none";
+    const indicatorPreset = getDraft().indicators?.appearancePreset ?? "none";
     const opts = THEME_OPTIONS.map(
       (o) => `<option value="${o.value}" ${o.value === theme ? "selected" : ""}>${o.label}</option>`,
     ).join("");
     const presetOpts = APPEARANCE_PRESET_OPTIONS.map(
       (o) => `<option value="${o.value}" ${o.value === preset ? "selected" : ""}>${o.label}</option>`,
+    ).join("");
+    const indicatorPresetOpts = INDICATOR_PRESET_OPTIONS.map(
+      (o) => `<option value="${o.value}" ${o.value === indicatorPreset ? "selected" : ""}>${o.label}</option>`,
     ).join("");
     return `${sectionBlock(
       "Theme",
@@ -804,6 +811,13 @@ export function mountChartSettings(opts) {
         <span class="tv-set__field-label">Chart preset</span>
         <div class="tv-set__select-wrap">
           <select class="tv-set__select" data-appearance-preset-select aria-label="Chart preset">${presetOpts}</select>
+          <span class="tv-set__select-chev">${ICONS.chevron}</span>
+        </div>
+      </div>
+      <div class="tv-set__field-row">
+        <span class="tv-set__field-label">Indicator preset</span>
+        <div class="tv-set__select-wrap">
+          <select class="tv-set__select" data-indicator-preset-select aria-label="Indicator preset">${indicatorPresetOpts}</select>
           <span class="tv-set__select-chev">${ICONS.chevron}</span>
         </div>
       </div>
@@ -1141,6 +1155,15 @@ export function mountChartSettings(opts) {
         const t = ev.target;
         if (t instanceof HTMLSelectElement && t.dataset.appearancePresetSelect !== undefined) {
           onAppearancePresetChange?.(t.value);
+          if (draft) {
+            snapshot = structuredClone(store.get());
+            draft = structuredClone(store.get());
+          }
+          renderPanel();
+          return;
+        }
+        if (t instanceof HTMLSelectElement && t.dataset.indicatorPresetSelect !== undefined) {
+          onIndicatorPresetChange?.(t.value);
           if (draft) {
             snapshot = structuredClone(store.get());
             draft = structuredClone(store.get());

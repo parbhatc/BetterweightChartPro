@@ -5,7 +5,7 @@ export function overlayLineSignature(line) {
 
 /** @param {object} box */
 export function overlayBoxSignature(box) {
-  return `${box.kind ?? "box"}|${box.zOrder ?? "bottom"}|${box.timeStart}|${box.timeEnd}|${Boolean(box.extendRight)}|${box.priceTop}|${box.priceBottom}|${box.label ?? ""}|${Boolean(box.showLabel)}|${box.fillColor ?? ""}|${box.borderColor ?? ""}|${box.lineColor ?? ""}|${box.lineWidth ?? ""}|${String(box.lineDash ?? "")}|${box.textColor ?? ""}|${box.fontSize ?? ""}|${box.screenHorizontal ?? ""}|${box.screenVertical ?? ""}|${box.screenWidth ?? ""}|${box.screenHeight ?? ""}|${box.screenRows ?? ""}|${box.screenRow ?? ""}|${box.screenMarginX ?? ""}|${box.screenMarginY ?? ""}|${box.countdownTo ?? ""}|${box.isIfvg ? 1 : 0}|${box.isPartial ? 1 : 0}|${box.isForming ? 1 : 0}`;
+  return `${box.kind ?? "box"}|${box.zOrder ?? "bottom"}|${box.timeStart}|${box.timeEnd}|${Boolean(box.extendRight)}|${box.priceTop}|${box.priceBottom}|${box.label ?? ""}|${Boolean(box.showLabel)}|${box.fillColor ?? ""}|${box.borderColor ?? ""}|${box.lineColor ?? ""}|${box.lineWidth ?? ""}|${String(box.lineDash ?? "")}|${box.textColor ?? ""}|${box.fontSize ?? ""}|${box.screenHorizontal ?? ""}|${box.screenVertical ?? ""}|${box.screenWidth ?? ""}|${box.screenHeight ?? ""}|${box.screenRows ?? ""}|${box.screenRow ?? ""}|${box.screenMarginX ?? ""}|${box.screenMarginY ?? ""}|${box.countdownTo ?? ""}|${box.cacheKey ?? ""}`;
 }
 
 /** @param {object[] | null | undefined} items */

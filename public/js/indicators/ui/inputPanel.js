@@ -1,6 +1,5 @@
 import { applyColorOpacity } from "../../ui/color/picker.js";
 import { symbolTicker } from "../../app/symbol/ticker.js";
-import { renderSymbolSizeRulesPanel } from "./symbolSizeRulesPanel.js";
 import { hasCustomInputRenderer, renderCustomInput } from "./customInputPanels.js";
 
 /**
@@ -51,7 +50,7 @@ export function renderInputsPanelHtml(schema, draftInputs, draftStyle, helpers) 
           inlineBatch = [];
         };
         for (const item of items) {
-          if (item.type === "symbolSizeRules" || hasCustomInputRenderer(item.type)) {
+          if (hasCustomInputRenderer(item.type)) {
             flushInline();
             chunks.push(renderInputItem(item, draftInputs, draftStyle, helpers));
             continue;
@@ -94,9 +93,6 @@ function renderInputItem(input, draftInputs, draftStyle, helpers) {
       <div class="tv-ind-settings__tv-pair-cell">${renderInputField(input.left, draftInputs, draftStyle, helpers)}</div>
       <div class="tv-ind-settings__tv-pair-cell">${renderInputField(input.right, draftInputs, draftStyle, helpers)}</div>
     </div></div>`;
-  }
-  if (input.type === "symbolSizeRules") {
-    return renderSymbolSizeRulesPanel(input, draftInputs);
   }
   if (hasCustomInputRenderer(input.type)) {
     return renderCustomInput(input.type, input, draftInputs, helpers);

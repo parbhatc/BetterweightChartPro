@@ -14,7 +14,6 @@ import { openIndicatorPlotTypeMenu, LINE_PLOT_TYPES, VOLUME_PLOT_TYPES, plotType
 import { PRECISION_OPTIONS } from "./constants.js";
 import { renderDefaultStyleSections, renderGraphicStudyStyleSections } from "./defaultStyleSections.js";
 import { renderInputsPanelHtml, renderInputColorField } from "./inputPanel.js";
-import { appendSizeRuleRow, readSizeFilterRulesFromPanel } from "./symbolSizeRulesPanel.js";
 import { readCustomInput, runCustomSettingsClickHandlers } from "./customInputPanels.js";
 import { flattenInputFields, defaultInputsFromSchema } from "../schema.js";
 import { openSymbolSearchPopover } from "../../ui/symbol/popover.js";
@@ -169,16 +168,6 @@ export function createIndicatorSettingsDialog(opts) {
       timeframeOptions,
     });
     syncInputSwatches();
-    syncFvgBoxColorSwatches();
-  }
-
-  function syncFvgBoxColorSwatches() {
-    inputsPanel.querySelectorAll("[data-fvg-box-swatch]").forEach((el) => {
-      if (!(el instanceof HTMLElement)) return;
-      const color = el.dataset.color ?? "#2962ff";
-      const opacity = el.dataset.opacity != null ? Number(el.dataset.opacity) : 10;
-      el.style.background = applyColorOpacity(color, opacity);
-    });
   }
 
   function syncInputSwatches() {
@@ -552,11 +541,6 @@ export function createIndicatorSettingsDialog(opts) {
     readFieldsFromPanel(inputsPanel, draft.inputs);
     readFieldsFromPanel(stylePanel, draft.style);
     for (const input of getInputSchema()) {
-      if (input.type === "symbolSizeRules") {
-        const rules = readSizeFilterRulesFromPanel(inputsPanel, input.id);
-        if (rules) draft.inputs[input.id] = rules;
-        continue;
-      }
       const custom = readCustomInput(input.type, inputsPanel, input.id);
       if (custom !== undefined) {
         draft.inputs[input.id] = custom;
@@ -800,6 +784,8 @@ export function createIndicatorSettingsDialog(opts) {
         openOptionsMenu,
         setTvCheck,
         inputsPanel,
+        colorPicker,
+        draft,
       })
     ) {
       return;
@@ -828,7 +814,7 @@ export function createIndicatorSettingsDialog(opts) {
       return;
     }
     const checkRow = target.closest(".tv-set__check-row");
-    if (checkRow instanceof HTMLElement && !target.closest("[data-color-pick], [data-plot-type-pick], [data-fill-pick], [data-input-fill-pick], [data-fvg-box-color-pick]")) {
+    if (checkRow instanceof HTMLElement && !target.closest("[data-color-pick], [data-plot-type-pick], [data-fill-pick], [data-input-fill-pick]")) {
       const fieldCheck = checkRow.querySelector("[data-field].tv-set__check");
       if (fieldCheck instanceof HTMLElement) {
         setTvCheck(fieldCheck, !fieldCheck.classList.contains("tv-set__check--on"));
@@ -940,65 +926,6 @@ export function createIndicatorSettingsDialog(opts) {
       });
       return;
     }
-    const fvgBoxColorPick = target.closest("[data-fvg-box-color-pick]");
-    if (fvgBoxColorPick instanceof HTMLElement && fvgBoxColorPick.dataset.fvgBoxColorPick) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const [tfKey, swatchKind] = fvgBoxColorPick.dataset.fvgBoxColorPick.split("|");
-      const [side, role] = String(swatchKind ?? "").split("-");
-      if (!tfKey || !["bull", "bear"].includes(side) || !["fill", "border"].includes(role)) return;
-      if (fvgBoxColorPick.hasAttribute("disabled")) return;
-      const stem = side === "bull" ? "bull" : "bear";
-      const colorKey = role === "border" ? `${stem}BorderColor` : `${stem}Color`;
-      const opacityKey = role === "border" ? `${stem}BorderOpacity` : `${stem}Opacity`;
-      const globalColorKey = role === "border" ? `${stem}BorderColor` : `${stem}BoxColor`;
-      const globalOpacityKey = role === "border" ? `${stem}BorderColorOpacity` : `${stem}BoxColorOpacity`;
-      const stored =
-        draft.inputs.fvgBoxColorsByTf &&
-        typeof draft.inputs.fvgBoxColorsByTf === "object" &&
-        !Array.isArray(draft.inputs.fvgBoxColorsByTf)
-          ? draft.inputs.fvgBoxColorsByTf[tfKey]
-          : null;
-      const swatch = inputsPanel.querySelector(`[data-fvg-box-swatch="${tfKey}|${swatchKind}"]`);
-      const fallbackColor = side === "bull" ? "#6e7c65" : "#916966";
-      const currentColor = String(
-        stored?.[colorKey] ??
-        draft.inputs[globalColorKey] ??
-        (swatch instanceof HTMLElement ? swatch.dataset.color : null) ??
-        fallbackColor,
-      );
-      const currentOpacity =
-        stored?.[opacityKey] !== undefined && stored?.[opacityKey] !== null
-          ? Number(stored[opacityKey])
-          : draft.inputs[globalOpacityKey] !== undefined && draft.inputs[globalOpacityKey] !== null
-            ? Number(draft.inputs[globalOpacityKey])
-            : swatch instanceof HTMLElement && swatch.dataset.opacity != null
-              ? Number(swatch.dataset.opacity)
-              : role === "border" ? 0 : 20;
-      colorPicker.openSwatch(
-        fvgBoxColorPick,
-        { color: currentColor, opacity: currentOpacity },
-        {
-          onChange: ({ color, opacity }) => {
-            if (!draft.inputs.fvgBoxColorsByTf || typeof draft.inputs.fvgBoxColorsByTf !== "object") {
-              draft.inputs.fvgBoxColorsByTf = {};
-            }
-            const entry = { ...(draft.inputs.fvgBoxColorsByTf[tfKey] ?? {}) };
-            entry[colorKey] = color;
-            entry[opacityKey] = opacity;
-            draft.inputs.fvgBoxColorsByTf[tfKey] = entry;
-            const changedSwatch = inputsPanel.querySelector(`[data-fvg-box-swatch="${tfKey}|${swatchKind}"]`);
-            if (changedSwatch instanceof HTMLElement) {
-              changedSwatch.dataset.color = color;
-              changedSwatch.dataset.opacity = String(opacity);
-              changedSwatch.style.background = applyColorOpacity(color, opacity);
-            }
-            applyDraft();
-          },
-        },
-      );
-      return;
-    }
     const fillPick = target.closest("[data-fill-pick], [data-input-fill-pick]");
     if (fillPick instanceof HTMLElement) {
       const pickAttr = fillPick.dataset.fillPick ?? fillPick.dataset.inputFillPick ?? "";
@@ -1019,7 +946,6 @@ export function createIndicatorSettingsDialog(opts) {
             storeKey[opacityKey] = opacity;
             syncStyleSwatches();
             syncInputSwatches();
-            syncFvgBoxColorSwatches();
             applyDraft();
           },
         },

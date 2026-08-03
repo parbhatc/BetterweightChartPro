@@ -43,6 +43,7 @@ import {
 } from "../../../chart/features.js";
 import { mergeWithCustomResolutions, CHART_RESOLUTIONS } from "../../../chart/resolutions.js";
 import { setOrderLineTheme } from "../../../chart/orderLine/theme.js";
+import { registerIndicatorDefinition } from "../../../indicators/catalog.js";
 
 export { readPageOptions };
 
@@ -51,12 +52,19 @@ export { readPageOptions };
  * @param {Partial<ReturnType<typeof readPageOptions>> & {
  *   disabled_features?: string[],
  *   enabled_features?: string[],
+ *   indicatorDefinitions?: Array<object | Function>,
  * }} [overrides]
  */
 export async function bootChart(overrides = {}) {
   installChartDebugGlobal();
   installLiveControlGlobal();
   const debugOn = configureChartDebug();
+
+  // Host definitions are installed before layout restore, so saved instances
+  // of advanced HTF/box/line studies resolve on the first render.
+  for (const definition of overrides.indicatorDefinitions ?? []) {
+    registerIndicatorDefinition(definition);
+  }
 
   const ctx = createBootContext(overrides);
   if (overrides.orderLineTheme) {

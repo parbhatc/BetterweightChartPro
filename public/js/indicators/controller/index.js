@@ -14,9 +14,10 @@ import { createLifecycle } from "./lifecycle.js";
  * @param {() => void} opts.onChange
  * @param {() => boolean} [opts.useStackedScaleLabels]
  * @param {(pane: object) => object} [opts.getOverlayContext]
+ * @param {(defId: string) => { inputs?: object, style?: object } | null} [opts.getPresetPatch]
  */
 export function createIndicatorController(opts) {
-  const { getAllChartPanes, getPaneBars, onChange, useStackedScaleLabels = () => true, getOverlayContext } =
+  const { getAllChartPanes, getPaneBars, onChange, useStackedScaleLabels = () => true, getOverlayContext, getPresetPatch } =
     opts;
 
   /** @type {Map<string, IndicatorInstance & { series: Map<string, import("prochart").ISeriesApi> }>} */
@@ -82,6 +83,7 @@ export function createIndicatorController(opts) {
       selectedId = id;
     },
     indicatorsForPane,
+    getPresetPatch,
   });
 
   pending.refresh = createRefresh({
@@ -112,6 +114,7 @@ export function createIndicatorController(opts) {
     setHidden: lifecycle.setHidden,
     setSelected: lifecycle.setSelected,
     patchIndicator: lifecycle.patchIndicator,
+    applyPreset: lifecycle.applyPreset,
     refreshAll: refresh.refreshAll,
     refreshPane: refresh.refreshPane,
     refreshPaneImmediate: refresh.refreshPaneImmediate,

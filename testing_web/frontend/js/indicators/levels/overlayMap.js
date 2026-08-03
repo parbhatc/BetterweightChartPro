@@ -12,7 +12,12 @@ import {
   debugLevelsReplayStep,
   debugLevelsTimeMapping,
 } from "../math/levelsDebug.js";
-import { LEVEL_REFERENCE_PALETTE, migrateLegacyLevelColor } from "./palette.js";
+import {
+  LEVEL_REFERENCE_PALETTE,
+  levelEnginePalette,
+  migrateLegacyLevelColor,
+  resolveLevelPalettePreset,
+} from "./palette.js";
 
 /** @typedef {import("/js/indicators/script/liquidityMatrix.js").LiqLine} LiqLine */
 
@@ -42,6 +47,14 @@ export function levelsToOverlayLines(lines, utcBars, chartBars, style) {
 
 /** @param {object} inputs @param {object} style @param {object} ctx @param {object} engine @param {import("./htf.js").LevelsHtf} [levelsHtf] */
 export function buildLevelsEngineOpts(inputs, style, ctx, engine, levelsHtf) {
+  // Preserve the original high-contrast Levels colors unless Gray was
+  // explicitly selected. Older saved layouts do not have this input.
+  const indicatorPreset = resolveLevelPalettePreset(inputs.indicatorAppearancePreset);
+  const presetPalette = levelEnginePalette(
+    indicatorPreset,
+    engine.htfStyles,
+    engine.sessionDefs,
+  );
   const newsMasterEnabled = ctx.isNewsEnabled?.() !== false;
   const newsIndicatorEnabled = inputs.newsEnabled !== false;
   const newsRows =
@@ -77,18 +90,18 @@ export function buildLevelsEngineOpts(inputs, style, ctx, engine, levelsHtf) {
     preferDatafeedHtf: Boolean(ctx.isReplayLocked?.()),
     replayHostControlled: Boolean(ctx.replayHostControlled),
     mergeConfluence: inputs.mergeConfluence !== false,
-    confHiColor: migrateLegacyLevelColor(inputs.confHiColor, "#9400d3", LEVEL_REFERENCE_PALETTE.confluenceHigh),
-    confLoColor: migrateLegacyLevelColor(inputs.confLoColor, "#ffaa00", LEVEL_REFERENCE_PALETTE.confluenceLow),
+    confHiColor: migrateLegacyLevelColor(inputs.confHiColor, "#9400d3", LEVEL_REFERENCE_PALETTE.confluenceHigh, indicatorPreset),
+    confLoColor: migrateLegacyLevelColor(inputs.confLoColor, "#ffaa00", LEVEL_REFERENCE_PALETTE.confluenceLow, indicatorPreset),
     previousDayEnabled: inputs.previousDayEnabled === true,
-    previousDayColor: migrateLegacyLevelColor(inputs.previousDayColor, "#f59e0b", LEVEL_REFERENCE_PALETTE.previousDay),
+    previousDayColor: migrateLegacyLevelColor(inputs.previousDayColor, "#f59e0b", LEVEL_REFERENCE_PALETTE.previousDay, indicatorPreset),
     previousWeekEnabled: inputs.previousWeekEnabled === true,
-    previousWeekColor: migrateLegacyLevelColor(inputs.previousWeekColor, "#38bdf8", LEVEL_REFERENCE_PALETTE.previousWeek),
+    previousWeekColor: migrateLegacyLevelColor(inputs.previousWeekColor, "#38bdf8", LEVEL_REFERENCE_PALETTE.previousWeek, indicatorPreset),
     midpointEnabled: inputs.midpointEnabled === true,
     midpointStartTime: String(inputs.midpointStartTime ?? "18:00"),
     midpointEndTime: String(inputs.midpointEndTime ?? "current"),
-    midpointColor: migrateLegacyLevelColor(inputs.midpointColor, "#a3e635", LEVEL_REFERENCE_PALETTE.midpoint),
-    htfStyles: engine.htfStyles.all(),
-    sessionDefs: engine.sessionDefs.all(),
+    midpointColor: migrateLegacyLevelColor(inputs.midpointColor, "#a3e635", LEVEL_REFERENCE_PALETTE.midpoint, indicatorPreset),
+    htfStyles: presetPalette.htfStyles,
+    sessionDefs: presetPalette.sessionDefs,
   };
 }
 

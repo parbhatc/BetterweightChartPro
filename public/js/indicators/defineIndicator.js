@@ -29,10 +29,14 @@ import { inputStatusLineParams } from "./schema.js";
  * @property {number | null} [studyPaneIndex]
  * @property {string | null} [volumeScaleId]
  * @property {number} [studyPaneHeight]
+ * @property {number | null} [overlayRecomputeThrottleMs]
+ * @property {boolean} [useBottomPane]
+ * @property {boolean} [useChartTable]
  * @property {() => void} [init]
  * @property {(this: BarScriptContext, bar: object, index: number) => void} [onBar]
  * @property {(bars: object[], inputs: object, style: object, instance: IndicatorInstance) => Record<string, Array<number | null>>} [compute]
  * @property {(utcBars: object[], chartBars: object[], inputs: object, style: object, ctx: object) => object[]} [overlay]
+ * @property {(utcBars: object[], chartBars: object[], instance: IndicatorInstance, ctx: object) => object[]} [computeOverlay]
  * @property {(instance: IndicatorInstance) => string[]} [legendParams] Override auto status-line params; default derives from inputs with `showInStatusLine`
  * @property {(inputs: object, style: object) => object[]} [stylePlotRows]
  * @property {(style: object, inputs?: object) => object} [mergeStyleDefaults]
@@ -43,6 +47,14 @@ import { inputStatusLineParams } from "./schema.js";
  * @property {(instance: IndicatorInstance) => import("./types.js").ValueLabel[]} [valueLabels]
  * @property {(instance: IndicatorInstance, plotKey: string) => import("./types.js").PlotStyle} [plotStyle]
  * @property {(instance: IndicatorInstance, chartBars: object[]) => object[]} [getBandFills]
+ * @property {(inputs: object, chartResolution: string) => InputDef[]} [inputSchema]
+ * @property {(inputs: object, chartResolution: string) => number | undefined} [requiredChartBars]
+ * @property {(instance: IndicatorInstance, pane: object) => object} [collectDataNeeds]
+ * @property {(instance: IndicatorInstance, ctx: object) => boolean} [overlayPending]
+ * @property {(instance: IndicatorInstance, ctx: object) => string} [overlayRecomputeExtra]
+ * @property {(instance: IndicatorInstance) => boolean} [needsLiveOverlayRefresh]
+ * @property {(instance: IndicatorInstance, ctx: object) => object[]} [chartTables]
+ * @property {(instance: IndicatorInstance, ctx: object) => boolean} [shouldRefreshOverlayOnCacheHit]
  */
 
 const META_KEYS = [
@@ -61,12 +73,16 @@ const META_KEYS = [
   "volumeScaleId",
   "studyPaneHeight",
   "studyPaneScale",
+  "overlayRecomputeThrottleMs",
+  "useBottomPane",
+  "useChartTable",
 ];
 
 const HOOK_KEYS = [
   "init",
   "compute",
   "overlay",
+  "computeOverlay",
   "legendParams",
   "stylePlotRows",
   "mergeStyleDefaults",
@@ -76,7 +92,14 @@ const HOOK_KEYS = [
   "valueLabels",
   "plotStyle",
   "getBandFills",
+  "inputSchema",
+  "requiredChartBars",
+  "collectDataNeeds",
+  "overlayPending",
   "overlayRecomputeExtra",
+  "needsLiveOverlayRefresh",
+  "chartTables",
+  "shouldRefreshOverlayOnCacheHit",
 ];
 
 /**
@@ -215,6 +238,9 @@ export function defineIndicator(configOrClass) {
     static studyPaneIndex = config.studyPaneIndex ?? null;
     static volumeScaleId = config.volumeScaleId ?? null;
     static studyPaneHeight = config.studyPaneHeight ?? 120;
+    static overlayRecomputeThrottleMs = config.overlayRecomputeThrottleMs ?? null;
+    static useBottomPane = config.useBottomPane === true;
+    static useChartTable = config.useChartTable === true;
     static hasBarInit = Boolean(config.init);
 
     /** @returns {object} */
@@ -263,6 +289,9 @@ export function defineIndicator(configOrClass) {
      * @param {object} [ctx]
      */
     static computeOverlay(utcBars, chartBars, instance, ctx = {}) {
+      if (config.computeOverlay) {
+        return config.computeOverlay(utcBars, chartBars, instance, ctx) ?? [];
+      }
       if (config.onBar && config.overlayPrimitive) {
         return runOnBar(
           utcBars,
@@ -304,6 +333,39 @@ export function defineIndicator(configOrClass) {
       config.onInputChange?.(inputValues, style, changedKey);
       super.handleInputChange(inputValues, style, changedKey);
     }
+
+    /** Advanced one-file indicators can vary their settings by chart interval. */
+    static inputSchema(inputValues = {}, chartResolution = "1") {
+      return config.inputSchema?.(inputValues, chartResolution) ?? this.inputs;
+    }
+
+    static requiredChartBars(inputValues = {}, chartResolution = "1") {
+      return config.requiredChartBars?.(inputValues, chartResolution);
+    }
+
+    static collectDataNeeds(instance, pane) {
+      return config.collectDataNeeds?.(instance, pane) ?? {};
+    }
+
+    static overlayPending(instance, ctx = {}) {
+      return config.overlayPending?.(instance, ctx) ?? false;
+    }
+
+    static overlayRecomputeExtra(instance, ctx = {}) {
+      return config.overlayRecomputeExtra?.(instance, ctx) ?? "";
+    }
+
+    static needsLiveOverlayRefresh(instance) {
+      return config.needsLiveOverlayRefresh?.(instance) ?? true;
+    }
+
+    static chartTables(instance, ctx = {}) {
+      return config.chartTables?.(instance, ctx) ?? [];
+    }
+
+    static shouldRefreshOverlayOnCacheHit(instance, ctx = {}) {
+      return config.shouldRefreshOverlayOnCacheHit?.(instance, ctx) ?? false;
+    }
   }
 
   if (config.studyPaneScale) {
@@ -326,3 +388,6 @@ export function defineIndicator(configOrClass) {
 
 /** Short, discoverable alias for the object-based authoring API. */
 export const indicator = defineIndicator;
+
+/** Pine-style name for advanced `init` / `onBar` / drawing definitions. */
+export const scriptIndicator = defineIndicator;

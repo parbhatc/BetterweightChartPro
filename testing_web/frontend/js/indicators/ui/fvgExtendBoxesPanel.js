@@ -65,10 +65,10 @@ export function renderFvgExtendBoxesPanel(input, draftInputs, getTimeframeOption
       const tfKey = fvgExtendTfKey(tf);
       const tfLabel = timeframeOptionLabel(tf === "chart" ? "chart" : normalizeResolutionId(tf), options);
       const on = extendMap[tfKey] === true;
-      return `<div class="tv-ind-settings__fvg-extend-row" data-fvg-extend-row data-tf-key="${escapeAttr(tfKey)}">
-      <span class="tv-ind-settings__fvg-extend-label">${escapeHtml(row.label || tfLabel)}</span>
-      <span class="tv-ind-settings__fvg-extend-tf">${escapeHtml(tfLabel)}</span>
-      <div class="tv-ind-settings__fvg-extend-toggle">
+      return `<div class="tv-ind-settings__host-extend-row" data-fvg-extend-row data-tf-key="${escapeAttr(tfKey)}">
+      <span class="tv-ind-settings__host-extend-label">${escapeHtml(row.label || tfLabel)}</span>
+      <span class="tv-ind-settings__host-extend-tf">${escapeHtml(tfLabel)}</span>
+      <div class="tv-ind-settings__host-extend-toggle">
         <button type="button" class="tv-set__check${on ? " tv-set__check--on" : ""}" data-fvg-extend role="checkbox" aria-checked="${on ? "true" : "false"}" aria-label="Extend boxes"${disabledAttr}>
           <span class="tv-set__check-box">${on ? CHECK_SVG : ""}</span>
         </button>
@@ -77,11 +77,11 @@ export function renderFvgExtendBoxesPanel(input, draftInputs, getTimeframeOption
     })
     .join("");
 
-  return `<div class="tv-ind-settings__fvg-extend${disabledClass}" data-fvg-extend-root data-fvg-extend-field="${input.id}">
-    <div class="tv-ind-settings__fvg-extend-cols" aria-hidden="true">
+  return `<div class="tv-ind-settings__host-extend${disabledClass}" data-fvg-extend-root data-fvg-extend-field="${input.id}">
+    <div class="tv-ind-settings__host-extend-cols" aria-hidden="true">
       <span>Label</span><span>Timeframe</span><span>Extend</span>
     </div>
-    <div class="tv-ind-settings__fvg-extend-list" data-fvg-extend-list>
+    <div class="tv-ind-settings__host-extend-list" data-fvg-extend-list>
       ${rowHtml || `<div class="tv-ind-settings__tf-rules-empty">Enable timeframes in the Timeframes section first.</div>`}
     </div>
   </div>`;

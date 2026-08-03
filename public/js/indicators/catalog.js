@@ -1,4 +1,5 @@
 import { ALL_INDICATORS } from "./definitions/index.js";
+import { defineIndicator } from "./defineIndicator.js";
 
 /** @typedef {typeof import("./BaseIndicator.js").BaseIndicator} IndicatorClass */
 /** @typedef {import("./types.js").IndicatorInstance} IndicatorInstance */
@@ -22,6 +23,16 @@ export function getIndicatorClass(id) {
 export function registerIndicator(Indicator) {
   if (!Indicator.id) throw new Error("Indicator.id is required");
   registry.set(Indicator.id, Indicator);
+}
+
+/** Register either a complete class or a compact one-file definition object. */
+export function registerIndicatorDefinition(configOrClass) {
+  const Indicator =
+    typeof configOrClass === "function" && typeof configOrClass.createInstance === "function"
+      ? configOrClass
+      : defineIndicator(configOrClass);
+  registerIndicator(Indicator);
+  return Indicator;
 }
 
 /** @param {string} defId @param {number} paneIndex @returns {IndicatorInstance | null} */

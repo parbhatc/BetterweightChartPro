@@ -8,6 +8,10 @@ import { renderFvgExtendBoxesPanel } from "./ui/fvgExtendBoxesPanel.js";
 import { renderFvgBoxColorsPanel } from "./ui/fvgBoxColorsPanel.js";
 import { renderSessionLevelsPanel, renderTimeLevelsPanel } from "./ui/levelsLayersPanel.js";
 import { renderNewsLevelsPanel } from "./ui/newsLevelsPanel.js";
+import {
+  readSizeFilterRulesFromPanel,
+  renderSymbolSizeRulesPanel,
+} from "./ui/symbolSizeRulesPanel.js";
 import { readFvgTimeframesFromPanel } from "./ui/fvgTimeframesPanel.js";
 import { readFvgExtendBoxesFromPanel } from "./ui/fvgExtendBoxesPanel.js";
 import { readFvgBoxColorsFromPanel } from "./ui/fvgBoxColorsPanel.js";
@@ -18,6 +22,9 @@ import {
 
 /** Wire FVG / Levels custom input panels into the public chart settings UI. */
 export function registerTestingInputPanels() {
+  registerCustomInputRenderer("symbolSizeRules", (input, draftInputs) =>
+    renderSymbolSizeRulesPanel(input, draftInputs),
+  );
   registerCustomInputRenderer("fvgTimeframes", (input, draftInputs, helpers) =>
     renderFvgTimeframesPanel(input, draftInputs, helpers?.timeframeOptions ?? []),
   );
@@ -42,5 +49,6 @@ export function registerTestingInputPanels() {
   registerCustomInputReader("fvgBoxColors", readFvgBoxColorsFromPanel);
   registerCustomInputReader("timeLevels", readTimeLevelsFromPanel);
   registerCustomInputReader("sessionLevels", readSessionLevelsFromPanel);
+  registerCustomInputReader("symbolSizeRules", readSizeFilterRulesFromPanel);
   registerTestingSettingsHandlers();
 }

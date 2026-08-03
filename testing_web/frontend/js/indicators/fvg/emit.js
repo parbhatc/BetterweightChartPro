@@ -122,6 +122,7 @@ export function emitZoneBox(script, layer, series, zone, opts = {}) {
     isIfvg,
     isPartial: Boolean(zone.partial),
     isForming: Boolean(zone.forming),
+    cacheKey: `${isIfvg ? 1 : 0}|${zone.partial ? 1 : 0}|${zone.forming ? 1 : 0}`,
   });
 }
 

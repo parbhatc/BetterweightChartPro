@@ -82,15 +82,7 @@ export function flattenInputFields(inputs) {
   for (const input of inputs) {
     if (input.type === "row") fields.push(...input.fields);
     else if (input.type === "inlinePair") fields.push(input.left, input.right);
-    else if (input.type === "symbolSizeRules") continue;
-    else if (input.type === "fvgTimeframes") continue;
-    else if (input.type === "fvgExtendBoxes") continue;
-    else if (input.type === "fvgBoxColors") continue;
-    else if (input.type === "levelsLayers") continue;
-    else if (input.type === "timeLevels") continue;
-    else if (input.type === "sessionLevels") continue;
-    else if (input.type === "newsLevels") continue;
-    else fields.push(input);
+    else if (["int", "float", "source", "select", "bool", "timeframe", "text", "color", "symbol"].includes(input.type)) fields.push(input);
   }
   return fields;
 }
@@ -108,22 +100,6 @@ export function defaultInputsFromSchema(inputs) {
     } else if (input.type === "inlinePair") {
       assignField(out, input.left);
       assignField(out, input.right);
-    } else if (input.type === "symbolSizeRules") {
-      out[input.id] = input.defval ?? [];
-    } else if (input.type === "fvgTimeframes") {
-      out[input.id] = input.defval ?? [];
-    } else if (input.type === "fvgExtendBoxes") {
-      out[input.id] = input.defval ?? {};
-    } else if (input.type === "fvgBoxColors") {
-      out[input.id] = input.defval ?? {};
-    } else if (input.type === "levelsLayers") {
-      out[input.id] = input.defval ?? [];
-    } else if (input.type === "timeLevels") {
-      out[input.id] = input.defval ?? [];
-    } else if (input.type === "sessionLevels") {
-      out[input.id] = input.defval ?? [];
-    } else if (input.type === "newsLevels") {
-      out[input.id] = input.defval ?? [];
     } else {
       assignField(out, input);
     }

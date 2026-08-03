@@ -1,5 +1,7 @@
 import { registerCustomSettingsClickHandler } from "/js/indicators/ui/customInputPanels.js";
 import { appendFvgTimeframeRow } from "./ui/fvgTimeframesPanel.js";
+import { applyColorOpacity } from "/js/ui/color/picker.js";
+import { appendSizeRuleRow } from "./ui/symbolSizeRulesPanel.js";
 import {
   appendSessionLevelRow,
   appendTimeLevelRow,
@@ -10,8 +12,61 @@ import {
 
 /** @param {Event} ev @param {object} ctx */
 function handleTestingSettingsClick(ev, ctx) {
-  const { target, readDraftFromUi, applyDraft, renderInputsPanel, timeframeOptions, openOptionsMenu, setTvCheck } =
+  const { target, readDraftFromUi, applyDraft, renderInputsPanel, timeframeOptions, openOptionsMenu, setTvCheck, inputsPanel, colorPicker, draft } =
     ctx;
+
+  const sizeAdd = target.closest("[data-size-rule-add]");
+  if (sizeAdd instanceof HTMLElement && !sizeAdd.hasAttribute("disabled")) {
+    const list = sizeAdd.closest("[data-size-rules-root]")?.querySelector("[data-size-rules-list]");
+    if (list instanceof HTMLElement) appendSizeRuleRow(list);
+    readDraftFromUi();
+    applyDraft();
+    return true;
+  }
+
+  const sizeRemove = target.closest("[data-size-rule-remove]");
+  if (sizeRemove instanceof HTMLElement && !sizeRemove.hasAttribute("disabled")) {
+    sizeRemove.closest("[data-size-rule-row]")?.remove();
+    readDraftFromUi();
+    applyDraft();
+    return true;
+  }
+
+  const boxColorPick = target.closest("[data-fvg-box-color-pick]");
+  if (boxColorPick instanceof HTMLElement && boxColorPick.dataset.fvgBoxColorPick && !boxColorPick.hasAttribute("disabled")) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const [tfKey, swatchKind] = boxColorPick.dataset.fvgBoxColorPick.split("|");
+    const [side, role] = String(swatchKind ?? "").split("-");
+    if (!tfKey || !["bull", "bear"].includes(side) || !["fill", "border"].includes(role)) return true;
+    const stem = side === "bull" ? "bull" : "bear";
+    const colorKey = role === "border" ? `${stem}BorderColor` : `${stem}Color`;
+    const opacityKey = role === "border" ? `${stem}BorderOpacity` : `${stem}Opacity`;
+    const globalColorKey = role === "border" ? `${stem}BorderColor` : `${stem}BoxColor`;
+    const globalOpacityKey = role === "border" ? `${stem}BorderColorOpacity` : `${stem}BoxColorOpacity`;
+    const stored = draft.inputs.fvgBoxColorsByTf?.[tfKey];
+    const swatch = inputsPanel.querySelector(`[data-fvg-box-swatch="${tfKey}|${swatchKind}"]`);
+    const currentColor = String(stored?.[colorKey] ?? draft.inputs[globalColorKey] ?? swatch?.dataset?.color ?? (side === "bull" ? "#6e7c65" : "#916966"));
+    const currentOpacity = Number(stored?.[opacityKey] ?? draft.inputs[globalOpacityKey] ?? swatch?.dataset?.opacity ?? (role === "border" ? 0 : 20));
+    colorPicker.openSwatch(boxColorPick, { color: currentColor, opacity: currentOpacity }, {
+      onChange: ({ color, opacity }) => {
+        if (!draft.inputs.fvgBoxColorsByTf || typeof draft.inputs.fvgBoxColorsByTf !== "object") draft.inputs.fvgBoxColorsByTf = {};
+        draft.inputs.fvgBoxColorsByTf[tfKey] = {
+          ...(draft.inputs.fvgBoxColorsByTf[tfKey] ?? {}),
+          [colorKey]: color,
+          [opacityKey]: opacity,
+        };
+        const changed = inputsPanel.querySelector(`[data-fvg-box-swatch="${tfKey}|${swatchKind}"]`);
+        if (changed instanceof HTMLElement) {
+          changed.dataset.color = color;
+          changed.dataset.opacity = String(opacity);
+          changed.style.background = applyColorOpacity(color, opacity);
+        }
+        applyDraft();
+      },
+    });
+    return true;
+  }
 
   const tfAdd = target.closest("[data-tf-add]");
   if (tfAdd instanceof HTMLElement && !tfAdd.hasAttribute("disabled")) {

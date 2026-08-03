@@ -58,6 +58,43 @@ export const CHART_APPEARANCE_PRESETS = {
       showVolume: true,
     },
   },
+  dark: {
+    canvas: {
+      appearancePreset: "dark",
+      backgroundType: "solid",
+      backgroundColor: "#09090b",
+      gridLinesMode: "vertAndHorz",
+      crosshairColor: "#71717a",
+      crosshairOpacity: 100,
+      watermarkColor: "rgba(161, 161, 170, 0.22)",
+      scalesTextColor: "#a1a1aa",
+      scalesFontSize: "13",
+      scalesLineColor: "rgba(242, 242, 242, 0)",
+      marginTop: 10,
+      marginBottom: 4,
+      marginRight: 10,
+    },
+    symbol: {
+      bodyUpColor: "#089981", bodyDownColor: "#f23645",
+      bordersUpColor: "#089981", bordersDownColor: "#f23645",
+      wickUpColor: "#089981", wickDownColor: "#f23645",
+    },
+    position: {
+      profitColor: "#089981",
+      stopColor: "#f23645",
+      showPriceLabels: true,
+    },
+    scales: {
+      symbolLabelLineFollowBodyColors: true,
+      symbolLabelLineWidth: 1,
+      symbolLabelLineStyle: 2,
+    },
+    statusLine: {
+      showBackground: true,
+      useChartTextColor: false,
+      showVolume: true,
+    },
+  },
   theme: {
     canvas: {
       appearancePreset: "theme",

@@ -1,5 +1,65 @@
 # BetterWeightChartPro
 
+## Custom formula indicators
+
+Open **Indicators** in the chart toolbar and choose **Create custom indicator**. The builder accepts price fields (`open`, `high`, `low`, `close`, `hl2`, `hlc3`, `ohlc4`, `hlcc4`), arithmetic, and these functions:
+
+- `sma(series, length)`, `ema(series, length)`, `rsi(series, length)`
+- `highest(series, length)`, `lowest(series, length)`
+- `change(series)`, `abs(series)`, `min(a, b)`, `max(a, b)`
+
+For example, `ema(close, 9) - ema(close, 21)` creates an EMA-spread indicator. Custom indicators are saved in the browser and restored before chart layouts, so layouts can safely refer to them.
+
+Connected hosts can use the same feature through the widget API:
+
+```js
+const result = widget.indicators.create({
+  title: "EMA spread",
+  formula: "ema(close, 9) - ema(close, 21)",
+  color: "#7c4dff",
+  placement: "pane", // "chart" or "pane"
+});
+
+console.log(result.id, result.instanceId);
+console.log(widget.indicators.custom());
+```
+
+The formula parser is intentionally limited and does not use `eval` or execute JavaScript.
+
+### Advanced indicators
+
+Formula indicators are deliberately simple. Advanced studies can still be authored as one definition object—there is no need to copy the chart engine or split a study across many files. Register definitions during boot so saved layouts can restore them immediately:
+
+```js
+import { bootChart, createBool, createInt } from "/chart/sdk.js";
+
+const myHtfStudy = {
+  id: "my_htf_study",
+  title: "My HTF Study",
+  overlayPrimitive: "lines", // also "boxes" or "labels"
+  inputs: [
+    createInt("maxBarsBack", "Max bars back", 500),
+    createBool("showLabels", "Labels", true),
+  ],
+  requiredChartBars: (inputs) => inputs.maxBarsBack,
+  collectDataNeeds(instance, pane) {
+    return { htf: [{ symbol: pane.symbol, resolution: "60", countBack: 250 }] };
+  },
+  overlayPending(instance, ctx) {
+    return ctx.isHtfPending?.(ctx.primarySymbol, "60") === true;
+  },
+  overlay(utcBars, chartBars, inputs, style, ctx) {
+    // Read ctx.getHtfBars/request.security helpers and return line objects.
+    return [];
+  },
+};
+
+const widget = await bootChart({ indicatorDefinitions: [myHtfStudy] });
+widget.indicators.add("my_htf_study");
+```
+
+The same compact definition supports `init`/`onBar`, multiple plots, fills, boxes, lines, labels, dynamic settings schemas, HTF and compare-symbol prefetch, loading state, incremental overlay updates, chart tables, legends, and normal layout serialization. Application-specific calculations remain in the connected application.
+
 Standalone chart widget on **ProChart** — an original, dependency-free canvas chart engine written from scratch for this project (`public/vendor/prochart/index.mjs`). No lightweight-charts code or dependency. Same BWC feature set: 68 drawing tools, indicators with study panes, replay, news, layouts. Uses **fake OHLC data** — no live feed. Use on any site via **ES modules** or iframe embed.
 
 **Why Pro:** the engine is a hybrid CPU+GPU renderer — WebGL batches all candle/wick/histogram geometry in one draw call per frame, while 2D canvas layers handle grid, axes, lines, overlays and crosshair (with clean 2D fallback when WebGL is unavailable). Rendering is rAF-batched and dirty-flagged across four layers, so crosshair moves never redraw series/indicators, and crosshair notifications are coalesced to one per frame (no lag from 1000 Hz mice). Series live in packed `Float64Array`s. Kinetic scroll and all animations are time-based — identical feel at 60 Hz and 165 Hz (`desynchronized` canvases, no frame-locked math). Interactions match TradingView: 1:1 px drag pan, ×1.1 wheel zoom per notch anchored at the cursor, axis drag scaling, double-click reset, clamped future scroll. Measured ~2× the original's frame rate under zoom+crosshair storms with indicators loaded.
@@ -378,7 +438,7 @@ Whitespace is controlled only at chart creation — there is no settings toggle.
 
 ## Indicators
 
-Built-in studies: **EMA**, **Volume**, **RSI**, **MACD**, **Pivot Points High Low** (Pivots HL — local pivot labels on the chart), and **FVG** (Fair Value Gap boxes with multi-timeframe support).
+Built-in studies include **EMA**, **Volume**, **RSI**, **MACD**, and **Pivot Points High Low**. Connected applications can register their own studies during `bootChart()`.
 
 ### Library & favorites
 
@@ -395,7 +455,7 @@ Built-in studies: **EMA**, **Volume**, **RSI**, **MACD**, **Pivot Points High Lo
 
 **Custom indicators:** use `defineIndicator()` in `definitions/`, add to `definitions/index.js`. Full guide + Pine → JS mapping: **[docs/indicators.md](docs/indicators.md)**.
 
-Built-in studies (EMA, MACD, RSI, Volume, Pivots HL, FVG) all use the same `defineIndicator()` pattern. Shared math (EMA, RSI, MACD) lives in `math/`; study-specific logic stays in the definition file. Favorites helpers live in `public/js/indicators/ui/favorites.js`.
+Built-in studies use the same `defineIndicator()` pattern. Shared math lives in `math/`; application-specific logic stays outside the BWC Pro catalog. Favorites helpers live in `public/js/indicators/ui/favorites.js`.
 
 ## Chart settings
 

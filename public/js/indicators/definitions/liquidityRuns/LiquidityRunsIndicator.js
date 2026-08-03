@@ -42,7 +42,7 @@ function confirmedPivots(bars, chartBars, left, right, waitClose, liveFormingTim
   return { highs, lows };
 }
 
-function hasOpposingFvg(bars, fromIndex, toIndex, highSide) {
+function hasOpposingThreeBarGap(bars, fromIndex, toIndex, highSide) {
   const start = Math.max(2, fromIndex + 1);
   const end = Math.min(bars.length - 1, toIndex + 1);
   for (let i = start; i <= end; i += 1) {
@@ -106,7 +106,7 @@ function stackedRunLines(pivots, bars, highSide, state) {
     const lrlr = isLrlr(previous, current, highSide, state.tolerance);
     const blocked =
       state.requireCleanPath &&
-      hasOpposingFvg(bars, previous.index, current.index, highSide);
+      hasOpposingThreeBarGap(bars, previous.index, current.index, highSide);
 
     if (lrlr && !blocked) {
       if (!run.length || run.at(-1) !== previous) run = [previous];
@@ -153,7 +153,7 @@ class LiquidityRunsIndicator extends BarScriptIndicator {
         section: "Stacked runs",
         disabled: (inputs) => inputs.mode !== "stacked",
       }),
-      createBool("requireCleanPath", "Require no opposing FVG", true, {
+      createBool("requireCleanPath", "Require clean three-bar path", true, {
         section: "Stacked runs",
         disabled: (inputs) => inputs.mode !== "stacked",
       }),

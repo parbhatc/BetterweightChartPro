@@ -22,11 +22,50 @@ export const LEVEL_REFERENCE_PALETTE = Object.freeze({
   confluenceLow: "#8a7654",
 });
 
-/** @param {unknown} value @param {string} legacyColor @param {string} nextColor */
-export function migrateLegacyLevelColor(value, legacyColor, nextColor) {
+export const LEVEL_DARK_HTF_PALETTE = Object.freeze({
+  "240": Object.freeze({ hi: "#007fff", lo: "#ff7644" }),
+  "60": Object.freeze({ hi: "#00ffcc", lo: "#ff4d4d" }),
+  "15": Object.freeze({ hi: "#ffed4a", lo: "#e046ff" }),
+  "10": Object.freeze({ hi: "#ffed4a", lo: "#e046ff" }),
+  "5": Object.freeze({ hi: "#ffed4a", lo: "#e046ff" }),
+});
+
+export const LEVEL_DARK_SESSION_PALETTE = Object.freeze({
+  asia: "#00ffcc",
+  london: "#9400d3",
+  ny_am: "#ff007f",
+  ny_lunch: "#ffaa00",
+  ny_pm: "#007fff",
+});
+
+export function resolveLevelPalettePreset(value) {
+  return String(value ?? "dark") === "gray" ? "gray" : "dark";
+}
+
+/** @param {string} presetId @param {object} htfStyles @param {object} sessionDefs */
+export function levelEnginePalette(presetId, htfStyles, sessionDefs) {
+  if (presetId !== "dark") {
+    return { htfStyles: htfStyles.all(), sessionDefs: sessionDefs.all() };
+  }
+  return {
+    htfStyles: Object.fromEntries(Object.entries(htfStyles.all()).map(([id, style]) => [
+      id,
+      { ...style, ...(LEVEL_DARK_HTF_PALETTE[id] ?? LEVEL_DARK_HTF_PALETTE["240"]) },
+    ])),
+    sessionDefs: Object.fromEntries(Object.entries(sessionDefs.all()).map(([id, def]) => [
+      id,
+      { ...def, color: LEVEL_DARK_SESSION_PALETTE[id] ?? LEVEL_DARK_SESSION_PALETTE.asia },
+    ])),
+  };
+}
+
+/** @param {unknown} value @param {string} legacyColor @param {string} nextColor @param {string} [presetId] */
+export function migrateLegacyLevelColor(value, legacyColor, nextColor, presetId = "") {
   const raw = value && typeof value === "object" && "color" in value
     ? value.color
     : value;
-  if (String(raw ?? "").toLowerCase() === legacyColor.toLowerCase()) return nextColor;
+  const normalized = String(raw ?? "").toLowerCase();
+  if (presetId === "dark" && normalized === nextColor.toLowerCase()) return legacyColor;
+  if (presetId !== "dark" && normalized === legacyColor.toLowerCase()) return nextColor;
   return raw ? String(raw) : nextColor;
 }

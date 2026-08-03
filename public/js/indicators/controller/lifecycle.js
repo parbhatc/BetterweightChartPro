@@ -18,6 +18,7 @@ import { clearOverlayInstanceCache } from "../overlayCache.js";
  * @param {() => string | null} deps.getSelectedId
  * @param {(id: string | null) => void} deps.setSelectedId
  * @param {(paneIndex: number) => IndicatorInstance[]} deps.indicatorsForPane
+ * @param {(defId: string) => { inputs?: object, style?: object } | null} [deps.getPresetPatch]
  */
 export function createLifecycle(deps) {
   const {
@@ -34,7 +35,15 @@ export function createLifecycle(deps) {
     getSelectedId,
     setSelectedId,
     indicatorsForPane,
+    getPresetPatch = () => null,
   } = deps;
+
+  /** @param {IndicatorInstance} entry @param {{ inputs?: object, style?: object } | null} patch */
+  function mergePresetPatch(entry, patch) {
+    if (!patch) return;
+    if (patch.inputs) entry.inputs = { ...entry.inputs, ...patch.inputs };
+    if (patch.style) entry.style = { ...entry.style, ...patch.style };
+  }
 
   /** @param {string} defId @param {number} [paneIndex] */
   function addIndicator(defId, paneIndex = 0) {
@@ -42,6 +51,7 @@ export function createLifecycle(deps) {
     if (!inst) return null;
     /** @type {IndicatorInstance & { series: Map<string, import("prochart").ISeriesApi> }} */
     const entry = { ...inst, series: new Map() };
+    mergePresetPatch(entry, getPresetPatch(defId));
     const Indicator = getIndicatorClass(defId);
     if (Indicator?.overlayPrimitive && Indicator.hasBarInit) {
       entry._initPending = true;
@@ -105,6 +115,25 @@ export function createLifecycle(deps) {
     emit();
   }
 
+  /** @param {(defId: string) => { inputs?: object, style?: object } | null} patchForDef */
+  function applyPreset(patchForDef) {
+    const paneIndexes = new Set();
+    for (const inst of getInstances().values()) {
+      const patch = patchForDef(inst.defId);
+      if (!patch) continue;
+      mergePresetPatch(inst, patch);
+      clearOverlayInstanceCache(inst);
+      inst._overlayAppliedGeomKey = undefined;
+      refreshInstance(inst);
+      paneIndexes.add(inst.paneIndex);
+    }
+    for (const paneIndex of paneIndexes) {
+      refreshPaneImmediate(paneIndex);
+      refreshOverlaysImmediate(paneIndex);
+    }
+    if (paneIndexes.size) emit();
+  }
+
   function clearAll() {
     for (const id of [...getInstances().keys()]) removeIndicator(id);
   }
@@ -161,6 +190,7 @@ export function createLifecycle(deps) {
           hidden: Boolean(raw.hidden),
           series: new Map(),
         };
+        mergePresetPatch(entry, getPresetPatch(entry.defId));
         instances.set(entry.instanceId, entry);
         refreshInstance(entry);
       }
@@ -191,6 +221,7 @@ export function createLifecycle(deps) {
     setHidden,
     setSelected,
     patchIndicator,
+    applyPreset,
     clearAll,
     getIndicatorsByPane,
     setIndicatorsByPane,

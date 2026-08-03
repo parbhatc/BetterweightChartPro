@@ -26,8 +26,11 @@ function normalizeSettings(next) {
       Object.assign(merged[section], values);
     }
   }
-  if (!["default", "none", "theme"].includes(String(merged.canvas.appearancePreset))) {
+  if (!["default", "none", "theme", "dark"].includes(String(merged.canvas.appearancePreset))) {
     merged.canvas.appearancePreset = DEFAULT_SETTINGS.canvas.appearancePreset;
+  }
+  if (!["none", "gray", "dark"].includes(String(merged.indicators.appearancePreset))) {
+    merged.indicators.appearancePreset = DEFAULT_SETTINGS.indicators.appearancePreset;
   }
   if (String(next.symbol?.ethBackground ?? "").toLowerCase() === "rgba(161, 161, 170, 0.08)") {
     merged.symbol.ethBackground = DEFAULT_SETTINGS.symbol.ethBackground;

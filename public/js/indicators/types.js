@@ -82,88 +82,17 @@
  */
 
 /**
- * @typedef {object} SymbolSizeRulesInputDef
- * @property {"symbolSizeRules"} type
+ * Host-defined structured input rendered through `customInputPanels.js`.
+ * @typedef {object} CustomInputDef
+ * @property {string} type
  * @property {string} id
  * @property {string} [title]
  * @property {string} [section]
- * @property {{ symbol: string, min: number, max: number }[]} [defval]
+ * @property {*} [defval]
  * @property {(inputs: object) => boolean} [disabled]
  */
 
-/**
- * @typedef {object} FvgExtendBoxesInputDef
- * @property {"fvgExtendBoxes"} type
- * @property {string} id
- * @property {string} [title]
- * @property {string} [section]
- * @property {Record<string, boolean>} [defval]
- * @property {(inputs: object) => boolean} [disabled]
- */
-
-/**
- * @typedef {object} FvgBoxColorsInputDef
- * @property {"fvgBoxColors"} type
- * @property {string} id
- * @property {string} [title]
- * @property {string} [section]
- * @property {Record<string, { bullColor?: string, bullOpacity?: number, bearColor?: string, bearOpacity?: number }>} [defval]
- * @property {(inputs: object) => boolean} [disabled]
- */
-
-/**
- * @typedef {object} FvgTimeframesInputDef
- * @property {"fvgTimeframes"} type
- * @property {string} id
- * @property {string} [title]
- * @property {string} [section]
- * @property {{ enabled: boolean, label: string, timeframe: string }[]} [defval]
- * @property {(inputs: object) => boolean} [disabled]
- */
-
-/**
- * @typedef {object} LevelsLayersInputDef
- * @property {"levelsLayers"} type
- * @property {string} id
- * @property {string} [title]
- * @property {string} [section]
- * @property {{ enabled: boolean, label: string, layer: string }[]} [defval]
- * @property {(inputs: object) => boolean} [disabled]
- */
-
-/**
- * @typedef {object} TimeLevelsInputDef
- * @property {"timeLevels"} type
- * @property {string} id
- * @property {string} [title]
- * @property {string} [section]
- * @property {{ enabled: boolean, label: string, layer: string }[]} [defval]
- * @property {(inputs: object) => boolean} [disabled]
- */
-
-/**
- * @typedef {object} SessionLevelsInputDef
- * @property {"sessionLevels"} type
- * @property {string} id
- * @property {string} [title]
- * @property {string} [section]
- * @property {{ enabled: boolean, label: string, sessionId: string, startTime: string, endTime: string }[]} [defval]
- * @property {(inputs: object) => boolean} [disabled]
- */
-
-/**
- * @typedef {object} NewsLevelsInputDef
- * @property {"newsLevels"} type
- * @property {string} id
- * @property {string} [title]
- * @property {string} [section]
- * @property {{ enabled: boolean, label: string, eventId: string }[]} [defval]
- * @property {(inputs: object) => boolean} [disabled]
- */
-
-/**
- * @typedef {InputFieldDef | InputRowDef | InputInlinePairDef | SymbolSizeRulesInputDef | FvgTimeframesInputDef | FvgExtendBoxesInputDef | FvgBoxColorsInputDef | LevelsLayersInputDef | TimeLevelsInputDef | SessionLevelsInputDef | NewsLevelsInputDef} InputDef
- */
+/** @typedef {InputFieldDef | InputRowDef | InputInlinePairDef | CustomInputDef} InputDef */
 
 /**
  * @typedef {object} PlotDef

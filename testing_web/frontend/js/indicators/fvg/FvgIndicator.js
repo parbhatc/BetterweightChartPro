@@ -5,6 +5,10 @@ import { compareSymbol } from "/js/indicators/security/compareSymbol.js";
 import { compareBarsRecomputeKey } from "/js/indicators/security/compareBars.js";
 import { overlayRecomputeKey } from "/js/indicators/overlayCache.js";
 import { bindOverlayEngine } from "/js/indicators/script/overlayEngine.js";
+import {
+  incrementalOverlayNeedsRefresh,
+  runIncrementalOverlay,
+} from "/js/indicators/script/incrementalOverlay.js";
 import { getSecuritySeries } from "/js/indicators/security/htfAccess.js";
 import { FvgEngine, fvgAtBar } from "./FvgEngine.js";
 
@@ -60,31 +64,6 @@ function formingLiveKey(instance, ctx) {
     parts.push(compareBarsRecomputeKey(ctx, inputs, { ohlc: true }));
   }
   return parts.join("|");
-}
-
-/** @param {object[]} chartBars @param {object | undefined} rt */
-function isAppendOneBar(chartBars, rt) {
-  if (!rt?.snapshot?.barLen || rt.barHead == null) return false;
-  const len = chartBars.length;
-  if (len !== rt.snapshot.barLen + 1) return false;
-  if (chartBars[0]?.time !== rt.barHead) return false;
-  return chartBars[len - 2]?.time === rt.barTail;
-}
-
-/** Chart head changed but tail unchanged — history was prepended (incremental paths are invalid). */
-function isPrependHistory(chartBars, rt) {
-  if (!rt?.barHead || !chartBars.length) return false;
-  if (chartBars[0].time === rt.barHead) return false;
-  return chartBars.at(-1)?.time === rt.barTail && chartBars.length > (rt.barLen ?? 0);
-}
-
-/** @param {object[]} chartBars */
-function barMeta(chartBars) {
-  return {
-    barLen: chartBars.length,
-    barHead: chartBars[0]?.time ?? "",
-    barTail: chartBars.at(-1)?.time ?? "",
-  };
 }
 
 class FvgIndicator extends BarScriptIndicator {
@@ -185,85 +164,31 @@ class FvgIndicator extends BarScriptIndicator {
     const baseKey = overlayRecomputeKey(instance, chartBars, FvgIndicator);
     const extra = FvgIndicator.prototype.overlayRecomputeExtra(instance, ctx);
     const chartKey = `${baseKey}|${extra}`;
-    const htfKey = htfRecomputeKey(instance, ctx);
-    const fullKey = `${chartKey}|htf:${htfKey}`;
     const liveKey = formingLiveKey(instance, ctx);
-    const meta = barMeta(chartBars);
-
-    let rt = instance._overlayRuntime;
-    if (isPrependHistory(chartBars, rt)) {
-      delete instance._overlayRuntime;
-      rt = null;
-    }
-
-    if (rt?.fullKey === fullKey && rt.liveKey === liveKey && Array.isArray(rt.boxes)) {
-      return rt.boxes;
-    }
-
-    if (
-      rt?.snapshot &&
-      rt.chartKey === chartKey &&
-      rt.htfKey !== htfKey
-    ) {
-      const patched = FvgIndicator.patchHtfOverlay(utcBars, chartBars, instance, ctx, rt.snapshot, rt.boxes);
-      if (patched) {
-        instance._overlayRuntime = {
-          fullKey,
-          chartKey,
-          htfKey,
-          liveKey,
-          snapshot: patched.snapshot,
-          boxes: patched.boxes,
-          ...meta,
-        };
-        return patched.boxes;
-      }
-    }
-
-    if (
-      rt?.snapshot &&
-      isAppendOneBar(chartBars, rt)
-    ) {
-      const patched = FvgIndicator.patchAppendOverlay(utcBars, chartBars, instance, ctx, rt.snapshot, rt.boxes);
-      if (patched) {
-        instance._overlayRuntime = {
-          fullKey,
-          chartKey,
-          htfKey,
-          liveKey,
-          snapshot: patched.snapshot,
-          boxes: patched.boxes,
-          ...meta,
-        };
-        return patched.boxes;
-      }
-    }
-
-    if (
-      rt?.chartKey === chartKey &&
-      rt.snapshot &&
-      rt.liveKey !== liveKey
-    ) {
-      const patched = FvgIndicator.patchLiveOverlay(utcBars, chartBars, instance, ctx, rt.snapshot, rt.boxes);
-      if (patched) {
-        instance._overlayRuntime = {
-          fullKey,
-          chartKey,
-          htfKey,
-          liveKey,
-          snapshot: patched.snapshot,
-          boxes: patched.boxes,
-          ...meta,
-        };
-        return patched.boxes;
-      }
-    }
-
-    const boxes = super.computeOverlay(utcBars, chartBars, instance, ctx);
-    const snapshot = instance._overlaySnapshot ?? null;
-    delete instance._overlaySnapshot;
-    instance._overlayRuntime = { fullKey, chartKey, htfKey, liveKey, snapshot, boxes, ...meta };
-    return boxes;
+    const normalizePatch = (patched) => patched
+      ? { output: patched.boxes ?? [], snapshot: patched.snapshot ?? null }
+      : null;
+    return runIncrementalOverlay({
+      chartBars,
+      instance,
+      runtimeKey: "_overlayRuntime",
+      keys: { chart: chartKey, data: htfRecomputeKey(instance, ctx), live: liveKey },
+      full: () => {
+        const output = super.computeOverlay(utcBars, chartBars, instance, ctx);
+        const snapshot = instance._overlaySnapshot ?? null;
+        delete instance._overlaySnapshot;
+        return { output, snapshot };
+      },
+      patchData: (snapshot, previous) => normalizePatch(
+        FvgIndicator.patchHtfOverlay(utcBars, chartBars, instance, ctx, snapshot, previous),
+      ),
+      patchAppend: (snapshot, previous) => normalizePatch(
+        FvgIndicator.patchAppendOverlay(utcBars, chartBars, instance, ctx, snapshot, previous),
+      ),
+      patchLive: (snapshot, previous) => normalizePatch(
+        FvgIndicator.patchLiveOverlay(utcBars, chartBars, instance, ctx, snapshot, previous),
+      ),
+    });
   }
 
   /**
@@ -291,7 +216,7 @@ class FvgIndicator extends BarScriptIndicator {
     const liveKey = formingLiveKey(instance, ctx);
     const rt = instance._overlayRuntime;
     if (!rt?.snapshot) return Boolean(ctx.formingBar);
-    return rt.liveKey !== liveKey;
+    return incrementalOverlayNeedsRefresh(instance, liveKey, "_overlayRuntime");
   }
 
   /** @param {import("../../types.js").IndicatorInstance} instance */

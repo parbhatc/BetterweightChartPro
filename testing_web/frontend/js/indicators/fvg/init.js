@@ -63,6 +63,7 @@ export function initFvgEngine(script) {
   const ifvgSetting = resolveDefaultIfvgSetting(
     inputs.ifvgBoxColor,
     inputs.ifvgBoxColorOpacity,
+    inputs.indicatorAppearancePreset,
   );
   const ifvgInputs = {
     ...inputs,

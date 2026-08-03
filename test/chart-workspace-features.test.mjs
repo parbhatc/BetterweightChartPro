@@ -22,7 +22,7 @@ import { settleChartPendingOverlay } from "../public/js/ui/loader/chartPendingOv
 import { createLayoutSync, scaleLogicalPanDelta } from "../public/js/app/layout/sync.js";
 import { chartAppearancePreset, chartThemeFallback } from "../public/js/app/boot/themes.js";
 import { createChartSettings } from "../public/js/ui/settings/store.js";
-import { APPEARANCE_PRESET_OPTIONS } from "../public/js/ui/settings/defaults.js";
+import { APPEARANCE_PRESET_OPTIONS, INDICATOR_PRESET_OPTIONS } from "../public/js/ui/settings/defaults.js";
 import { clearResolvedPaneEmptyState } from "../public/js/app/bar/loader.js";
 import {
   clearResolutionCache,
@@ -387,13 +387,20 @@ test("multi-pane pans scale logical movement by each pane interval", () => {
   }
 });
 
-test("appearance exposes Default and Gray chart-only palettes and never enables attribution", () => {
+test("appearance exposes independent Default, Gray, and Dark palettes and never enables attribution", () => {
   const standard = chartAppearancePreset("default");
   const theme = chartAppearancePreset("theme");
+  const dark = chartAppearancePreset("dark");
   assert.deepEqual(APPEARANCE_PRESET_OPTIONS, [
     { value: "default", label: "Default" },
-    { value: "none", label: "None / Custom" },
     { value: "theme", label: "Gray" },
+    { value: "dark", label: "Dark" },
+    { value: "none", label: "None / Custom" },
+  ]);
+  assert.deepEqual(INDICATOR_PRESET_OPTIONS, [
+    { value: "none", label: "None" },
+    { value: "gray", label: "Gray" },
+    { value: "dark", label: "Dark" },
   ]);
   assert.equal(standard.canvas.appearancePreset, "default");
   assert.equal(standard.canvas.backgroundColor, "#09090b");
@@ -404,7 +411,10 @@ test("appearance exposes Default and Gray chart-only palettes and never enables 
   assert.equal(standard.position.stopColor, "#f23645");
   assert.equal(standard.statusLine.showBackground, true);
   assert.equal(standard.statusLine.showVolume, true);
-  assert.equal(chartAppearancePreset("dark"), null);
+  assert.equal(dark.canvas.appearancePreset, "dark");
+  assert.equal(dark.canvas.backgroundColor, "#09090b");
+  assert.equal(dark.symbol.bodyUpColor, "#089981");
+  assert.equal(dark.position.stopColor, "#f23645");
   assert.equal(theme.theme, undefined);
   assert.equal(theme.canvas.backgroundColor, "#c2baae");
   assert.equal(theme.canvas.gridLinesMode, "none");
@@ -442,6 +452,7 @@ test("appearance exposes Default and Gray chart-only palettes and never enables 
   ]);
 
   const settings = createChartSettings();
+  assert.equal(settings.get().indicators.appearancePreset, "none");
   assert.equal(settings.get().symbol.ethBackground, "rgba(41, 98, 255, 0.08)");
   settings.replace({ canvas: { attributionLogo: true } });
   assert.equal(settings.get().canvas.attributionLogo, false);
