@@ -89,6 +89,171 @@ function drawScreenBox(ctx, box, mediaSize) {
   ctx.restore();
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {string} label @param {{ x: number, y: number }} point @param {{ width: number, height: number }} mediaSize */
+function drawHoverTooltip(ctx, label, point, mediaSize) {
+  const lines = String(label ?? "").split("\n").filter(Boolean);
+  if (!lines.length || !point) return;
+  const font = `500 11px ${LABEL_FONT_FAMILY}`;
+  const lineHeight = 15;
+  const padX = 9;
+  const padY = 7;
+  ctx.save();
+  ctx.font = font;
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width)) + padX * 2;
+  const height = lines.length * lineHeight + padY * 2;
+  let left = point.x + 12;
+  let top = point.y + 12;
+  if (left + width > mediaSize.width - 4) left = point.x - width - 12;
+  if (top + height > mediaSize.height - 4) top = point.y - height - 12;
+  left = Math.max(4, left);
+  top = Math.max(4, top);
+  ctx.fillStyle = "rgba(15,23,42,0.94)";
+  ctx.fillRect(left, top, width, height);
+  ctx.fillStyle = "#f8fafc";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], left + padX, top + padY + i * lineHeight);
+  }
+  ctx.restore();
+}
+
+/** @param {{ top: number, height: number }[]} items @param {number} paneHeight @param {number} [margin] @param {number} [gap] */
+export function resolveVerticalLabelStack(items, paneHeight, margin = 4, gap = 4) {
+  const resolved = items.map((item, index) => ({ ...item, _index: index }));
+  const sorted = [...resolved].sort((a, b) => a.top - b.top);
+  for (let i = 1; i < sorted.length; i++) {
+    const minimumTop = sorted[i - 1].top + sorted[i - 1].height + gap;
+    if (sorted[i].top < minimumTop) sorted[i].top = minimumTop;
+  }
+  const bottom = sorted.at(-1)?.top + sorted.at(-1)?.height;
+  if (Number.isFinite(bottom) && bottom > paneHeight - margin) {
+    const shift = bottom - (paneHeight - margin);
+    for (const item of sorted) item.top -= shift;
+  }
+  const top = sorted[0]?.top;
+  if (Number.isFinite(top) && top < margin) {
+    const shift = margin - top;
+    for (const item of sorted) item.top += shift;
+  }
+  return resolved.sort((a, b) => a._index - b._index).map(({ _index, ...item }) => item);
+}
+
+/** @param {CanvasRenderingContext2D} ctx @param {string|string[]} text @param {number} centerX @param {number} anchorY @param {"above"|"center"|"below"} placement @param {{ width: number, height: number }} mediaSize */
+function positionStatPillLayout(ctx, text, centerX, anchorY, placement, mediaSize) {
+  const lines = (Array.isArray(text) ? text : [text]).map(String).filter(Boolean);
+  if (!lines.length) return null;
+  const font = `600 11px ${LABEL_FONT_FAMILY}`;
+  const lineHeight = 16;
+  const padX = 10;
+  const padY = 6;
+  ctx.save();
+  ctx.font = font;
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width)) + padX * 2;
+  const height = lines.length * lineHeight + padY * 2;
+  let left = centerX - width / 2;
+  let top = placement === "above"
+    ? anchorY - height - 4
+    : placement === "below"
+      ? anchorY + 4
+      : anchorY - height / 2;
+  left = Math.max(4, Math.min(mediaSize.width - width - 4, left));
+  top = Math.max(4, Math.min(mediaSize.height - height - 4, top));
+  ctx.restore();
+  return { lines, font, lineHeight, padY, width, height, left, top, anchorY, centerX };
+}
+
+/** @param {CanvasRenderingContext2D} ctx @param {object} layout @param {string} fillColor @param {string} textColor @param {string} [borderColor] @param {number} [borderWidth] */
+function drawPositionStatPill(ctx, layout, fillColor, textColor, borderColor, borderWidth = 0) {
+  if (!layout) return;
+  const { lines, font, lineHeight, padY, width, height, left, top, anchorY, centerX } = layout;
+  ctx.save();
+  if (anchorY < top || anchorY > top + height) {
+    const edgeY = anchorY < top ? top : top + height;
+    ctx.strokeStyle = "rgba(255,255,255,0.42)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(centerX, anchorY);
+    ctx.lineTo(centerX, edgeY);
+    ctx.stroke();
+  }
+  ctx.fillStyle = fillColor;
+  ctx.fillRect(left, top, width, height);
+  if (borderWidth > 0 && borderColor) {
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = borderWidth;
+    ctx.strokeRect(left + borderWidth / 2, top + borderWidth / 2, width - borderWidth, height - borderWidth);
+  }
+  ctx.fillStyle = textColor;
+  ctx.font = font;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], left + width / 2, top + padY + i * lineHeight);
+  }
+  ctx.restore();
+}
+
+/** @param {CanvasRenderingContext2D} ctx @param {object[]} boxes @param {string} hoveredBoxId @param {(t: number) => number|null} timeToX @param {(p: number) => number|null} priceToY @param {{ width: number, height: number }} mediaSize */
+function drawPositionHoverStats(ctx, boxes, hoveredBoxId, timeToX, priceToY, mediaSize) {
+  const group = boxes.filter((box) =>
+    (box.hoverId ?? box.hoverLabel) === hoveredBoxId && box.hoverStats
+  );
+  const stats = group[0]?.hoverStats;
+  if (!stats || !group.length) return false;
+  const x1 = timeToX(group[0].timeStart);
+  const x2 = group[0].extendRight ? mediaSize.width : timeToX(group[0].timeEnd);
+  const targetY = priceToY(Number(stats.targetPrice));
+  const entryY = priceToY(Number(stats.entryPrice));
+  const stopY = priceToY(Number(stats.stopPrice));
+  if ([x1, x2, targetY, entryY, stopY].some((value) => value == null || !Number.isFinite(value))) {
+    return false;
+  }
+  const centerX = (x1 + x2) / 2;
+  const textColor = stats.textColor ?? "#ffffff";
+  const layouts = resolveVerticalLabelStack([
+    positionStatPillLayout(ctx, stats.targetLabel, centerX, targetY, "above", mediaSize),
+    positionStatPillLayout(ctx, stats.centerLines, centerX, entryY, "center", mediaSize),
+    positionStatPillLayout(ctx, stats.stopLabel, centerX, stopY, "below", mediaSize),
+  ].filter(Boolean), mediaSize.height);
+  drawPositionStatPill(
+    ctx, layouts[0],
+    stats.targetColor ?? "#089981", textColor,
+    stats.labelBorderColor, Number(stats.labelBorderWidth) || 0,
+  );
+  drawPositionStatPill(
+    ctx, layouts[1],
+    stats.centerColor ?? "#f23645", textColor,
+    stats.centerBorderColor ?? "#ffffff", Number(stats.centerBorderWidth ?? 1),
+  );
+  drawPositionStatPill(
+    ctx, layouts[2],
+    stats.stopColor ?? "#f23645", textColor,
+    stats.labelBorderColor, Number(stats.labelBorderWidth) || 0,
+  );
+  return true;
+}
+
+/** @param {object[]} boxes @param {number} time @param {number} pointY @param {(price: number) => number | null} priceToY */
+export function hoverBoxIdAt(boxes, time, pointY, priceToY) {
+  if (!Number.isFinite(time) || !Number.isFinite(pointY)) return null;
+  for (let i = boxes.length - 1; i >= 0; i--) {
+    const box = boxes[i];
+    if (!box?.hoverLabel && !box?.hoverStats) continue;
+    const start = Number(box.timeStart);
+    const end = Number(box.timeEnd);
+    if (!Number.isFinite(start) || time < start) continue;
+    if (!box.extendRight && (!Number.isFinite(end) || time > end)) continue;
+    const topY = priceToY(Number(box.priceTop));
+    const bottomY = priceToY(Number(box.priceBottom));
+    if (topY == null || bottomY == null) continue;
+    const top = Math.min(topY, bottomY) - 2;
+    const bottom = Math.max(topY, bottomY) + 2;
+    if (pointY >= top && pointY <= bottom) return box.hoverId ?? box.hoverLabel;
+  }
+  return null;
+}
+
 /** @param {CanvasRenderingContext2D} ctx @param {object} box @param {(t: number) => number | null} timeToX @param {(p: number) => number | null} priceToY @param {number} rightX */
 function drawBox(ctx, box, timeToX, priceToY, rightX) {
   const x1 = timeToX(box.timeStart);
@@ -198,15 +363,16 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
 }
 
 class BoxesPaneRenderer {
-  /** @param {() => object} getData @param {(box: object) => boolean} filter */
-  constructor(getData, filter) {
+  /** @param {() => object} getData @param {(box: object) => boolean} filter @param {boolean} drawHoverOverlay */
+  constructor(getData, filter, drawHoverOverlay = false) {
     this._getData = getData;
     this._filter = filter;
+    this._drawHoverOverlay = drawHoverOverlay;
   }
 
   /** @param {import("fancy-canvas").CanvasRenderingTarget2D} target */
   draw(target) {
-    const { boxes, timeToX, priceToY } = this._getData();
+    const { boxes, timeToX, priceToY, hoveredBoxId, hoverPoint } = this._getData();
     if (!boxes?.length) return;
 
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
@@ -226,6 +392,28 @@ class BoxesPaneRenderer {
         const right = Math.max(x1, x2);
         if (right < -pad || left > rightX + pad) continue;
         drawBox(ctx, box, timeToX, priceToY, rightX);
+      }
+      // Hover labels belong to the top primitive view even when the position
+      // zones themselves are bottom-layer fills. Otherwise candles paint over
+      // the text and make the most important numbers unreadable.
+      const hoveredBox = !this._drawHoverOverlay || hoveredBoxId == null
+        ? null
+        : boxes.find((box) =>
+            (box.hoverId ?? box.hoverLabel) === hoveredBoxId &&
+            (box.hoverLabel || box.hoverStats)
+          );
+      if (hoveredBox && hoverPoint) {
+        const drewPositionStats = drawPositionHoverStats(
+          ctx,
+          boxes,
+          hoveredBoxId,
+          timeToX,
+          priceToY,
+          mediaSize,
+        );
+        if (!drewPositionStats && hoveredBox.hoverLabel) {
+          drawHoverTooltip(ctx, hoveredBox.hoverLabel, hoverPoint, mediaSize);
+        }
       }
     });
   }
@@ -247,6 +435,7 @@ class BoxesPaneView {
     return new BoxesPaneRenderer(
       () => this._source.drawData(),
       (box) => (box.zOrder === "top") === top,
+      top,
     );
   }
 }
@@ -289,7 +478,10 @@ function boxesEqual(a, b) {
       x.screenMarginX !== y.screenMarginX ||
       x.screenMarginY !== y.screenMarginY ||
       x.countdownTo !== y.countdownTo ||
-      x.zOrder !== y.zOrder
+      x.zOrder !== y.zOrder ||
+      x.hoverId !== y.hoverId ||
+      x.hoverLabel !== y.hoverLabel ||
+      JSON.stringify(x.hoverStats ?? null) !== JSON.stringify(y.hoverStats ?? null)
     ) {
       return false;
     }
@@ -314,6 +506,24 @@ class BoxesPrimitive {
     this._countdownTimer = null;
     /** @type {(() => void) | null} */
     this._unsub = null;
+    this._hoveredBoxId = null;
+    this._hoverPoint = null;
+    this._crosshairHandler = (param) => {
+      const point = param?.point;
+      const time = Number(param?.time);
+      const data = this.drawData();
+      const nextId = point
+        ? hoverBoxIdAt(this._boxes, time, Number(point.y), data.priceToY)
+        : null;
+      const nextPoint = nextId != null && point ? { x: Number(point.x), y: Number(point.y) } : null;
+      const changed =
+        nextId !== this._hoveredBoxId ||
+        nextPoint?.x !== this._hoverPoint?.x ||
+        nextPoint?.y !== this._hoverPoint?.y;
+      this._hoveredBoxId = nextId;
+      this._hoverPoint = nextPoint;
+      if (changed) this._requestUpdate?.();
+    };
     this._paneViews = [
       new BoxesPaneView(this, "bottom"),
       new BoxesPaneView(this, "top"),
@@ -375,14 +585,18 @@ class BoxesPrimitive {
     this._series = param.series;
     this._requestUpdate = param.requestUpdate;
     this._timeMapping = null;
+    this._chart.subscribeCrosshairMove?.(this._crosshairHandler);
     this._syncCountdownTimer();
   }
 
   detached() {
+    this._chart?.unsubscribeCrosshairMove?.(this._crosshairHandler);
     this._chart = null;
     this._series = null;
     this._requestUpdate = null;
     this._timeMapping = null;
+    this._hoveredBoxId = null;
+    this._hoverPoint = null;
     this._syncCountdownTimer();
   }
 
@@ -396,7 +610,13 @@ class BoxesPrimitive {
     const chart = this._chart;
     const series = this._series;
     if (!chart || !series) {
-      return { boxes: [], timeToX: () => null, priceToY: () => null };
+      return {
+        boxes: [],
+        timeToX: () => null,
+        priceToY: () => null,
+        hoveredBoxId: null,
+        hoverPoint: null,
+      };
     }
     // Reuse cached bar mapping across pan frames; rebuild (one series.data() copy)
     // only after a data change invalidated it.
@@ -409,6 +629,8 @@ class BoxesPrimitive {
       boxes: this._boxes,
       timeToX,
       priceToY: (p) => safePriceToY(series, p),
+      hoveredBoxId: this._hoveredBoxId,
+      hoverPoint: this._hoverPoint,
     };
   }
 }
