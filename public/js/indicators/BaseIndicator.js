@@ -377,7 +377,7 @@ export class BaseIndicator {
   static overlayGraphicsVisible(instance, overlayKind) {
     const keys = this.graphicStyleKeysForOverlay(overlayKind);
     if (!keys.length) return true;
-    return keys.every((k) => instance.style[k] !== false);
+    return keys.some((k) => instance.style[k] !== false);
   }
 
   /**

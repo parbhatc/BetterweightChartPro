@@ -9,6 +9,7 @@ import CisdIndicator from "./cisd/CisdIndicator.js";
 import HtfPowerOfThreeIndicator from "./htfPowerOfThree/HtfPowerOfThreeIndicator.js";
 import LiquidityRunsIndicator from "./liquidityRuns/LiquidityRunsIndicator.js";
 import EqualHighLowIndicator from "./equalHighLow/EqualHighLowIndicator.js";
+import OrderBlockDetectorIndicator from "./orderBlockDetector/OrderBlockDetectorIndicator.js";
 import VwapIndicator from "./vwap/VwapIndicator.js";
 import BollingerBandsIndicator from "./bollingerBands/BollingerBandsIndicator.js";
 import FixedRangeVolumeProfileIndicator from "./volumeProfile/FixedRangeVolumeProfileIndicator.js";
@@ -27,6 +28,7 @@ export const ALL_INDICATORS = [
   HtfPowerOfThreeIndicator,
   LiquidityRunsIndicator,
   EqualHighLowIndicator,
+  OrderBlockDetectorIndicator,
   VwapIndicator,
   BollingerBandsIndicator,
   FixedRangeVolumeProfileIndicator,
@@ -45,6 +47,7 @@ export {
   HtfPowerOfThreeIndicator,
   LiquidityRunsIndicator,
   EqualHighLowIndicator,
+  OrderBlockDetectorIndicator,
   VwapIndicator,
   BollingerBandsIndicator,
   FixedRangeVolumeProfileIndicator,

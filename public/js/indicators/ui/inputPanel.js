@@ -84,7 +84,7 @@ export function renderInputsPanelHtml(schema, draftInputs, draftStyle, helpers) 
  */
 function renderInputItem(input, draftInputs, draftStyle, helpers) {
   if (input.type === "row") {
-    return renderTvRow(input.fields, draftInputs, draftStyle, helpers);
+    return renderTvRow(input, draftInputs, draftStyle, helpers);
   }
   if (input.type === "inlinePair") {
     const header = input.header
@@ -105,12 +105,13 @@ function renderInputItem(input, draftInputs, draftStyle, helpers) {
 }
 
 /**
- * @param {import("../types.js").InputFieldDef[]} fields
+ * @param {import("../types.js").InputRowDef} input
  * @param {object} draftInputs
  * @param {object} draftStyle
  * @param {object} helpers
  */
-function renderTvRow(fields, draftInputs, draftStyle, helpers) {
+function renderTvRow(input, draftInputs, draftStyle, helpers) {
+  const fields = input.fields;
   if (!fields.length) return "";
   const [lead, ...rest] = fields;
   const leadHtml =
@@ -118,7 +119,12 @@ function renderTvRow(fields, draftInputs, draftStyle, helpers) {
       ? helpers.propCheckOnly(lead.id, fieldStore(lead, draftInputs, draftStyle)[lead.id], lead.store ?? "inputs")
       : renderInputField(lead, draftInputs, draftStyle, helpers);
   const bodyHtml = rest.map((f) => renderInputField(f, draftInputs, draftStyle, helpers)).join("");
-  return `<div class="tv-ind-settings__tv-row">
+  const compactClass = input.header ? " tv-ind-settings__tv-row--compact-colors" : "";
+  const headerHtml = input.header
+    ? `<div class="tv-ind-settings__tv-row-header">${input.header}</div>`
+    : "";
+  return `<div class="tv-ind-settings__tv-row${compactClass}">
+    ${headerHtml}
     <div class="tv-ind-settings__tv-row-lead">${leadHtml}</div>
     <div class="tv-ind-settings__tv-row-body">${bodyHtml}</div>
   </div>`;

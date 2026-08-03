@@ -67,6 +67,7 @@
  * @typedef {object} InputRowDef
  * @property {"row"} type
  * @property {string} [section]
+ * @property {string} [header] Compact label shown before the row fields.
  * @property {InputFieldDef[]} fields
  */
 

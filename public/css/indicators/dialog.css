@@ -860,6 +860,47 @@ body.tv-ind-lib-open {
   border-bottom: none;
 }
 
+.tv-ind-settings__tv-row--compact-colors {
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+}
+
+.tv-ind-settings__tv-row-header {
+  flex: 1 1 auto;
+  min-width: 6rem;
+  color: var(--tv-text);
+  font-size: var(--text-base);
+}
+
+.tv-ind-settings__tv-row--compact-colors .tv-ind-settings__tv-row-lead {
+  flex: 0 0 4rem;
+  padding: 0;
+}
+
+.tv-ind-settings__tv-row--compact-colors .tv-ind-settings__tv-row-lead .tv-set__field-row {
+  display: block;
+  padding: 0;
+  border: none;
+}
+
+.tv-ind-settings__tv-row--compact-colors .tv-ind-settings__tv-row-lead .tv-set__field-label,
+.tv-ind-settings__tv-row--compact-colors .tv-ind-settings__tv-row-body .tv-set__field-label {
+  display: none;
+}
+
+.tv-ind-settings__tv-row--compact-colors .tv-ind-settings__tv-row-body {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+}
+
+.tv-ind-settings__tv-row--compact-colors .tv-ind-settings__tv-row-body .tv-ind-settings__input-color-row {
+  display: block;
+  padding: 0;
+  border: none;
+}
+
 .tv-ind-settings__tv-row-lead .tv-set__check,
 .tv-ind-settings__tf-rule-enable .tv-set__check,
 .tv-ind-settings__fvg-extend-toggle .tv-set__check {
