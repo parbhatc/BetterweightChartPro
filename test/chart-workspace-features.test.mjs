@@ -23,7 +23,10 @@ import { createLayoutSync, scaleLogicalPanDelta } from "../public/js/app/layout/
 import { chartAppearancePreset, chartThemeFallback } from "../public/js/app/boot/themes.js";
 import { createChartSettings } from "../public/js/ui/settings/store.js";
 import { APPEARANCE_PRESET_OPTIONS, INDICATOR_PRESET_OPTIONS } from "../public/js/ui/settings/defaults.js";
-import { clearResolvedPaneEmptyState } from "../public/js/app/bar/loader.js";
+import {
+  clearResolvedPaneEmptyState,
+  paneHistoryErrorMeta,
+} from "../public/js/app/bar/loader.js";
 import {
   clearResolutionCache,
   publishResolutionCache,
@@ -587,6 +590,17 @@ test("mobile tracking moves both crosshair lines by gesture delta without jumpin
       { minX: 0, maxX: 300, minY: 20, maxY: 180 },
     ),
     { x: 0, y: 180 },
+  );
+});
+
+test("unsupported history intervals become a visible chart state", () => {
+  assert.deepEqual(
+    paneHistoryErrorMeta(new Error("Unsupported resolution: 15S")),
+    { reason: "unsupported_resolution", error: "Unsupported resolution: 15S" },
+  );
+  assert.deepEqual(
+    paneHistoryErrorMeta(new Error("network unavailable")),
+    { title: "Couldn't load chart data", error: "network unavailable" },
   );
 });
 

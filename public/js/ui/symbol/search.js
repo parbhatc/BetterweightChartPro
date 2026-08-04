@@ -123,6 +123,18 @@ export function mountSymbolSearch(opts) {
     return sym;
   }
 
+  function resultSymbol(result) {
+    return displayTicker(result?.symbol || "", result);
+  }
+
+  function escapeAttribute(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
   /** Short root for list rows — exchange is shown in its own column. */
   function listItemTicker(sym, meta) {
     const full = displayTicker(sym, meta);
@@ -134,6 +146,7 @@ export function mountSymbolSearch(opts) {
   function matchesActiveSymbol(sym, meta, active) {
     if (!active) return false;
     if (sym === active || meta?.ticker === active || meta?.streamTicker === active) return true;
+    if (active.includes(":")) return false;
     const rootSym = active.includes(":") ? active.split(":").pop() : active;
     return sym === rootSym || meta?.symbol === rootSym;
   }
@@ -231,14 +244,15 @@ export function mountSymbolSearch(opts) {
     }
     listEl.innerHTML = filtered
       .map((r) => {
-        const active = matchesActiveSymbol(r.symbol, r, activeSymbol) ? " is-active" : "";
+        const resolvedSymbol = resultSymbol(r);
+        const active = matchesActiveSymbol(resolvedSymbol, r, activeSymbol) ? " is-active" : "";
         const ticker = listItemTicker(r.symbol, r);
         const logo = r.logoUrl
           ? `<img class="tv-symbol-modal__item-logo" src="${r.logoUrl}" alt="" loading="lazy" />`
           : `<span class="tv-symbol-modal__item-logo tv-symbol-modal__item-logo--letter" aria-hidden="true">${ticker.charAt(0) || "?"}</span>`;
         const label = resultLabel(r);
         const marketType = normalizeType(r.type) || "—";
-        return `<li role="option" class="tv-symbol-modal__item${active}" data-symbol="${r.symbol}" aria-selected="${matchesActiveSymbol(r.symbol, r, activeSymbol)}">
+        return `<li role="option" class="tv-symbol-modal__item${active}" data-symbol="${escapeAttribute(resolvedSymbol)}" aria-selected="${matchesActiveSymbol(resolvedSymbol, r, activeSymbol)}">
           <div class="tv-symbol-modal__item-main">
             <div class="tv-symbol-modal__item-logo-wrap">${logo}</div>
             <div class="tv-symbol-modal__item-ticker">${ticker}</div>
@@ -256,14 +270,14 @@ export function mountSymbolSearch(opts) {
   function renderList(query) {
     if (activeTab === "recent") {
       const filtered = recentResults(query);
-      filtered.forEach((r) => metaBySymbol.set(r.symbol, r));
+      filtered.forEach((r) => metaBySymbol.set(resultSymbol(r), r));
       renderResultList(filtered);
       return Promise.resolve();
     }
     const seq = ++searchSeq;
     return datafeed.searchSymbols(query, "", activeTab, 50).then((results) => {
       if (seq !== searchSeq) return;
-      results.forEach((r) => metaBySymbol.set(r.symbol, r));
+      results.forEach((r) => metaBySymbol.set(resultSymbol(r), r));
       const filtered = applyTabFilter(results);
       renderResultList(filtered);
     });
@@ -374,7 +388,7 @@ export function mountSymbolSearch(opts) {
         ? activeSymbol.split(":")[1]?.replace(/[0-9].*$/, "") ?? ""
         : activeSymbol;
       const results = await datafeed.searchSymbols(seed || "NQ");
-      results.forEach((s) => metaBySymbol.set(s.symbol, s));
+      results.forEach((s) => metaBySymbol.set(resultSymbol(s), s));
       const meta =
         metaBySymbol.get(activeSymbol) ??
         results.find((s) => matchesActiveSymbol(s.symbol, s, activeSymbol));

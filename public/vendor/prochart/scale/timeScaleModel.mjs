@@ -1,6 +1,39 @@
 import { clone, deepMerge, toSec } from "../core/utils.mjs";
 import { defaultChartOptions } from "../core/defaults.mjs";
 
+const STEP_SAMPLE_LIMIT = 2_048;
+
+/**
+ * Infer the candle interval without letting overnight/weekend session gaps
+ * stretch future-whitespace labels. Candle series produce a dominant repeated
+ * delta; for irregular data, use the median positive delta as a safe fallback.
+ */
+function inferBarStep(times, fallback = 60) {
+  if (times.length < 2) return fallback;
+  const start = Math.max(1, times.length - STEP_SAMPLE_LIMIT);
+  const deltas = [];
+  const frequencies = new Map();
+  for (let i = start; i < times.length; i += 1) {
+    const delta = Math.round(times[i] - times[i - 1]);
+    if (!Number.isFinite(delta) || delta <= 0) continue;
+    deltas.push(delta);
+    frequencies.set(delta, (frequencies.get(delta) ?? 0) + 1);
+  }
+  if (!deltas.length) return fallback;
+
+  let dominant = deltas[0];
+  let dominantCount = 0;
+  for (const [delta, count] of frequencies) {
+    if (count > dominantCount || (count === dominantCount && delta < dominant)) {
+      dominant = delta;
+      dominantCount = count;
+    }
+  }
+  if (dominantCount > 1) return dominant;
+  deltas.sort((a, b) => a - b);
+  return deltas[Math.floor(deltas.length / 2)] ?? fallback;
+}
+
 
 export class TimeScaleModel {
   constructor(chart) {
@@ -78,7 +111,7 @@ export class TimeScaleModel {
     this.times = merged;
     this.timeToIndexMap.clear();
     for (let i = 0; i < merged.length; i++) this.timeToIndexMap.set(merged[i], i);
-    if (merged.length > 1) this._avgStep = (merged[merged.length - 1] - merged[0]) / (merged.length - 1);
+    if (merged.length > 1) this._avgStep = inferBarStep(merged, this._avgStep);
     for (const s of this._chart.allSeries()) s.remapIndices(this.timeToIndexMap);
     if (!this._hadData && merged.length) {
       // first real data: land the default view (latest bars + configured future offset)
@@ -98,7 +131,7 @@ export class TimeScaleModel {
       const oldBase = this.baseIndex;
       this.times.push(t);
       this.timeToIndexMap.set(t, this.times.length - 1);
-      if (this.times.length > 1) this._avgStep = (this.times[this.times.length - 1] - this.times[0]) / (this.times.length - 1);
+      if (this.times.length > 1) this._avgStep = inferBarStep(this.times, this._avgStep);
       // follow the newest bar if the right edge was at/past it (LWC shiftVisibleRangeOnNewBar)
       if (this.options.shiftVisibleRangeOnNewBar !== false && this._hadData && this.rightEdge >= oldBase) {
         this.rightEdge += 1;
@@ -154,7 +187,8 @@ export class TimeScaleModel {
     if (!n) return null;
     const ri = Math.round(i);
     if (ri >= 0 && ri < n) return this.times[ri];
-    // extrapolate into whitespace using the average bar step
+    // Extrapolate into whitespace using the inferred candle interval. A global
+    // average includes closed-session gaps and produces incorrect future times.
     if (ri >= n) return this.times[n - 1] + (ri - (n - 1)) * this._avgStep;
     return this.times[0] + ri * this._avgStep;
   }

@@ -52,6 +52,18 @@ export function clearResolvedPaneEmptyState(pane, syncEmptyState) {
   return true;
 }
 
+/** Convert rejected history requests into user-facing chart state. */
+export function paneHistoryErrorMeta(error) {
+  const message = String(error?.message ?? error ?? "Unable to load chart data").trim();
+  if (/unsupported (?:resolution|interval)|(?:resolution|interval) (?:is )?not supported/i.test(message)) {
+    return { reason: "unsupported_resolution", error: message };
+  }
+  return {
+    title: "Couldn't load chart data",
+    error: message || "Unable to load chart data",
+  };
+}
+
 /**
  * True when the user has panned near the oldest loaded bar (scroll-back prefetch).
  * Negative logical positions are whitespace before the oldest loaded bar. A
@@ -917,6 +929,10 @@ export function createBarLoader(opts) {
     loadInFlightByPane.set(pane.index, task);
     try {
       return await task;
+    } catch (error) {
+      pane._emptyStateMeta = paneHistoryErrorMeta(error);
+      syncPaneEmptyState?.(pane, { show: true, meta: pane._emptyStateMeta });
+      throw error;
     } finally {
       if (loadInFlightByPane.get(pane.index) === task) {
         loadInFlightByPane.delete(pane.index);

@@ -15,6 +15,26 @@ test("future logical positions extrapolate time instead of clamping to the lates
   assert.equal(scale.coordinateToTime(scale.logicalToCoordinate(5)), 1_300);
 });
 
+test("future whitespace uses the candle interval instead of averaging session gaps", () => {
+  const morningOne = Array.from({ length: 10 }, (_, i) => 1_000 + i * 60);
+  const morningTwo = Array.from({ length: 10 }, (_, i) => 87_400 + i * 60);
+  const series = {
+    times: [...morningOne, ...morningTwo],
+    remapIndices() {},
+  };
+  const chart = {
+    allSeries: () => [series],
+    paneWidth: () => 600,
+    invalidate() {},
+  };
+  const scale = new TimeScaleModel(chart);
+  scale.rebuildIndex();
+
+  const latest = morningTwo.at(-1);
+  assert.equal(scale.indexToTime(scale.times.length), latest + 60);
+  assert.equal(scale.fractionalIndexToTime(scale.times.length), latest + 60);
+});
+
 test("value inspector resolves real candles and uses the latest candle in future whitespace", () => {
   const bars = [
     { time: 1_000, close: 10 },

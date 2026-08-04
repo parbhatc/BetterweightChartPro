@@ -4,6 +4,7 @@ import { createOrderLineAdapter } from "../public/js/chart/orderLine/createOrder
 import { createOrderLinePriceLineSync } from "../public/js/chart/orderLine/orderLinePriceLineSync.js";
 import { OrderLineManager } from "../public/js/chart/orderLine/OrderLineManager.js";
 import { OrderLinePillPrimitive } from "../public/js/chart/orderLine/OrderLinePillPrimitive.js";
+import { createPositionOverlay } from "../public/js/chart/orderLine/positionOverlay.js";
 
 test("order-line hit testing reuses pane geometry until layout invalidation", () => {
   let rectReads = 0;
@@ -259,4 +260,50 @@ test("live PnL appearance patches never invalidate the price-line stroke", () =>
     },
   }]);
   assert.equal(adapter._state.lineColor, "#089981");
+});
+
+test("host mark price keeps the position pill on live LTP instead of candle close", async () => {
+  const previousRaf = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (callback) => {
+    callback();
+    return 1;
+  };
+  try {
+    let liveBarListener = null;
+    const appearances = [];
+    const chain = {
+      isMoving: false,
+      applyAppearance(patch) { appearances.push(structuredClone(patch)); return this; },
+      onCancel() { return this; },
+      onMove() { return this; },
+      onMoving() { return this; },
+      remove() {},
+    };
+    for (const method of [
+      "setText", "setQuantity", "setLineColor", "setBodyBackgroundColor",
+      "setQuantityBackgroundColor", "setBodyTextColor", "setQuantityTextColor",
+      "setLineStyle", "setLineLength", "setPillSide", "setPillOffset",
+      "setCancelTooltip", "setQuantityBorderColor", "setBodyBorderColor", "setPrice",
+    ]) {
+      chain[method] = function () { return this; };
+    }
+    const overlay = createPositionOverlay({
+      chart: () => ({ createOrderLine: async () => chain }),
+      getBars: () => [{ close: 100 }],
+      getSymbolInfo: () => ({ ticker: "CME_MINI:MNQ1!", minmov: 1, pricescale: 4 }),
+      isChartPanning: () => false,
+      onLiveBar(callback) { liveBarListener = callback; return () => {}; },
+      emitPositionUpl() {},
+    });
+
+    await overlay.buy({ price: 100, qty: 1 });
+    assert.equal(overlay.setMarkPrice(101), true);
+    assert.equal(appearances.at(-1).text, "+$2.00");
+
+    liveBarListener?.({ close: 99 });
+    assert.equal(appearances.at(-1).text, "+$2.00");
+  } finally {
+    if (previousRaf) globalThis.requestAnimationFrame = previousRaf;
+    else delete globalThis.requestAnimationFrame;
+  }
 });

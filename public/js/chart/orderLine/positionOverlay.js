@@ -104,7 +104,8 @@ function resolveTickMeta(symbolInfo) {
   const pricescale = Number(symbolInfo?.pricescale) || 100;
   const minmov = Number(symbolInfo?.minmov) || 1;
   const tickSize = minmov / pricescale;
-  const sym = String(symbolInfo?.ticker || symbolInfo?.name || symbolInfo?.symbol || "")
+  const rawSymbol = String(symbolInfo?.ticker || symbolInfo?.name || symbolInfo?.symbol || "");
+  const sym = (rawSymbol.split(":").pop() || rawSymbol)
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
 
@@ -206,6 +207,8 @@ export function createPositionOverlay(widget) {
   let offLiveBar = null;
   /** @type {object | null} */
   let latestBar = null;
+  /** Host-provided executable liquidation mark (bid for longs, ask for shorts). */
+  let externalMark = null;
   let pillOffset = DEFAULT_PILL_OFFSET;
   let bracketPillOffset = DEFAULT_BRACKET_PILL_OFFSET;
 
@@ -265,6 +268,7 @@ export function createPositionOverlay(widget) {
   }
 
   function markPrice() {
+    if (Number.isFinite(externalMark)) return externalMark;
     const bar = latestBar;
     if (bar) {
       const close = Number(bar.close);
@@ -637,6 +641,7 @@ export function createPositionOverlay(widget) {
       //
     }
     position = null;
+    externalMark = null;
     if (!pending.length) dropLiveHook();
     if (emitClose && snapshot) emit(closeListeners, snapshot);
     return snapshot;
@@ -782,7 +787,7 @@ export function createPositionOverlay(widget) {
       void openPositionAt(row.price, row.side === "buy" ? row.qty : -row.qty);
     }
 
-    scheduleRefreshPositionPnl(mark);
+    scheduleRefreshPositionPnl(Number.isFinite(externalMark) ? externalMark : mark);
   }
 
   /**
@@ -982,6 +987,19 @@ export function createPositionOverlay(widget) {
       const mark = markPrice();
       if (position?.line && mark != null) refreshPositionPnl(mark);
       return pillOffset;
+    },
+    /**
+     * Override the position P&L mark with the host's executable liquidation
+     * price. This keeps the chart pill aligned with account/DOM unrealized P&L
+     * when the bid/ask spread differs from the forming candle's last price.
+     * @param {number} price
+     */
+    setMarkPrice(price) {
+      const next = Number(price);
+      if (!Number.isFinite(next)) return false;
+      externalMark = next;
+      if (position?.line) scheduleRefreshPositionPnl(next);
+      return true;
     },
     setBracketPillOffset(offset) {
       bracketPillOffset = Math.max(0, Number(offset) || 0);

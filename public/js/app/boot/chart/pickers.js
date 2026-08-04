@@ -281,7 +281,11 @@ export async function wireSymbolAndTimeframePickers(ctx) {
             ctx.refreshPaneCandleData?.(pane);
           }
           restorePaneViewports(panes, saved);
-          await finishSeriesReload(ctx, panes);
+          // The primary price series is ready as soon as loadBarsForPanes and
+          // refreshPaneCandleData finish. Indicator history can be much slower
+          // (especially when changing between NQ and MNQ), so do not keep the
+          // symbol-change overlay or host notification blocked on it.
+          await finishSeriesReload(ctx, panes, { backgroundIndicators: true });
           const active = ctx.getActivePane();
           if (active) {
             ctx.symbolInfo = active.symbolInfo;
@@ -325,7 +329,10 @@ export async function wireSymbolAndTimeframePickers(ctx) {
         await ctx.loadPaneBars(pane, { force: true, deferChartRefresh: true });
         ctx.refreshPaneCandleData?.(pane);
         restorePaneViewports([pane], saved);
-        await finishSeriesReload(ctx, [pane]);
+        // Paint and publish the new symbol immediately; indicators continue
+        // loading independently instead of holding the old symbol for up to
+        // the soft indicator timeout.
+        await finishSeriesReload(ctx, [pane], { backgroundIndicators: true });
         ctx.refreshStatusLine();
         ctx.persistPaneSymbols();
         notifyHostSymbolChange(ctx, sym);
