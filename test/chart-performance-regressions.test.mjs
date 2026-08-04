@@ -1050,3 +1050,75 @@ test("drawing hover skips empty collections and coalesces the latest frame point
     globalThis.cancelAnimationFrame = previousCancelAnimationFrame;
   }
 });
+
+test("mobile drawing crosshair survives the pointerleave dispatched on touch release", () => {
+  class FakeTarget {
+    constructor() {
+      this.listeners = new Map();
+    }
+
+    addEventListener(type, handler) {
+      const handlers = this.listeners.get(type) ?? [];
+      handlers.push(handler);
+      this.listeners.set(type, handlers);
+    }
+
+    removeEventListener(type, handler) {
+      const handlers = this.listeners.get(type) ?? [];
+      this.listeners.set(type, handlers.filter((candidate) => candidate !== handler));
+    }
+  }
+
+  const previousDocument = globalThis.document;
+  const previousRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const documentTarget = new FakeTarget();
+  const container = new FakeTarget();
+  const overlayRoot = new FakeTarget();
+  let clearCalls = 0;
+  let restoreCalls = 0;
+
+  globalThis.document = documentTarget;
+  globalThis.requestAnimationFrame = (callback) => {
+    callback();
+    return 1;
+  };
+
+  const handlers = createPointerHandlers({
+    container,
+    overlayRoot,
+    chart: {
+      subscribeCrosshairMove() {},
+      unsubscribeCrosshairMove() {},
+    },
+    clearLongPress() {},
+    isValuesTooltipPinned: () => false,
+    hideValuesTooltip() {},
+    setHoveredDrawing() {},
+    useMobileDragPlacement: () => true,
+    shouldSyncDrawCrosshair: () => true,
+    clearDrawCrosshair() {
+      clearCalls += 1;
+    },
+    syncDrawCrosshairAtMediaAnchor() {
+      restoreCalls += 1;
+    },
+    getActiveTool: () => "trendline",
+  });
+
+  try {
+    handlers.bindChartListeners();
+    const leave = overlayRoot.listeners.get("pointerleave")[0];
+
+    leave({ pointerType: "touch" });
+    assert.equal(clearCalls, 0);
+    assert.equal(restoreCalls, 1);
+
+    leave({ pointerType: "mouse" });
+    assert.equal(clearCalls, 1);
+    assert.equal(restoreCalls, 1);
+  } finally {
+    handlers.unbindChartListeners();
+    globalThis.document = previousDocument;
+    globalThis.requestAnimationFrame = previousRequestAnimationFrame;
+  }
+});

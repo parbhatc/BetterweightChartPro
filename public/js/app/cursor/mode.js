@@ -57,14 +57,17 @@ export function applyCursorMode(chart, el, tool, isCursor, series, themeCrosshai
   function lineOpts(visible) {
     const opts = { visible, labelVisible: visible };
     if (!visible) return opts;
-    if (themeCrosshair) {
+    if (drawingMode) {
+      // Drawing placement uses the same solid TradingView blue as the center
+      // marker. Do not inherit the normal cursor's configurable dash style.
+      opts.color = TV_DRAW_CROSSHAIR;
+      opts.style = LineStyle.Solid;
+      opts.labelBackgroundColor = TV_DRAW_CROSSHAIR;
+    } else if (themeCrosshair) {
       opts.color = themeCrosshair.color;
       opts.width = themeCrosshair.width;
       opts.style = themeCrosshair.style;
       opts.labelBackgroundColor = themeCrosshair.labelBg;
-    } else if (drawingMode) {
-      opts.color = TV_DRAW_CROSSHAIR;
-      opts.labelBackgroundColor = TV_DRAW_CROSSHAIR;
     }
     return opts;
   }

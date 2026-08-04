@@ -723,7 +723,18 @@ export function createPointerHandlers(api) {
     if (!api.isValuesTooltipPinned?.()) activeLongPressPointer = null;
     if (!api.isValuesTooltipPinned?.()) api.hideValuesTooltip();
     api.setHoveredDrawing(null);
-    if (api.shouldSyncDrawCrosshair?.()) api.clearDrawCrosshair?.();
+    const preserveMobileDrawCrosshair =
+      ev.pointerType !== "mouse" &&
+      api.useMobileDragPlacement?.() &&
+      api.shouldSyncDrawCrosshair?.();
+    if (preserveMobileDrawCrosshair) {
+      // Releasing pointer capture on touch can dispatch pointerleave even when
+      // the finger was released over the chart. Keep the chosen drawing
+      // position visible and restore the native lines after its pointerup.
+      requestAnimationFrame(() => api.syncDrawCrosshairAtMediaAnchor?.());
+    } else if (api.shouldSyncDrawCrosshair?.()) {
+      api.clearDrawCrosshair?.();
+    }
     if (["dot", "demonstration"].includes(api.getActiveTool())) {
       api.hideCursorMark();
     }
