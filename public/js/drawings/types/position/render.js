@@ -25,6 +25,12 @@ import {
 } from "./stats.js";
 import { applyColorOpacity } from "../../../ui/color/picker.js";
 
+/** Restore readable native-style copy for positions saved with the old blue accent. */
+export function resolvePositionLabelTextColor(color) {
+  const configured = String(color ?? "#ffffff");
+  return configured.toLowerCase() === "#2962ff" ? "#ffffff" : configured;
+}
+
 /**
  * Price-axis labels for long/short position tools.
  * Price labels are independent from the hover-only stats. TradingView keeps
@@ -98,8 +104,12 @@ export function renderPositionDrawing(ctx, drawing, timeToX, priceToY, right, st
     drawing.stopColor ?? TV_STOP_FILL,
     drawing.stopOpacity ?? 100,
   );
+  // Older saved position defaults inherited TradingView's blue selection
+  // accent as the label color. Keep the accent for handles, but migrate pill
+  // copy back to the readable white used by native position tools.
+  const labelTextColor = resolvePositionLabelTextColor(drawing.textColor);
   const textColor = applyColorOpacity(
-    drawing.textColor ?? "#ffffff",
+    labelTextColor,
     drawing.textColorOpacity ?? 100,
   );
   const fontSize = drawing.fontSize ?? PILL_FONT_SIZE;

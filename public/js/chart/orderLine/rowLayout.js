@@ -203,12 +203,10 @@ export function resolveOrderLinePillOffset(
   preferred = DEFAULT_ORDER_LINE_PILL_OFFSET,
   totalW = 0,
 ) {
-  const base = Math.max(4, Math.min(20, Number(preferred) || DEFAULT_ORDER_LINE_PILL_OFFSET));
+  const base = Math.max(4, Number(preferred) || DEFAULT_ORDER_LINE_PILL_OFFSET);
   if (!Number.isFinite(plotW) || plotW <= 0) return base;
-  if (totalW > 0 && totalW + base + 4 > plotW) {
-    return Math.max(4, plotW - totalW - 4);
-  }
-  return base;
+  const reservedWidth = totalW > 0 ? totalW : 120;
+  return Math.min(base, Math.max(4, plotW - reservedWidth - 4));
 }
 
 /**

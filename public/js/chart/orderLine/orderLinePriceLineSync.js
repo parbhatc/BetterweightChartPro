@@ -27,6 +27,7 @@ function removeCompatOrderLine(series, line) {
 
 /** @param {number} lineStyle */
 function mapOrderLineStyle(lineStyle) {
+  if (lineStyle === 3) return LineStyle.LargeDashed;
   if (lineStyle === 2) return LineStyle.Dotted;
   if (lineStyle === 1) return LineStyle.Dashed;
   return LineStyle.Solid;

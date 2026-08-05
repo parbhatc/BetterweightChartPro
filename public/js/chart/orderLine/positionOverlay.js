@@ -34,8 +34,11 @@ function aurenPosPerfCount(key, n = 1) {
   }
 }
 
-const DEFAULT_PILL_OFFSET = 10;
-const DEFAULT_BRACKET_PILL_OFFSET = 96;
+const DEFAULT_PILL_OFFSET = 320;
+const DEFAULT_BRACKET_PILL_OFFSET = 420;
+const COMPACT_PILL_OFFSET = 24;
+const COMPACT_BRACKET_PILL_OFFSET = 104;
+const COMPACT_PLOT_WIDTH = 700;
 const BRACKET_LINE_LENGTH = 21;
 const BUY_COLOR = "#089981";
 const SELL_COLOR = "#f23645";
@@ -300,8 +303,15 @@ export function createPositionOverlay(widget) {
   function syncLayoutOffsets() {
     if (!position?.line && !pending.length) return;
     const plotW = currentPlotWidth();
-    const nextPos = resolveOrderLinePillOffset(plotW, DEFAULT_PILL_OFFSET);
-    const nextBracket = resolveBracketPillOffset(plotW, DEFAULT_BRACKET_PILL_OFFSET);
+    const compact = plotW > 0 && plotW < COMPACT_PLOT_WIDTH;
+    const nextPos = resolveOrderLinePillOffset(
+      plotW,
+      compact ? COMPACT_PILL_OFFSET : DEFAULT_PILL_OFFSET,
+    );
+    const nextBracket = resolveBracketPillOffset(
+      plotW,
+      compact ? COMPACT_BRACKET_PILL_OFFSET : DEFAULT_BRACKET_PILL_OFFSET,
+    );
     if (nextPos !== pillOffset) {
       pillOffset = nextPos;
       if (position?.line) position.line.setPillOffset(pillOffset);
@@ -400,7 +410,7 @@ export function createPositionOverlay(widget) {
       .setQuantityBackgroundColor(color)
       .setBodyTextColor(getPositionTextColor())
       .setQuantityTextColor(getPositionTextColor())
-      .setLineStyle(2)
+      .setLineStyle(0)
       .setLineLength(8)
       .setPillSide("right")
       .setPillOffset(pillOffset);
@@ -495,7 +505,7 @@ export function createPositionOverlay(widget) {
     if (!position) return line;
     line
       .setQuantity(String(-position.qty))
-      .setLineStyle(2)
+      .setLineStyle(3)
       .setLineLength(BRACKET_LINE_LENGTH)
       .setPillSide("right")
       .setPillOffset(bracketPillOffset)

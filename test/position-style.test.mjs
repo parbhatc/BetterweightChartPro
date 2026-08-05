@@ -8,6 +8,7 @@ import {
 import {
   positionPriceAxisLabels,
   renderPositionDrawing,
+  resolvePositionLabelTextColor,
 } from "../public/js/drawings/types/position/render.js";
 import {
   buildPositionCenterStatLines,
@@ -38,6 +39,11 @@ test("position drawings expose the complete style contract", () => {
   assert.equal(drawing.stopOpacity, 20);
   assert.equal(drawing.textColor, "#FFFFFF");
   assert.equal(drawing.compactStatsMode, false);
+});
+
+test("legacy blue position-label text migrates to readable white", () => {
+  assert.equal(resolvePositionLabelTextColor("#2962FF"), "#ffffff");
+  assert.equal(resolvePositionLabelTextColor("#f5f5f5"), "#f5f5f5");
 });
 
 test("compact position stats preserve selected values", () => {
