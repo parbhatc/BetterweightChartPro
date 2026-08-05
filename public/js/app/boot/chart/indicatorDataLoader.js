@@ -32,6 +32,20 @@ const PREPEND_GUARD = 8;
 const PREPEND_CHUNK = 200;
 const COMPARE_RETRY_MS = 10_000;
 
+export function shouldPublishCompareProgress({
+  hasBars,
+  versionBefore,
+  versionAfter,
+  anchorSec,
+  tailStale,
+}) {
+  return Boolean(
+    hasBars &&
+      versionAfter !== versionBefore &&
+      (anchorSec == null || tailStale === false),
+  );
+}
+
 /** @param {string} symbol @param {string} resolution */
 function htfStoreBarCount(symbol, resolution) {
   return getHtfBars(symbol, resolution)?.utcBars?.length ?? 0;
@@ -315,6 +329,7 @@ export function createIndicatorDataLoader({
   /** @param {object} pane @param {string} symbol @param {number} countBack */
   async function fillCompareChart(pane, symbol, countBack) {
     const anchorSec = paneAnchorSec(pane);
+    const versionBeforeInitialPage = getHtfSeriesVersion(symbol, pane.resolution);
     let hit = lookupSymbolBars({ ...symbolBarLookupOpts(pane, symbol), resolution: pane.resolution });
     const tailStale =
       anchorSec != null && htfCacheStaleForAnchor(symbol, pane.resolution, anchorSec);
@@ -343,6 +358,22 @@ export function createIndicatorDataLoader({
       }
     }
     let entry = getHtfBars(symbol, pane.resolution);
+    // A replay chart can require thousands of compare bars, which are fetched
+    // in multiple pages. Publish the first tail-aligned page immediately so
+    // SMT can leave its loading state and paint recent divergences while the
+    // remaining historical pages continue backfilling below.
+    if (shouldPublishCompareProgress({
+      hasBars: Boolean(entry?.utcBars?.length),
+      versionBefore: versionBeforeInitialPage,
+      versionAfter: getHtfSeriesVersion(symbol, pane.resolution),
+      anchorSec,
+      tailStale:
+        anchorSec == null
+          ? false
+          : htfCacheStaleForAnchor(symbol, pane.resolution, anchorSec),
+    })) {
+      refreshPanesUsingCompareSymbol(symbol);
+    }
     let guard = 0;
     const symbolInfo = await ctx.datafeed.resolveSymbol(symbol);
     while (entry && entry.utcBars.length < countBack && !entry.historyExhausted && guard < PREPEND_GUARD) {
