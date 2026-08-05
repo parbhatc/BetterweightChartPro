@@ -46,6 +46,16 @@ export function shouldPublishCompareProgress({
   );
 }
 
+export function mergeCountBackNeeds(...needMaps) {
+  const merged = new Map();
+  for (const needs of needMaps) {
+    for (const [key, countBack] of needs ?? []) {
+      merged.set(key, Math.max(merged.get(key) ?? 0, Number(countBack) || 0));
+    }
+  }
+  return merged;
+}
+
 /** @param {string} symbol @param {string} resolution */
 function htfStoreBarCount(symbol, resolution) {
   return getHtfBars(symbol, resolution)?.utcBars?.length ?? 0;
@@ -468,8 +478,28 @@ export function createIndicatorDataLoader({
     if (paneInFlight.has(pane.index)) return;
     const startEpoch = getDataEpoch();
 
-    await ctx.ensureIndicatorChartHistory?.(pane);
-    if (getDataEpoch() !== startEpoch) return;
+    // Do not queue current-window indicator data behind the slower primary
+    // candle backfill. Initial boot already owns that backfill through
+    // `_indicatorHistoryBulkLoad`; later indicator changes start it here in
+    // the background and schedule one deeper pass only when bars were added.
+    if (!pane._indicatorHistoryBulkLoad) {
+      const chartBarsBefore = pane.bars?.length ?? 0;
+      void Promise.resolve(ctx.ensureIndicatorChartHistory?.(pane))
+        .then(() => {
+          if (
+            getDataEpoch() === startEpoch &&
+            (pane.bars?.length ?? 0) > chartBarsBefore
+          ) {
+            scheduleLoad(0);
+          }
+        })
+        .catch((err) => {
+          indicatorDebug("data.chart history failed", {
+            pane: pane.index,
+            error: String(err),
+          });
+        });
+    }
 
     const view = getPaneChartView(
       pane,
@@ -520,42 +550,38 @@ export function createIndicatorDataLoader({
         return;
       }
       const barCountsBefore = snapshotPaneBarCounts(needs, pane);
-      for (const [key, countBack] of needs.htf) {
-        if (isChartPanning()) {
-          deferHeavyWork();
-          return;
-        }
+      if (isChartPanning()) {
+        deferHeavyWork();
+        return;
+      }
+
+      // HTF and compare-symbol series are independent. Loading them in a
+      // single serial chain made later indicators inherit the latency of every
+      // earlier indicator (Levels could block SMT for several seconds).
+      // Per-series stores still deduplicate identical symbol/resolution work.
+      const htfNeeds = mergeCountBackNeeds(needs.htf, needs.compareHtf);
+      const seriesTasks = [];
+      for (const [key, countBack] of htfNeeds) {
         const sep = key.indexOf("|");
         const symbol = key.slice(0, sep);
         const resolution = key.slice(sep + 1);
-        await fillHtfHistory(pane, symbol, resolution, countBack);
+        seriesTasks.push(fillHtfHistory(pane, symbol, resolution, countBack));
       }
       for (const [symbol, countBack] of needs.compareChart) {
-        if (isChartPanning()) {
-          deferHeavyWork();
-          return;
-        }
         // Do not let routine loader passes continuously restart the cooldown;
         // the retry timer below owns the next attempt after an empty/error run.
         if (isCompareDataUnavailable(symbol, pane.resolution)) continue;
-        try {
-          const loaded = await fillCompareChart(pane, symbol, countBack);
-          if (loaded) clearCompareUnavailable(symbol, pane.resolution);
-          else markCompareUnavailable(pane, symbol, pane.resolution, countBack);
-        } catch (err) {
-          markCompareUnavailable(pane, symbol, pane.resolution, countBack, err);
-        }
+        seriesTasks.push((async () => {
+          try {
+            const loaded = await fillCompareChart(pane, symbol, countBack);
+            if (loaded) clearCompareUnavailable(symbol, pane.resolution);
+            else markCompareUnavailable(pane, symbol, pane.resolution, countBack);
+          } catch (err) {
+            markCompareUnavailable(pane, symbol, pane.resolution, countBack, err);
+          }
+        })());
       }
-      for (const [key, countBack] of needs.compareHtf) {
-        if (isChartPanning()) {
-          deferHeavyWork();
-          return;
-        }
-        const sep = key.indexOf("|");
-        const symbol = key.slice(0, sep);
-        const resolution = key.slice(sep + 1);
-        await fillHtfHistory(pane, symbol, resolution, countBack);
-      }
+      await Promise.all(seriesTasks);
       // A symbol/TF/replay transition happened mid-load: results were dropped
       // by the store, and pane state may no longer match — skip refresh.
       if (getDataEpoch() !== startEpoch) return;

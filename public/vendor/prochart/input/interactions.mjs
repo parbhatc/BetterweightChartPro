@@ -34,6 +34,21 @@ export function trackingCrosshairPosition(origin, gestureStart, current, bounds 
   };
 }
 
+/**
+ * A tap inside the plot should reposition an already pinned mobile crosshair,
+ * not make it appear to vanish at random. Tapping outside the plot remains the
+ * deliberate dismissal gesture.
+ */
+export function mobilePinnedCrosshairReleaseAction({
+  wasCrosshairOnly,
+  crosshairWasPinnedAtStart,
+  wasDrag,
+  wasPlot,
+}) {
+  if (!wasCrosshairOnly || !crosshairWasPinnedAtStart || wasDrag) return null;
+  return wasPlot ? "retain" : "dismiss";
+}
+
 export function bindEvents(m) {
   const el = m.root;
   const eventBindings = [];
@@ -303,8 +318,18 @@ export function bindEvents(m) {
     const crosshairWasPinnedAtStart = Boolean(dragging?.crosshairWasPinnedAtStart);
     endPointer(e);
     if (e.pointerType === "touch") {
-      if (wasCrosshairOnly && crosshairWasPinnedAtStart && !wasDrag) {
-        // A simple tap while already tracking exits tracking mode.
+      const pinnedReleaseAction = mobilePinnedCrosshairReleaseAction({
+        wasCrosshairOnly,
+        crosshairWasPinnedAtStart,
+        wasDrag,
+        wasPlot,
+      });
+      if (pinnedReleaseAction === "retain") {
+        m.updateCrosshair(pos.x, pos.y, e);
+        touchCrosshairPinned = true;
+        return;
+      }
+      if (pinnedReleaseAction === "dismiss") {
         touchCrosshairPinned = false;
         m.clearCrosshair();
         return;

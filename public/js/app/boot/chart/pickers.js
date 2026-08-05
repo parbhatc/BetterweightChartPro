@@ -407,7 +407,9 @@ export async function wireSymbolAndTimeframePickers(ctx) {
             paneCount: panes.length,
           });
           const savedLayouts = capturePaneBarLayouts(ctx, panes);
-          bumpDataEpoch("timeframe-change");
+          bumpDataEpoch("timeframe-change", {
+            preserveStore: !ctx.opts?.replayHostControlled,
+          });
           preparePanesForSeriesReload(ctx, panes);
           for (let i = 0; i < panes.length; i += 1) {
             const pane = panes[i];
@@ -469,7 +471,9 @@ export async function wireSymbolAndTimeframePickers(ctx) {
           sync: false,
         });
         const savedLayout = captureViewportBarLayout(pane, ctx.settingsStore, ctx.resolutions);
-        bumpDataEpoch("timeframe-change");
+        bumpDataEpoch("timeframe-change", {
+          preserveStore: !ctx.opts?.replayHostControlled,
+        });
         preparePanesForSeriesReload(ctx, [pane]);
         pane._tfSwitchFromResolution = pane.resolution;
         pane._tfSwitchSavedLayout = savedLayout;

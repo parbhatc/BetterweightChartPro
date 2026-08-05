@@ -29,6 +29,52 @@ import {
 import { RenderFrameTickCache } from "./frameTickCache.mjs";
 import { shouldUseGpu } from "./gpuPolicy.mjs";
 
+const RENDER_PROFILE_ENABLED = (() => {
+  try {
+    const debug = new URLSearchParams(globalThis.location?.search ?? "").get("debug") ?? "";
+    return debug === "1" || debug.split(/[,;\s]+/).some((tag) => tag === "perf");
+  } catch {
+    return false;
+  }
+})();
+
+const renderProfileByModel = new WeakMap();
+
+function recordRenderProfile(model, sample) {
+  if (!RENDER_PROFILE_ENABLED) return;
+  const now = performance.now();
+  let profile = renderProfileByModel.get(model);
+  if (!profile) {
+    profile = { startedAt: now, frames: 0, total: 0, max: 0, layout: 0, pane: 0, axes: 0, top: 0 };
+    renderProfileByModel.set(model, profile);
+  }
+  profile.frames += 1;
+  for (const key of ["total", "layout", "pane", "axes", "top"]) profile[key] += sample[key];
+  profile.max = Math.max(profile.max, sample.total);
+  const elapsed = now - profile.startedAt;
+  if (elapsed < 1000) return;
+  const divisor = Math.max(1, profile.frames);
+  console.log(`[BWC:render] ${JSON.stringify({
+    fps: Math.round((profile.frames / elapsed) * 1000),
+    avgMs: Number((profile.total / divisor).toFixed(2)),
+    maxMs: Number(profile.max.toFixed(2)),
+    layoutMs: Number((profile.layout / divisor).toFixed(2)),
+    paneMs: Number((profile.pane / divisor).toFixed(2)),
+    axesMs: Number((profile.axes / divisor).toFixed(2)),
+    topMs: Number((profile.top / divisor).toFixed(2)),
+  })}`);
+  renderProfileByModel.set(model, {
+    startedAt: now,
+    frames: 0,
+    total: 0,
+    max: 0,
+    layout: 0,
+    pane: 0,
+    axes: 0,
+    top: 0,
+  });
+}
+
 export {
   renderSeries2d,
   seriesLastValueColor,
@@ -42,6 +88,7 @@ export {
 
 /** Render a complete chart frame in stable layer order. */
 export function renderChart(model) {
+  const profileStart = RENDER_PROFILE_ENABLED ? performance.now() : 0;
   model._frameId = (model._frameId || 0) + 1;
   const dpr = model.dpr || 1;
   const mainContext = model.mainCtx;
@@ -49,6 +96,7 @@ export function renderChart(model) {
 
   const tickCache = new RenderFrameTickCache(model);
   prepareLayout(model, mainContext, dpr, tickCache);
+  const profileLayoutEnd = RENDER_PROFILE_ENABLED ? performance.now() : 0;
 
   const plotX = model._leftW || 0;
   const plotWidth = model.paneWidth();
@@ -97,12 +145,24 @@ export function renderChart(model) {
       primitiveViewGroups,
     );
   }
+  const profilePaneEnd = RENDER_PROFILE_ENABLED ? performance.now() : 0;
 
   renderPaneSeparators(model, backgroundContext);
   renderPriceAxes(model, mainContext, tickCache);
   renderTimeAxis(model, mainContext, plotX, plotWidth, tickCache);
   renderAxisCorner(model);
+  const profileAxesEnd = RENDER_PROFILE_ENABLED ? performance.now() : 0;
   renderTop(model);
+  if (RENDER_PROFILE_ENABLED) {
+    const profileEnd = performance.now();
+    recordRenderProfile(model, {
+      total: profileEnd - profileStart,
+      layout: profileLayoutEnd - profileStart,
+      pane: profilePaneEnd - profileLayoutEnd,
+      axes: profileAxesEnd - profilePaneEnd,
+      top: profileEnd - profileAxesEnd,
+    });
+  }
 }
 
 /** Render only the isolated crosshair layer. */

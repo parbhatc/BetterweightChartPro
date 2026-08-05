@@ -6,20 +6,24 @@ export function patchSeriesPrimitiveLogging(series, context = "") {
   const detach = series.detachPrimitive.bind(series);
 
   series.attachPrimitive = (primitive) => {
-    console.log("[BWC] attachPrimitive", {
-      context,
-      primitive: primitive?.constructor?.name ?? primitive,
-      primitive,
-    });
+    if (globalThis.__BWC_LOG_PRIMITIVES__ === true) {
+      console.log("[BWC] attachPrimitive", {
+        context,
+        primitive: primitive?.constructor?.name ?? primitive,
+        primitive,
+      });
+    }
     return attach(primitive);
   };
 
   series.detachPrimitive = (primitive) => {
-    console.log("[BWC] detachPrimitive", {
-      context,
-      primitive: primitive?.constructor?.name ?? primitive,
-      primitive,
-    });
+    if (globalThis.__BWC_LOG_PRIMITIVES__ === true) {
+      console.log("[BWC] detachPrimitive", {
+        context,
+        primitive: primitive?.constructor?.name ?? primitive,
+        primitive,
+      });
+    }
     return detach(primitive);
   };
 

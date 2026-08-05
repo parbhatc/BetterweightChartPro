@@ -1,6 +1,7 @@
 import { safePriceToY } from "../../chart/coords/timeScale.js";
 import { applyColorOpacity } from "../../ui/color/picker.js";
 import { resolveOverlayTimeMapping, createOverlayTimeToXFromMapping } from "./overlayMapBars.js";
+import { verticalSegmentIntersectsViewport } from "./viewportCulling.js";
 
 const LABEL_FONT_FAMILY =
   `-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif`;
@@ -254,8 +255,8 @@ export function hoverBoxIdAt(boxes, time, pointY, priceToY) {
   return null;
 }
 
-/** @param {CanvasRenderingContext2D} ctx @param {object} box @param {(t: number) => number | null} timeToX @param {(p: number) => number | null} priceToY @param {number} rightX */
-function drawBox(ctx, box, timeToX, priceToY, rightX) {
+/** @param {CanvasRenderingContext2D} ctx @param {object} box @param {(t: number) => number | null} timeToX @param {(p: number) => number | null} priceToY @param {number} rightX @param {number} paneHeight */
+function drawBox(ctx, box, timeToX, priceToY, rightX, paneHeight) {
   const x1 = timeToX(box.timeStart);
   const x2End = box.extendRight ? null : timeToX(box.timeEnd);
   const x2 = box.extendRight ? rightX : x2End;
@@ -263,6 +264,7 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
 
   if (box.kind === "line") {
     if (x1 == null || x2 == null || yTop == null || x1 > x2 + 2) return;
+    if (!verticalSegmentIntersectsViewport(yTop, yTop, paneHeight)) return;
     ctx.save();
     ctx.strokeStyle = box.lineColor ?? box.borderColor ?? box.fillColor ?? "#787b86";
     ctx.lineWidth = Math.max(1, Number(box.lineWidth) || 1);
@@ -277,6 +279,7 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
 
   if (box.kind === "label") {
     if (x1 == null || yTop == null || !box.label) return;
+    if (!verticalSegmentIntersectsViewport(yTop, yTop, paneHeight)) return;
     ctx.save();
     ctx.font = labelFont(box);
     ctx.fillStyle = box.textColor ?? "#131722";
@@ -290,6 +293,7 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
   const yBot = priceToY(box.priceBottom);
   if (box.kind === "vertical-line") {
     if (x1 == null || yTop == null || yBot == null) return;
+    if (!verticalSegmentIntersectsViewport(yTop, yBot, paneHeight)) return;
     ctx.save();
     ctx.strokeStyle = box.lineColor ?? box.borderColor ?? box.fillColor ?? "#787b86";
     ctx.lineWidth = Math.max(1, Number(box.lineWidth) || 1);
@@ -302,6 +306,7 @@ function drawBox(ctx, box, timeToX, priceToY, rightX) {
     return;
   }
   if (x1 == null || x2 == null || yTop == null || yBot == null) return;
+  if (!verticalSegmentIntersectsViewport(yTop, yBot, paneHeight)) return;
   // Skip draw when start/end coords disagree (stale mapBars during history restore).
   if (!box.extendRight && x2End != null && x1 > x2End + 2) return;
 
@@ -391,7 +396,7 @@ class BoxesPaneRenderer {
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
         if (right < -pad || left > rightX + pad) continue;
-        drawBox(ctx, box, timeToX, priceToY, rightX);
+        drawBox(ctx, box, timeToX, priceToY, rightX, mediaSize.height);
       }
       // Hover labels belong to the top primitive view even when the position
       // zones themselves are bottom-layer fills. Otherwise candles paint over
@@ -424,6 +429,12 @@ class BoxesPaneView {
   constructor(source, order) {
     this._source = source;
     this._order = order;
+    const top = order === "top";
+    this._renderer = new BoxesPaneRenderer(
+      () => this._source.drawData(),
+      (box) => (box.zOrder === "top") === top,
+      top,
+    );
   }
 
   zOrder() {
@@ -431,12 +442,7 @@ class BoxesPaneView {
   }
 
   renderer() {
-    const top = this._order === "top";
-    return new BoxesPaneRenderer(
-      () => this._source.drawData(),
-      (box) => (box.zOrder === "top") === top,
-      top,
-    );
+    return this._renderer;
   }
 }
 

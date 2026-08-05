@@ -3,7 +3,13 @@ import { getMarketStatusDetails } from "../../chart/market/status.js";
 import { precisionFromSettings } from "../../chart/timezone/list.js";
 import { formatDisplayPrice } from "../../chart/format.js";
 import { resolvePriceScalePlacement } from "../../chart/scale/settings.js";
-import { rafThrottle, trackChartPanning, trackChartZoom, viewportSnapshot } from "../../chart/pan/perf.js";
+import {
+  rafThrottle,
+  shouldStartIdleHistoryPrefetch,
+  trackChartPanning,
+  trackChartZoom,
+  viewportSnapshot,
+} from "../../chart/pan/perf.js";
 import { timeToBarIndex } from "../../chart/coords/timeScale.js";
 import {
   barAtTime,
@@ -544,9 +550,12 @@ export function createPaneExtras(deps) {
     const scheduleHistoryPrefetch = () => {
       const r = pane.chart.timeScale().getVisibleLogicalRange();
       if (
-        !r ||
-        !isNearHistoryLeftEdge(r) ||
-        pane._suppressHistoryPrefetch ||
+        !shouldStartIdleHistoryPrefetch({
+          chartPanning: ui.chartPanning,
+          suppressed: pane._suppressHistoryPrefetch,
+          inFlight: pane._historyFetchInFlight,
+          nearEdge: Boolean(r) && isNearHistoryLeftEdge(r),
+        }) ||
         !viewportDeps?.resumeHistoryAfterPan
       ) {
         return;
@@ -623,16 +632,8 @@ export function createPaneExtras(deps) {
 
       if (ui.chartPanning) {
         chartDebugCount("perf", "visibleRangeSkippedPan");
-        const r = pane.chart.timeScale().getVisibleLogicalRange();
-        if (
-          r &&
-          isNearHistoryLeftEdge(r) &&
-          !pane._historyFetchInFlight &&
-          !pane._suppressHistoryPrefetch &&
-          viewportDeps?.prependHistory
-        ) {
-          void viewportDeps.prependHistory(pane);
-        }
+        // Keep pointer-down frames render-only. onEnd schedules any needed
+        // history expansion after the short idle window above.
         return;
       }
 

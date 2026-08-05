@@ -2,6 +2,7 @@ import { safePriceToY } from "../../chart/coords/timeScale.js";
 import { chartDebug } from "../../debug/chart/index.js";
 import { drawLabelCallout } from "./labelCallout.js";
 import { resolveOverlayTimeMapping, createOverlayTimeToXFromMapping } from "./overlayMapBars.js";
+import { verticalSegmentIntersectsViewport } from "./viewportCulling.js";
 
 const LABEL_FONT = "600 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
@@ -20,11 +21,12 @@ function labelXOnVisibleSegment(x1, x2, paneW) {
   return (lo + hi) / 2;
 }
 
-/** @param {CanvasRenderingContext2D} ctx @param {object} line @param {number} x1 @param {number} x2 @param {(p: number) => number | null} priceToY @param {number} paneW */
-function drawLine(ctx, line, x1, x2, priceToY, paneW) {
+/** @param {CanvasRenderingContext2D} ctx @param {object} line @param {number} x1 @param {number} x2 @param {(p: number) => number | null} priceToY @param {number} paneW @param {number} paneHeight */
+function drawLine(ctx, line, x1, x2, priceToY, paneW, paneHeight) {
   const y1 = priceToY(line.priceStart);
   const y2 = priceToY(line.priceEnd);
   if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+  if (!verticalSegmentIntersectsViewport(y1, y2, paneHeight)) return;
   // Stale mapBars during history restore — skip inverted coords.
   if (x1 > x2 + 2) return;
   if (Math.abs(x2 - x1) < 1 && Math.abs(y2 - y1) < 1) return;
@@ -139,7 +141,7 @@ class LinesPaneRenderer {
           const hi = Math.max(x1, x2);
           if (hi < -pad || lo > paneW + pad) continue;
         }
-        drawLine(ctx, line, x1, x2, priceToY, paneW);
+        drawLine(ctx, line, x1, x2, priceToY, paneW, mediaSize.height);
       }
     });
   }
@@ -149,6 +151,7 @@ class LinesPaneView {
   /** @param {LinesPrimitive} source */
   constructor(source) {
     this._source = source;
+    this._renderer = new LinesPaneRenderer(() => this._source.drawData());
   }
 
   zOrder() {
@@ -156,7 +159,7 @@ class LinesPaneView {
   }
 
   renderer() {
-    return new LinesPaneRenderer(() => this._source.drawData());
+    return this._renderer;
   }
 }
 

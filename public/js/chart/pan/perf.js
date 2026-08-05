@@ -24,6 +24,20 @@ export function rafThrottle(fn) {
 }
 
 /**
+ * History expansion is deliberately idle-only. Starting a request while the
+ * pointer is down can let a large setData land in the middle of a mobile pan.
+ * @param {{ chartPanning?: boolean, suppressed?: boolean, inFlight?: boolean, nearEdge?: boolean }} [state]
+ */
+export function shouldStartIdleHistoryPrefetch(state = {}) {
+  return (
+    !state.chartPanning &&
+    !state.suppressed &&
+    !state.inFlight &&
+    state.nearEdge === true
+  );
+}
+
+/**
  * Track left-button drag on chart containers (pan scroll).
  * @param {HTMLElement} container
  * @param {{ onStart?: () => void, onEnd?: () => void }} [hooks]

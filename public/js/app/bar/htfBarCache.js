@@ -54,10 +54,13 @@ export function getDataEpoch() {
   return dataEpoch;
 }
 
-/** @param {string} [reason] */
-export function bumpDataEpoch(reason = "") {
+/** @param {string} [reason] @param {{ preserveStore?: boolean }} [options] */
+export function bumpDataEpoch(reason = "", options = {}) {
   dataEpoch += 1;
   lastAnchorByRes.clear();
+  if (options.preserveStore === true) {
+    for (const entry of store.values()) entry.epoch = dataEpoch;
+  }
   chartDebug("data", "htf data epoch bump", { epoch: dataEpoch, reason });
   return dataEpoch;
 }
@@ -606,6 +609,8 @@ export function clearHtfBars(symbol, resolution) {
  * Native coarse chart bars must not stay in the store — they disagree with LTF-aggregated HTF.
  * @param {string} symbol
  * @param {string} targetResolution
+ * Datafeed-backed history remains valid across chart timeframes; only
+ * pane-derived entries are eligible for removal here.
  */
 export function clearHtfCoarserThan(symbol, targetResolution) {
   const targetSec = resolutionSec(targetResolution);
@@ -613,6 +618,8 @@ export function clearHtfCoarserThan(symbol, targetResolution) {
   let cleared = 0;
   for (const k of [...store.keys()]) {
     if (!k.startsWith(`${symbol}|`)) continue;
+    const entry = store.get(k);
+    if (entry?.source === "datafeed") continue;
     const res = k.slice(symbol.length + 1);
     const sec = resolutionSec(res);
     if (sec != null && sec >= targetSec) {

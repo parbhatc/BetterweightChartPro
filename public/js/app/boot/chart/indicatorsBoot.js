@@ -679,5 +679,8 @@ export function attachIndicatorsBoot(ctx) {
   for (const pane of ctx.getAllChartPanes()) controller.refreshStudyPaneLegends(pane);
   refreshAllScaleLabels();
   refreshAllBandFills();
-  indicatorData.scheduleLoad(4000);
+  // Give the first candle paint a short head start without leaving restored
+  // indicators spinning for four seconds before their data requests begin.
+  // The loader still defers itself whenever the chart is actively panning.
+  indicatorData.scheduleLoad(200);
 }

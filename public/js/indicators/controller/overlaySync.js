@@ -35,6 +35,20 @@ const OVERLAY_PRIMITIVE_ATTACH = {
 };
 
 /**
+ * Overlay primitives are attached to a series, not to a resolution. Keep the
+ * existing primitive when only the chart timeframe changes so the canvas does
+ * not detach and recreate every indicator layer during the transition.
+ * @param {object} instance
+ * @param {object} pane
+ */
+export function shouldReplaceOverlayPrimitive(instance, pane) {
+  return (
+    instance._overlaySeries !== pane.series ||
+    instance._overlaySymbol !== (pane.symbol ?? "")
+  );
+}
+
+/**
  * @param {object} deps
  * @param {() => object[]} deps.getAllChartPanes
  * @param {(pane: object) => { utcBars: object[], chartBars: object[] }} deps.getPaneBars
@@ -92,11 +106,16 @@ export function createOverlaySync(deps) {
     if (!pane?.series) return;
 
     const indicatorName = Indicator.id ?? instance.defId;
-    const paneKey = `${pane.resolution}|${pane.symbol ?? ""}`;
-    if (instance._overlayPaneKey !== paneKey) {
+    const replacePrimitive = shouldReplaceOverlayPrimitive(instance, pane);
+    const resolutionChanged = instance._overlayResolution !== pane.resolution;
+    if (replacePrimitive) {
       instance._overlayPrimitive?.destroy?.();
       instance._overlayPrimitive = null;
-      instance._overlayPaneKey = paneKey;
+      instance._overlaySeries = pane.series;
+      instance._overlaySymbol = pane.symbol ?? "";
+    }
+    instance._overlayResolution = pane.resolution;
+    if (replacePrimitive || resolutionChanged) {
       clearOverlayInstanceCache(instance);
     }
 
@@ -384,7 +403,9 @@ export function createOverlaySync(deps) {
       }
       instance.lastPlots = { overlay: [] };
       instance._overlayAppliedGeomKey = undefined;
-      instance._overlayPaneKey = undefined;
+      instance._overlaySeries = undefined;
+      instance._overlaySymbol = undefined;
+      instance._overlayResolution = undefined;
       clearOverlayInstanceCache(instance);
     }
   }

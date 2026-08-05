@@ -32,6 +32,82 @@ import {
 import { PriceScaleMode } from "../public/vendor/prochart/core/enums.mjs";
 import { PriceScaleModel } from "../public/vendor/prochart/scale/priceScaleModel.mjs";
 import { createPointerHandlers } from "../public/js/drawings/controller/pointer/handlers.js";
+import { shouldReplaceOverlayPrimitive } from "../public/js/indicators/controller/overlaySync.js";
+import { shouldStartIdleHistoryPrefetch } from "../public/js/chart/pan/perf.js";
+import { verticalSegmentIntersectsViewport } from "../public/js/indicators/primitives/viewportCulling.js";
+import { attachBoxesPrimitive } from "../public/js/indicators/primitives/boxes.js";
+
+test("overlay pane views retain their renderers across animation frames", () => {
+  let primitive;
+  const series = {
+    attachPrimitive(next) {
+      primitive = next;
+    },
+    detachPrimitive() {},
+  };
+  const attachment = attachBoxesPrimitive({ series });
+
+  for (const view of primitive.paneViews()) {
+    assert.strictEqual(view.renderer(), view.renderer());
+  }
+  attachment.destroy();
+});
+
+test("indicator primitives skip vertically off-screen geometry during price pans", () => {
+  assert.equal(verticalSegmentIntersectsViewport(-80, -20, 600), false);
+  assert.equal(verticalSegmentIntersectsViewport(620, 900, 600), false);
+  assert.equal(verticalSegmentIntersectsViewport(-20, 200, 600), true);
+  assert.equal(verticalSegmentIntersectsViewport(100, 300, 600), true);
+});
+
+test("mobile panning defers left-edge history expansion until interaction is idle", () => {
+  assert.equal(
+    shouldStartIdleHistoryPrefetch({ chartPanning: true, nearEdge: true }),
+    false,
+  );
+  assert.equal(
+    shouldStartIdleHistoryPrefetch({ chartPanning: false, nearEdge: true }),
+    true,
+  );
+  assert.equal(
+    shouldStartIdleHistoryPrefetch({ chartPanning: false, nearEdge: true, inFlight: true }),
+    false,
+  );
+});
+
+test("resolution changes retain overlay primitives attached to the same series", () => {
+  const series = {};
+  const instance = {
+    _overlaySeries: series,
+    _overlaySymbol: "MNQ1!",
+    _overlayResolution: "1",
+  };
+
+  assert.equal(
+    shouldReplaceOverlayPrimitive(instance, {
+      series,
+      symbol: "MNQ1!",
+      resolution: "30S",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldReplaceOverlayPrimitive(instance, {
+      series: {},
+      symbol: "MNQ1!",
+      resolution: "30S",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldReplaceOverlayPrimitive(instance, {
+      series,
+      symbol: "ES1!",
+      resolution: "30S",
+    }),
+    true,
+  );
+});
 
 test("overlay passes reuse one primitive pane-view classification per frame", () => {
   let paneViewCalls = 0;

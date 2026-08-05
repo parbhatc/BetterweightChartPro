@@ -38,6 +38,7 @@ class LabelsPaneView {
   /** @param {LabelsPrimitive} source */
   constructor(source) {
     this._source = source;
+    this._renderer = new LabelsPaneRenderer(() => this._source.drawData());
   }
 
   zOrder() {
@@ -45,7 +46,7 @@ class LabelsPaneView {
   }
 
   renderer() {
-    return new LabelsPaneRenderer(() => this._source.drawData());
+    return this._renderer;
   }
 }
 

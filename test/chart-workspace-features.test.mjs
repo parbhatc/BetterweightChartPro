@@ -41,6 +41,7 @@ import {
 import {
   bindEvents,
   chartCursorForZone,
+  mobilePinnedCrosshairReleaseAction,
   TOUCH_TRACKING_CANCEL_DISTANCE,
   TOUCH_TRACKING_LONG_PRESS_MS,
   trackingCrosshairPosition,
@@ -620,6 +621,27 @@ test("price and time axes use TradingView's directional resize cursors", () => {
   assert.equal(chartCursorForZone("left"), "ns-resize");
   assert.equal(chartCursorForZone("right"), "ns-resize");
   assert.equal(chartCursorForZone("time"), "ew-resize");
+});
+
+test("a mobile plot tap retains an already pinned crosshair", () => {
+  const pinnedTap = {
+    wasCrosshairOnly: true,
+    crosshairWasPinnedAtStart: true,
+    wasDrag: false,
+  };
+
+  assert.equal(
+    mobilePinnedCrosshairReleaseAction({ ...pinnedTap, wasPlot: true }),
+    "retain",
+  );
+  assert.equal(
+    mobilePinnedCrosshairReleaseAction({ ...pinnedTap, wasPlot: false }),
+    "dismiss",
+  );
+  assert.equal(
+    mobilePinnedCrosshairReleaseAction({ ...pinnedTap, wasPlot: true, wasDrag: true }),
+    null,
+  );
 });
 
 test("plot pan input is coalesced to one chart update per animation frame", () => {

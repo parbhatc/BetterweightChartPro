@@ -76,7 +76,10 @@ export function mountDebugHud(opts = {}) {
       statsEl.textContent = `${label} ${interactionFps} fps · Render ${liveFps} · Ping ${ping}`;
       return;
     }
-    statsEl.textContent = `FPS ${liveFps} · Ping ${ping}`;
+    // An idle chart renders only when data changes. Reporting the HUD's own
+    // requestAnimationFrame cadence as chart FPS makes efficient idle periods
+    // look like a performance failure (especially in throttled/background tabs).
+    statsEl.textContent = `Idle · Ping ${ping}`;
   }
 
   function render() {
