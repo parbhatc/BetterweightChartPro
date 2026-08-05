@@ -14,6 +14,7 @@ import {
   migrateLegacyLevelColor,
   resolveLevelPalettePreset,
 } from "../testing_web/frontend/js/indicators/levels/palette.js";
+import { testingIndicatorPresetPatch } from "../testing_web/frontend/js/indicators/presetPatches.js";
 
 test("indicator presets are independent and preserve the historical dark palettes", () => {
   assert.equal(normalizeIndicatorPresetId("missing"), "none");
@@ -37,6 +38,17 @@ test("indicator presets are independent and preserve the historical dark palette
   assert.equal(indicatorPresetPatch("host_owned", "dark").inputs.palette, "dark");
   dispose();
   assert.equal(indicatorPresetPatch("host_owned", "dark"), null);
+});
+
+test("the testing FVG preset exposes and resets its timeframe colors", () => {
+  const dark = testingIndicatorPresetPatch("fvg", "dark");
+  assert.equal(dark.inputs.indicatorAppearancePreset, "dark");
+  assert.equal(dark.inputs.showFvgBoxColors, true);
+  assert.deepEqual(dark.inputs.fvgBoxColorsByTf, {});
+  assert.equal(dark.inputs.bullBoxColor, "#4caf50");
+  assert.equal(dark.inputs.bullBorderColorOpacity, 50);
+  assert.equal(dark.inputs.bearBoxColor, "#f23645");
+  assert.equal(dark.inputs.ifvgBoxColor, "#ffff00");
 });
 
 test("dark Levels uses the pre-Gray HTF and session colors", () => {
