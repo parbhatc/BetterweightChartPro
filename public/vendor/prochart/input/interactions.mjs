@@ -34,19 +34,15 @@ export function trackingCrosshairPosition(origin, gestureStart, current, bounds 
   };
 }
 
-/**
- * A tap inside the plot should reposition an already pinned mobile crosshair,
- * not make it appear to vanish at random. Tapping outside the plot remains the
- * deliberate dismissal gesture.
- */
+/** A short tap dismisses an already pinned mobile crosshair. Dragging remains
+ * the deliberate way to reposition it, matching TradingView tracking mode. */
 export function mobilePinnedCrosshairReleaseAction({
   wasCrosshairOnly,
   crosshairWasPinnedAtStart,
   wasDrag,
-  wasPlot,
 }) {
   if (!wasCrosshairOnly || !crosshairWasPinnedAtStart || wasDrag) return null;
-  return wasPlot ? "retain" : "dismiss";
+  return "dismiss";
 }
 
 export function bindEvents(m) {
@@ -324,11 +320,6 @@ export function bindEvents(m) {
         wasDrag,
         wasPlot,
       });
-      if (pinnedReleaseAction === "retain") {
-        m.updateCrosshair(pos.x, pos.y, e);
-        touchCrosshairPinned = true;
-        return;
-      }
       if (pinnedReleaseAction === "dismiss") {
         touchCrosshairPinned = false;
         m.clearCrosshair();

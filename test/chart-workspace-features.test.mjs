@@ -623,7 +623,7 @@ test("price and time axes use TradingView's directional resize cursors", () => {
   assert.equal(chartCursorForZone("time"), "ew-resize");
 });
 
-test("a mobile plot tap retains an already pinned crosshair", () => {
+test("a mobile tap dismisses an already pinned crosshair", () => {
   const pinnedTap = {
     wasCrosshairOnly: true,
     crosshairWasPinnedAtStart: true,
@@ -632,7 +632,7 @@ test("a mobile plot tap retains an already pinned crosshair", () => {
 
   assert.equal(
     mobilePinnedCrosshairReleaseAction({ ...pinnedTap, wasPlot: true }),
-    "retain",
+    "dismiss",
   );
   assert.equal(
     mobilePinnedCrosshairReleaseAction({ ...pinnedTap, wasPlot: false }),
