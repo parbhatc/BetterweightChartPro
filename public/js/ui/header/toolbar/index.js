@@ -28,6 +28,7 @@ import { showOpenLayoutsDialog } from "../layout/openDialog.js";
  * @param {() => void} [opts.onCreateLayout]
  * @param {() => void} [opts.onDuplicateLayout]
  * @param {(name: string) => void} [opts.onDeleteLayout]
+ * @param {(key: string, enabled: boolean) => void} [opts.onSyncChange]
  */
 export function mountHeaderToolbar(opts) {
   const {
@@ -41,6 +42,7 @@ export function mountHeaderToolbar(opts) {
     onCreateLayout,
     onDuplicateLayout,
     onDeleteLayout,
+    onSyncChange,
   } = opts;
 
   const root = document.createElement("div");
@@ -259,6 +261,7 @@ export function mountHeaderToolbar(opts) {
         ${syncRow("time", "Time", "When a chart is clicked, all charts display the same point of time", sync.time, paneCount < 2)}
         ${syncRow("dateRange", "Date range", "Date range changes on all charts within the layout", sync.dateRange, paneCount < 2)}
         ${syncRow("drawings", "Drawings", "Drawings are synced across all charts within the layout", sync.drawings, paneCount < 2)}
+        ${syncRow("indicators", "Indicators", "Indicators are synced across all charts within the layout", sync.indicators, paneCount < 2)}
       </div>
     `;
 
@@ -285,6 +288,7 @@ export function mountHeaderToolbar(opts) {
       const key = input.dataset.syncKey;
       if (!key) return;
       layoutManager.setSync({ [key]: input.checked });
+      onSyncChange?.(key, input.checked);
       markLayoutDirty();
     });
 

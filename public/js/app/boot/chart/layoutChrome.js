@@ -47,6 +47,9 @@ export function wireLayoutChrome(ctx) {
           ctx.syncLayoutDateRangeFrom(ctx.chart);
         });
       }
+      if (ctx.layoutManager?.getSync().indicators) {
+        ctx.syncIndicatorsAcrossPanes?.(ctx.layoutManager.getActivePaneIndex());
+      }
     },
     onActivePaneChange: (index) => {
       ctx.switchActivePane(index);
@@ -130,6 +133,16 @@ export function wireLayoutChrome(ctx) {
       removeLayoutFromLibrary(name);
       if (name === ctx.layoutManager.getLayoutName()) {
         ctx.resetToUnsavedWorkspace();
+      }
+    },
+    onSyncChange: (key, enabled) => {
+      if (!enabled) return;
+      if (key === "indicators") {
+        ctx.syncIndicatorsAcrossPanes?.(ctx.layoutManager.getActivePaneIndex());
+      }
+      if (key === "dateRange") {
+        const source = ctx.getActivePane?.() ?? ctx.chartPanes.get(0);
+        if (source?.chart) ctx.syncLayoutDateRangeFrom(source.chart);
       }
     },
   });

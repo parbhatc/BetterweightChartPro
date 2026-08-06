@@ -106,6 +106,7 @@ export function attachLayoutPersistence(ctx) {
       time: false,
       dateRange: true,
       drawings: false,
+      indicators: false,
     };
     ctx.layoutManager.setLayoutName("Unnamed", { markDirty: false });
     ctx.layoutManager.setLayout("s");

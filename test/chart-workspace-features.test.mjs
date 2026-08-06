@@ -47,6 +47,7 @@ import {
   trackingCrosshairPosition,
 } from "../public/vendor/prochart/input/interactions.mjs";
 import { pointInRightPriceAxis } from "../public/vendor/prochart/api/chartModel.mjs";
+import { PriceScaleModel } from "../public/vendor/prochart/scale/priceScaleModel.mjs";
 import {
   statusPointerRefreshesDuringPan,
   statusPointerSelectsHover,
@@ -795,6 +796,28 @@ test("plot pan input is coalesced to one chart update per animation frame", () =
     globalThis.requestAnimationFrame = previousRaf;
     globalThis.cancelAnimationFrame = previousCancelRaf;
   }
+});
+
+test("native vertical plot pan translates the price range into empty space", () => {
+  let invalidations = 0;
+  const pane = { height: 500, seriesFor: () => [] };
+  const scale = new PriceScaleModel(
+    { invalidate: () => { invalidations += 1; } },
+    pane,
+    "right",
+    { autoScale: false, scaleMargins: { top: 0, bottom: 0 } },
+  );
+  scale.priceRange = { min: 100, max: 200 };
+
+  const before = scale.priceToCoordinate(150);
+  scale.panByPixels(500);
+  const after = scale.priceToCoordinate(150);
+
+  assert.deepEqual(scale.priceRange, { min: 0, max: 100 });
+  assert.equal(scale.options.autoScale, false);
+  assert.equal(before, 250);
+  assert.equal(after, -250);
+  assert.equal(invalidations, 1);
 });
 
 test("input disposer cancels a pending touch tracking timer", () => {

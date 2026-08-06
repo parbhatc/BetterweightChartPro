@@ -6,6 +6,7 @@ import {
   computeViewportLogicalFromUtc,
 } from "../../../chart/pane/viewportBarLayout.js";
 import { timeframeSwitchPrefersUtcRestore } from "./timeframeRestorePolicy.js";
+import { paintSynchronizedReplayPanes } from "./timeframeSyncPaint.js";
 
 export { timeframeSwitchPrefersUtcRestore } from "./timeframeRestorePolicy.js";
 
@@ -107,6 +108,20 @@ export function syncHostReplayViewportAfterTfSwitch(ctx, pane, fromResolution = 
       { followUpFrames: 1 },
     );
   }
+  ctx.applyPriceScaleMarginsForPane?.(pane);
+}
+
+/**
+ * A synchronized replay interval change loads every pane, so every pane must
+ * also receive the replay-aware candle paint and price-scale refit. Painting
+ * only the active pane leaves peers on their previous series/scale.
+ *
+ * @param {import("./state.js").BootContext} ctx
+ * @param {object[]} panes
+ * @param {object[]} savedLayouts
+ */
+export function paintSynchronizedReplayPanesAfterTimeframeLoad(ctx, panes, savedLayouts) {
+  paintSynchronizedReplayPanes(ctx, panes, savedLayouts, paintPaneAfterTimeframeLoad);
 }
 
 /**

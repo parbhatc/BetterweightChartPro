@@ -20,6 +20,10 @@ import { symbolLabelAnchorsForPane } from "../../../chart/scale/symbolLabelAncho
 import { indicatorDebug, indicatorDebugRefresh } from "../../../debug/chart/indicators.js";
 import { indicatorPresetPatch } from "../../../indicators/presets.js";
 import { createCustomIndicator, registerStoredCustomIndicators } from "../../../indicators/custom/definitions.js";
+import {
+  indicatorPaneContentSignature,
+  syncedIndicatorsByPane,
+} from "../../../indicators/layoutSync.js";
 
 /**
  * @param {import("./state.js").BootContext} ctx
@@ -35,6 +39,8 @@ export function attachIndicatorsBoot(ctx) {
 
   /** @type {() => void} */
   let onControllerChange = () => {};
+  let syncingLayoutIndicators = false;
+  let lastIndicatorLayoutSignature = "";
 
   /** @type {ReturnType<typeof createIndicatorDataLoader>} */
   let indicatorData;
@@ -153,6 +159,30 @@ export function attachIndicatorsBoot(ctx) {
     },
   });
   ctx.indicatorController = controller;
+
+  function indicatorLayoutSignature(byPane) {
+    return JSON.stringify(ctx.getAllChartPanes().map((pane) => [
+      pane.index,
+      indicatorPaneContentSignature(byPane[String(pane.index)]),
+    ]));
+  }
+
+  function syncIndicatorsAcrossPanes(sourcePaneIndex = 0) {
+    const paneIndexes = ctx.getAllChartPanes().map((pane) => pane.index);
+    if (paneIndexes.length < 2 || syncingLayoutIndicators) return false;
+    const current = controller.getIndicatorsByPane();
+    const synced = syncedIndicatorsByPane(current, paneIndexes, sourcePaneIndex);
+    if (!synced) return false;
+    syncingLayoutIndicators = true;
+    try {
+      controller.setIndicatorsByPane(synced);
+    } finally {
+      syncingLayoutIndicators = false;
+    }
+    return true;
+  }
+
+  ctx.syncIndicatorsAcrossPanes = syncIndicatorsAcrossPanes;
 
   const library = createIndicatorsLibraryDialog({
     onSelect: (defId) => {
@@ -613,6 +643,18 @@ export function attachIndicatorsBoot(ctx) {
   }
 
   onControllerChange = () => {
+    const indicatorState = controller.getIndicatorsByPane();
+    const layoutSignature = indicatorLayoutSignature(indicatorState);
+    const contentChanged = layoutSignature !== lastIndicatorLayoutSignature;
+    lastIndicatorLayoutSignature = layoutSignature;
+    if (
+      contentChanged &&
+      !syncingLayoutIndicators &&
+      ctx.layoutManager?.getSync().indicators &&
+      syncIndicatorsAcrossPanes(ctx.layoutManager.getActivePaneIndex())
+    ) {
+      return;
+    }
     refreshAllLegends();
     refreshAllScaleLabels();
     refreshAllBandFills();

@@ -12,8 +12,10 @@ import { bumpDataEpoch, clearHtfCoarserThan, seedHtfBars } from "../../bar/htfBa
 import { resolutionSec } from "../../../chart/resolutions.js";
 import {
   paintPaneAfterTimeframeLoad,
+  paintSynchronizedReplayPanesAfterTimeframeLoad,
   syncHostReplayViewportAfterTfSwitch,
 } from "./timeframeSwitch.js";
+import { prepareSynchronizedReplayPanesBeforeTimeframeSwitch } from "./timeframeSyncPaint.js";
 import {
   showChartPendingOverlay,
   hideChartPendingOverlay,
@@ -407,6 +409,7 @@ export async function wireSymbolAndTimeframePickers(ctx) {
             paneCount: panes.length,
           });
           const savedLayouts = capturePaneBarLayouts(ctx, panes);
+          prepareSynchronizedReplayPanesBeforeTimeframeSwitch(ctx, panes, savedLayouts);
           bumpDataEpoch("timeframe-change", {
             preserveStore: !ctx.opts?.replayHostControlled,
           });
@@ -416,9 +419,6 @@ export async function wireSymbolAndTimeframePickers(ctx) {
             pane._tfSwitchFromResolution = pane.resolution;
             pane._tfSwitchSavedLayout = savedLayouts[i] ?? null;
             prepareHtfBeforeTimeframeSwitch(ctx, pane, res);
-            ctx.replayEngine?.beforeResolutionChange?.(pane, {
-              viewportLayout: savedLayouts[i] ?? null,
-            });
             ctx.stashPaneResolutionCache(pane, pane.resolution);
             pane.resolution = res;
           }
@@ -443,6 +443,7 @@ export async function wireSymbolAndTimeframePickers(ctx) {
             if (gen !== tfChangeGen) return;
             if (replayLocked || hostReplay) {
               await afterTimeframeChangeThenRestoreViewport(ctx, () => {});
+              paintSynchronizedReplayPanesAfterTimeframeLoad(ctx, panes, savedLayouts);
             } else {
               for (let i = 0; i < panes.length; i += 1) {
                 paintPaneAfterTimeframeLoad(ctx, panes[i], savedLayouts[i]);

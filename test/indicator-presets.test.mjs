@@ -46,8 +46,10 @@ test("the testing FVG preset exposes and resets its timeframe colors", () => {
   assert.equal(dark.inputs.showFvgBoxColors, true);
   assert.deepEqual(dark.inputs.fvgBoxColorsByTf, {});
   assert.equal(dark.inputs.bullBoxColor, "#4caf50");
+  assert.equal(dark.inputs.bullBoxColorOpacity, 15);
   assert.equal(dark.inputs.bullBorderColorOpacity, 50);
   assert.equal(dark.inputs.bearBoxColor, "#f23645");
+  assert.equal(dark.inputs.bearBoxColorOpacity, 15);
   assert.equal(dark.inputs.ifvgBoxColor, "#ffff00");
 });
 

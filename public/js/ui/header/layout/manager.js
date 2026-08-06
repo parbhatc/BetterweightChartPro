@@ -3,7 +3,7 @@ import { chartDebug } from "../../../debug/chart/index.js";
 
 const STORAGE_KEY = "tv-chart-layout-state";
 
-/** @typedef {{ symbol: boolean, interval: boolean, crosshair: boolean, time: boolean, dateRange: boolean, drawings: boolean }} SyncSettings */
+/** @typedef {{ symbol: boolean, interval: boolean, crosshair: boolean, time: boolean, dateRange: boolean, drawings: boolean, indicators: boolean }} SyncSettings */
 
 /** @typedef {{ name: string, layoutId: string, sync: SyncSettings, drawings?: Record<string, object[]>, indicators?: Record<string, object[]>, chartSettings?: object, toolDefaults?: Record<string, Record<string, unknown>>, drawingTemplates?: import("../../../drawings/toolbars/defaults/layoutTemplates.js").LayoutDrawingTemplates, viewports?: Record<string, object>, createdAt?: number, updatedAt?: number, lastUsedAt?: number }} SavedLayout */
 
@@ -52,6 +52,7 @@ export function createLayoutManager(opts) {
     time: false,
     dateRange: true,
     drawings: false,
+    indicators: false,
   };
   let layoutName = "Unnamed";
   let dirty = false;
