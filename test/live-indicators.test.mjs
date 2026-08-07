@@ -14,16 +14,23 @@ function liveContext({ plots = false, liveOverlay = false } = {}) {
       refreshOverlaysForPane: (paneIndex) => calls.push(["overlay", paneIndex]),
     },
     refreshIndicators: (paneIndex) => calls.push(["plots-throttled", paneIndex]),
+    refreshIndicatorTails: (paneIndex) => calls.push(["plots-tail", paneIndex]),
     refreshIndicatorsImmediate: (paneIndex) => calls.push(["plots-immediate", paneIndex]),
     refreshOverlaysImmediate: (paneIndex) => calls.push(["overlay-immediate", paneIndex]),
     ensureIndicatorData: () => calls.push(["ensure-data"]),
   };
 }
 
-test("forming bars refresh plot-series indicators through the throttled path", () => {
+test("forming bars update only the latest plot-series point", () => {
   const ctx = liveContext({ plots: true });
   refreshLivePaneIndicators(ctx, { index: 2 }, { isNewBar: false });
-  assert.deepEqual(ctx.calls, [["plots-throttled", 2]]);
+  assert.deepEqual(ctx.calls, [["plots-tail", 2]]);
+});
+
+test("forming bars update plot tails and live overlays independently", () => {
+  const ctx = liveContext({ plots: true, liveOverlay: true });
+  refreshLivePaneIndicators(ctx, { index: 4 }, { isNewBar: false });
+  assert.deepEqual(ctx.calls, [["plots-tail", 4], ["overlay", 4]]);
 });
 
 test("forming bars retain the live-overlay-only refresh path", () => {

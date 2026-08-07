@@ -125,6 +125,7 @@ export function createIndicatorController(opts) {
     paneHasPlotSeriesIndicators: refresh.paneHasPlotSeriesIndicators,
     paneHasOverlayIndicators: refresh.paneHasOverlayIndicators,
     paneNeedsLiveOverlayRefresh: refresh.paneNeedsLiveOverlayRefresh,
+    refreshPlotSeriesTail: seriesSync.refreshPlotSeriesTail,
     clearOverlaysForPane: overlaySync.clearOverlaysForPane,
     syncOverlayTimeCtxForPane: overlaySync.syncOverlayTimeCtxForPane,
     invalidateOverlayCacheForPane: overlaySync.invalidateOverlayCacheForPane,

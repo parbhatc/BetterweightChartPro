@@ -12,8 +12,9 @@ import { getIndicatorClass } from "../../../indicators/catalog.js";
 
 /**
  * Keep studies in sync with both forming-bar ticks and newly opened bars.
- * Forming ticks use the RAF-throttled refresh path so multiple quotes in one
- * frame only trigger one full plot-series recompute.
+ * Forming ticks update only the latest plot point and any overlay that opts
+ * into live refresh. Full indicator data replacement is reserved for new bars
+ * and history changes so live prices do not flicker drawings or the crosshair.
  * @param {object} ctx
  * @param {object} pane
  * @param {{ isNewBar?: boolean }} [meta]
@@ -32,8 +33,10 @@ export function refreshLivePaneIndicators(ctx, pane, meta = {}) {
   }
 
   if (hasPlotSeries) {
-    ctx.refreshIndicators?.(pane.index);
-  } else if (ctx.indicatorController?.paneNeedsLiveOverlayRefresh?.(pane.index)) {
+    if (ctx.refreshIndicatorTails) ctx.refreshIndicatorTails(pane.index);
+    else ctx.refreshIndicators?.(pane.index);
+  }
+  if (ctx.indicatorController?.paneNeedsLiveOverlayRefresh?.(pane.index)) {
     ctx.indicatorController.refreshOverlaysForPane?.(pane.index);
   }
 }

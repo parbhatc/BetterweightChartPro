@@ -372,6 +372,14 @@ export function attachIndicatorsBoot(ctx) {
     controller.refreshPane(paneIndex);
     refreshIndicatorUi(paneIndex);
   };
+  ctx.refreshIndicatorTails = (paneIndex) => {
+    controller.refreshPlotSeriesTail(paneIndex);
+    const pane = ctx.getAllChartPanes().find((item) => item.index === paneIndex);
+    ensureLegend(pane)?.render();
+    refreshScaleLabelsForPane(paneIndex);
+    refreshBandFillsForPane(paneIndex);
+    controller.refreshStudyPaneLegendValues(pane);
+  };
 
   const PAN_REFRESH_IDLE_MS = 120;
   /** @type {Map<number, "full" | "overlay">} */

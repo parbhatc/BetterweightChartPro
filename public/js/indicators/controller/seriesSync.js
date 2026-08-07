@@ -176,8 +176,12 @@ export function createSeriesSync(deps) {
     }
   }
 
-  /** @param {import("../types.js").IndicatorInstance & { series: Map<string, import("prochart").ISeriesApi> }} instance */
-  function ensureSeries(instance) {
+  /**
+   * @param {import("../types.js").IndicatorInstance & { series: Map<string, import("prochart").ISeriesApi> }} instance
+   * @param {{ tailOnly?: boolean }} [options]
+   */
+  function ensureSeries(instance, options = {}) {
+    const tailOnly = options.tailOnly === true;
     const Indicator = getIndicatorClass(instance.defId);
     const pane = paneByIndex(instance.paneIndex);
     if (!Indicator || !pane) return;
@@ -247,6 +251,20 @@ export function createSeriesSync(deps) {
         series = undefined;
       }
 
+      const updateTail = () => {
+        if (!tailOnly || !series) return false;
+        const idx = chartBars.length - 1;
+        const point = { time: chartBars[idx].time };
+        const value = plots[key]?.[idx];
+        if (value != null && Number.isFinite(value)) {
+          point.value = value;
+          const barColor = histogramColors?.[idx];
+          if (seriesKind === "histogram") point.color = barColor || style.color;
+        }
+        series.update(point);
+        return true;
+      };
+
       const style = Indicator.plotStyle(instance, key);
       const isBandPlot = plotDef.band === true;
       const showThisAxisLabel = showScaleLabels && style.visible && !instance.hidden;
@@ -266,6 +284,7 @@ export function createSeriesSync(deps) {
       };
 
       if (seriesKind === "histogram") {
+        if (updateTail()) continue;
         if (!series) {
           series = pane.chart.addSeries(
             HistogramSeries,
@@ -313,6 +332,7 @@ export function createSeriesSync(deps) {
       }
 
       if (seriesKind === "area") {
+        if (updateTail()) continue;
         if (!series) {
           series = pane.chart.addSeries(
             AreaSeries,
@@ -342,6 +362,7 @@ export function createSeriesSync(deps) {
         continue;
       }
 
+      if (updateTail()) continue;
       if (!series) {
         series = pane.chart.addSeries(
           LineSeries,
@@ -377,14 +398,28 @@ export function createSeriesSync(deps) {
       series.setData(buildNumericPlotPoints(plots[key] ?? [], chartBars, plotType));
     }
 
-    syncStudyPaneScale(instance, Indicator);
-    syncStudyBandFill(instance, Indicator);
-    collapseEmptyStudyPanes(pane.chart, pane.index);
+    if (tailOnly) {
+      instance._studyBandFill?.requestRefresh?.();
+    } else {
+      syncStudyPaneScale(instance, Indicator);
+      syncStudyBandFill(instance, Indicator);
+      collapseEmptyStudyPanes(pane.chart, pane.index);
+    }
+  }
+
+  /** Update only the forming point of plot-series indicators on one chart pane. */
+  function refreshPlotSeriesTail(paneIndex) {
+    for (const instance of indicatorsForPane(paneIndex)) {
+      const Indicator = getIndicatorClass(instance.defId);
+      if (!Indicator || Indicator.overlayPrimitive) continue;
+      ensureSeries(instance, { tailOnly: true });
+    }
   }
 
   return {
     destroySeries,
     ensureSeries,
+    refreshPlotSeriesTail,
     syncStudyPaneScale,
     syncPaneVolumeMargins,
     rebuildStudyScaleLocks,
