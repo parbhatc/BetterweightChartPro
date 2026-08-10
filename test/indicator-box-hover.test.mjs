@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   hoverBoxIdAt,
+  labelXInBox,
   resolveVerticalLabelStack,
 } from '../public/js/indicators/primitives/boxes.js'
 
@@ -33,6 +34,30 @@ test('extended indicator boxes remain hoverable after their initial end time', (
   }]
 
   assert.equal(hoverBoxIdAt(boxes, 500, 390, priceToY), 'Open position')
+})
+
+test('centered extended-box labels follow the middle of the visible zone while scrolling', () => {
+  const box = {
+    extendRight: true,
+    labelAlign: 'center',
+    labelTime: 120,
+    centerLabelInVisibleRange: true,
+  }
+  const timeToX = () => -200
+
+  assert.equal(labelXInBox(box, 400, 1000, timeToX), 700)
+  assert.equal(labelXInBox(box, -240, 1000, timeToX), 500)
+})
+
+test('extended-box labels retain their fixed time anchor when scroll centering is disabled', () => {
+  const box = {
+    extendRight: true,
+    labelAlign: 'center',
+    labelTime: 120,
+    centerLabelInVisibleRange: false,
+  }
+
+  assert.equal(labelXInBox(box, -240, 1000, () => 180), 180)
 })
 
 test('position-style box stats activate hover without a floating tooltip label', () => {

@@ -13,15 +13,20 @@ function labelFont(item) {
   return `${weight} ${size}px ${LABEL_FONT_FAMILY}`;
 }
 
-/** @param {object} box @param {number} left @param {number} right @param {number} w @param {(t: number) => number | null} timeToX @param {number} pad */
-function labelXInBox(box, left, right, w, timeToX, pad) {
-  const lo = left + pad;
+/** @param {object} box @param {number} left @param {number} right @param {(t: number) => number | null} timeToX @param {number} pad */
+export function labelXInBox(box, left, right, timeToX, pad = 6) {
+  // An extended box can begin left of the viewport after the user scrolls.
+  // Keep its label inside, and centered on, the portion that is still visible.
+  const followsVisibleRange = box.extendRight && box.centerLabelInVisibleRange === true;
+  const visibleLeft = followsVisibleRange ? Math.max(0, left) : left;
+  const lo = visibleLeft + pad;
   const hi = right - pad;
   if (hi <= lo) return null;
 
   const align = box.labelAlign ?? "right";
-  // Centered labels on fixed-width boxes: pixel midpoint (stable after refresh / time-map updates).
-  if (align === "center" && !box.extendRight) {
+  // Pixel midpoint stays stable after refreshes and follows the viewport when
+  // an extended zone's original start has scrolled off-screen.
+  if (align === "center" && (!box.extendRight || followsVisibleRange)) {
     return lo + (hi - lo) / 2;
   }
 
@@ -30,7 +35,6 @@ function labelXInBox(box, left, right, w, timeToX, pad) {
     if (x != null && Number.isFinite(x)) return Math.min(hi, Math.max(lo, x));
   }
 
-  if (align === "center") return lo + (hi - lo) / 2;
   if (align === "left") return lo;
   return hi;
 }
@@ -345,7 +349,7 @@ function drawBox(ctx, box, timeToX, priceToY, rightX, paneHeight) {
       labelX = left + w / 2;
       textAlign = "center";
     } else {
-      labelX = labelXInBox(box, left, right, w, timeToX, pad);
+      labelX = labelXInBox(box, left, right, timeToX, pad);
       if (labelX == null) {
         ctx.restore();
         return;

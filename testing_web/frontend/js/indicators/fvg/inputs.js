@@ -97,6 +97,11 @@ export function buildInputs() {
       section: "Label Settings",
       disabled: (inputs) => inputs.showLabels === false,
     }),
+    createBool("centerExtendedLabels", "Center extended labels while scrolling", true, {
+      section: "Label Settings",
+      disabled: (inputs) => inputs.showLabels === false,
+      showInStatusLine: false,
+    }),
     createSelect(
       "sizeLabelFormat",
       "Size format",

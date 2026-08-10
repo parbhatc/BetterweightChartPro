@@ -108,6 +108,7 @@ export function emitZoneBox(script, layer, series, zone, opts = {}) {
     timeStart: drawStart,
     timeEnd: extendRight ? endTime : Math.max(endTime, drawStart),
     extendRight,
+    centerLabelInVisibleRange: cfg.centerExtendedLabels,
     labelTime: extendRight ? drawStart + LABEL_DISTANCE_BARS * cfg.chartSec : null,
     priceTop: zone.top,
     priceBottom: zone.bottom,

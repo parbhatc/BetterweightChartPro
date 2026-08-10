@@ -141,6 +141,7 @@ export function initFvgEngine(script) {
     showLabels,
     showSizeOnLabel: inputs.showSizeOnLabel === true,
     showFvgNameOnLabel: inputs.showFvgNameOnLabel !== false,
+    centerExtendedLabels: inputs.centerExtendedLabels !== false,
     sizeLabelFormat:
       inputs.sizeLabelFormat === "points" || inputs.sizeLabelFormat === "ticks"
         ? inputs.sizeLabelFormat
