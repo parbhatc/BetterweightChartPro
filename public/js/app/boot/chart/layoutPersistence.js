@@ -30,6 +30,8 @@ export function attachLayoutPersistence(ctx) {
       toolDefaults: getLayoutToolDefaultsSnapshot(),
       drawingTemplates: getLayoutDrawingTemplatesSnapshot(),
       viewports: captureLayoutViewports(),
+      columnWidths: ctx.layoutManager?.getColumnWidths?.() ?? {},
+      rowHeights: ctx.layoutManager?.getRowHeights?.() ?? {},
     };
   }
 
@@ -121,6 +123,8 @@ export function attachLayoutPersistence(ctx) {
     setLayoutDrawingTemplates(null);
     ctx.layoutManager.setDrawingTemplatesSnapshot(null);
     ctx.layoutManager.setViewportsSnapshot(null);
+    ctx.layoutManager.setColumnWidths({});
+    ctx.layoutManager.setRowHeights({});
     ctx.layoutManager.markSaved();
     ctx.headerToolbarUi?.updateSaveState();
   }

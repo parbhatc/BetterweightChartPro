@@ -54,6 +54,7 @@ export function wireLayoutChrome(ctx) {
     onActivePaneChange: (index) => {
       ctx.switchActivePane(index);
     },
+    onPaneResize: () => ctx.scheduleAutosaveLayout?.(),
   });
 
   wirePaneActivation(ctx.chartWrap, 0, (index) => ctx.layoutManager?.setActivePane(index), ctx.chart);
@@ -82,6 +83,8 @@ export function wireLayoutChrome(ctx) {
       setLayoutDrawingTemplates(item.drawingTemplates);
       ctx.layoutManager.setDrawingTemplatesSnapshot(item.drawingTemplates ?? null);
       ctx.layoutManager.setViewportsSnapshot(item.viewports ?? null);
+      ctx.layoutManager.setColumnWidths(item.columnWidths ?? {});
+      ctx.layoutManager.setRowHeights(item.rowHeights ?? {});
       ctx.queueLayoutViewportRestore?.(item.viewports ?? null);
       ctx.drawingHub?.setDrawingsByPane?.(item.drawings);
       ctx.indicatorController?.setIndicatorsByPane?.(item.indicators ?? null);

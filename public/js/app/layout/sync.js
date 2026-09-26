@@ -80,12 +80,15 @@ export function createLayoutSync(deps) {
       ? liveLogicalRange
       : ts.getVisibleLogicalRange();
     const previousLogicalRange = lastSyncedLogicalRange.get(sourceChart);
-    if (deps.isBarsLoading?.() || deps.isHistoryRestorePending?.()) {
+    const isPanning = Boolean(deps.isChartPanning?.());
+    // A background history request can remain in flight while the pointer is
+    // down. Keep the loaded panes moving together; the request's bar update is
+    // still guarded by the chart's pan lifecycle.
+    if ((deps.isBarsLoading?.() && !isPanning) || deps.isHistoryRestorePending?.()) {
       if (isValidLogicalRange(logicalRange)) lastSyncedLogicalRange.set(sourceChart, logicalRange);
       return;
     }
 
-    const isPanning = Boolean(deps.isChartPanning?.());
     const activePane = deps.getActivePane?.();
     if (isPanning && activePane?.chart && activePane.chart !== sourceChart) return;
 

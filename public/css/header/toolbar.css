@@ -472,6 +472,62 @@
   background: var(--tv-border-subtle);
 }
 
+.tv-layout-column-resizer,
+.tv-layout-row-resizer {
+  position: absolute;
+  z-index: 5;
+  touch-action: none;
+  outline: none;
+}
+
+.tv-layout-column-resizer {
+  width: 10px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+}
+
+.tv-layout-row-resizer {
+  height: 10px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+}
+
+.tv-layout-column-resizer::after,
+.tv-layout-row-resizer::after {
+  content: "";
+  position: absolute;
+  background: transparent;
+}
+
+.tv-layout-column-resizer::after {
+  inset: 0 4px;
+}
+
+.tv-layout-row-resizer::after {
+  inset: 4px 0;
+}
+
+.tv-layout-column-resizer:hover::after,
+.tv-layout-column-resizer:focus-visible::after,
+.tv-layout-resizing-columns .tv-layout-column-resizer::after,
+.tv-layout-row-resizer:hover::after,
+.tv-layout-row-resizer:focus-visible::after,
+.tv-layout-resizing-rows .tv-layout-row-resizer::after {
+  background: var(--tv-pane-active-ring);
+}
+
+.tv-layout-resizing-columns,
+.tv-layout-resizing-columns * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.tv-layout-resizing-rows,
+.tv-layout-resizing-rows * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
 .tv-layout-grid > .tv-chart-wrap {
   position: relative;
   min-width: 0;

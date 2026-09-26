@@ -392,6 +392,38 @@ test("multi-pane pans scale logical movement by each pane interval", () => {
   }
 });
 
+test("multi-pane pan keeps peers moving during a background bar request", () => {
+  const oldRaf = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = () => 1;
+  try {
+    let sourceRange = { from: 10, to: 20 };
+    let peerRange = { from: 30, to: 40 };
+    const source = { timeScale: () => ({
+      getVisibleRange: () => null,
+      getVisibleLogicalRange: () => sourceRange,
+    }) };
+    const peer = { timeScale: () => ({
+      getVisibleLogicalRange: () => peerRange,
+      setVisibleLogicalRange: (value) => { peerRange = value; },
+    }) };
+    const panes = [source, peer].map((chart) => ({ chart, bars: [{}], barSec: 60 }));
+    const sync = createLayoutSync({
+      getLayoutManager: () => ({ getSync: () => ({ dateRange: true }) }),
+      getLayoutPanes: () => panes,
+      getActivePane: () => panes[0],
+      isChartPanning: () => true,
+      isBarsLoading: () => true,
+      isHistoryRestorePending: () => false,
+    });
+    sync.syncLayoutDateRangeFrom(source, sourceRange);
+    sourceRange = { from: 12, to: 22 };
+    sync.syncLayoutDateRangeFrom(source, sourceRange);
+    assert.deepEqual(peerRange, { from: 32, to: 42 });
+  } finally {
+    globalThis.requestAnimationFrame = oldRaf;
+  }
+});
+
 test("appearance exposes independent Default, Gray, and Dark palettes and never enables attribution", () => {
   const standard = chartAppearancePreset("default");
   const theme = chartAppearancePreset("theme");
