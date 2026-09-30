@@ -37,7 +37,7 @@ const MIDPOINT_END_OPTIONS = [
 ];
 
 function referencePeriodResolutions(inputs) {
-  return inputs.previousDayEnabled === true || inputs.previousWeekEnabled === true
+  return inputs.previousDayEnabled !== false || inputs.previousWeekEnabled === true
     ? ["60"]
     : [];
 }
@@ -62,10 +62,10 @@ class LevelsIndicator extends BarScriptIndicator {
         title: "Sessions",
         section: "Sessions",
       }),
-      createBool("previousDayEnabled", "PDH / PDL", false, { section: "Previous periods" }),
+      createBool("previousDayEnabled", "Previous day high / low (PDH / PDL)", true, { section: "Previous periods" }),
       createColor("previousDayColor", "PDH / PDL color", { color: LEVEL_REFERENCE_PALETTE.previousDay, opacity: 100 }, {
         section: "Previous periods",
-        disabled: (inputs) => inputs.previousDayEnabled !== true,
+        disabled: (inputs) => inputs.previousDayEnabled === false,
       }),
       createBool("previousWeekEnabled", "PWH / PWL", false, { section: "Previous periods" }),
       createColor("previousWeekColor", "PWH / PWL color", { color: LEVEL_REFERENCE_PALETTE.previousWeek, opacity: 100 }, {
@@ -105,6 +105,11 @@ class LevelsIndicator extends BarScriptIndicator {
       createInt("maxSwept", "Max swept levels", 5, {
         min: 0,
         section: "Display limits",
+      }),
+      createInt("sweptHoldBars", "Hide after candles when max is 0", 3, {
+        min: 0,
+        section: "Display limits",
+        disabled: (inputs) => Number(inputs.maxSwept) !== 0,
       }),
       createInt("maxSessions", "Max session instances", 3, { min: 1, section: "Display limits" }),
       createBool("mergeConfluence", "Merge confluence levels", true, { section: "Confluence" }),
@@ -179,7 +184,7 @@ class LevelsIndicator extends BarScriptIndicator {
     if (instance.inputs.newsEnabled !== false) {
       enabled.push(...resolveNewsLevels(instance.inputs).filter((r) => r.enabled !== false));
     }
-    if (instance.inputs.previousDayEnabled === true) enabled.push({ label: "PDH/PDL" });
+    if (instance.inputs.previousDayEnabled !== false) enabled.push({ label: "PDH/PDL" });
     if (instance.inputs.previousWeekEnabled === true) enabled.push({ label: "PWH/PWL" });
     if (instance.inputs.midpointEnabled === true) enabled.push({ label: "Mid" });
     if (!enabled.length) return [];
@@ -205,7 +210,7 @@ class LevelsIndicator extends BarScriptIndicator {
         ...referencePeriodResolutions(instance.inputs),
       ],
     );
-    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.mergeConfluence}|${instance.inputs.confHiColor}|${instance.inputs.confLoColor}|${instance.inputs.previousDayEnabled}|${instance.inputs.previousDayColor}|${instance.inputs.previousWeekEnabled}|${instance.inputs.previousWeekColor}|${instance.inputs.midpointEnabled}|${instance.inputs.midpointStartTime}|${instance.inputs.midpointEndTime}|${instance.inputs.midpointColor}|${instance.style.graphicLabels}`;
+    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.sweptHoldBars}|${instance.inputs.mergeConfluence}|${instance.inputs.confHiColor}|${instance.inputs.confLoColor}|${instance.inputs.previousDayEnabled}|${instance.inputs.previousDayColor}|${instance.inputs.previousWeekEnabled}|${instance.inputs.previousWeekColor}|${instance.inputs.midpointEnabled}|${instance.inputs.midpointStartTime}|${instance.inputs.midpointEndTime}|${instance.inputs.midpointColor}|${instance.style.graphicLabels}`;
   }
 
   /**

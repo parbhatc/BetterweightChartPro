@@ -1,5 +1,6 @@
 import { etParts } from "/js/core/etTime.js";
 import { resolveHtfSeries } from "/js/indicators/security/htfAccess.js";
+import { markPreviousPeriodSweeps } from "./referenceSweep.js";
 
 const MINUTES_PER_DAY = 24 * 60;
 const DEFAULT_SESSION_START = "18:00";
@@ -174,7 +175,7 @@ function addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, sessionRange
 }
 
 /**
- * Build opt-in PDH/PDL, PWH/PWL, and session midpoint reference lines.
+ * Build PDH/PDL (on by default), opt-in PWH/PWL, and session midpoint lines.
  * Previous periods aggregate supported hourly history into futures trading
  * days/weeks (6:00 PM ET boundaries); midpoint uses pane bars so it updates on
  * every forming candle and remains replay-safe.
@@ -223,5 +224,6 @@ export function buildReferenceLevelLines(utcBars, chartBars, anchorUnix, opts, c
     );
   }
   addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, midpointRange);
+  markPreviousPeriodSweeps(out, utcBars, chartBars, referenceRange);
   return out;
 }

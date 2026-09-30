@@ -6,6 +6,17 @@ const REFERENCE_TAGS = new Set(["PDH", "PDL", "PWH", "PWL", "Mid"]);
 /** ponytail: 1-day ceiling — don't merge May 4H @ 30291 with Jun 15m @ 30291.50 */
 const CONFLO_START_GAP_SEC = 86400;
 
+/** Zero max uses a short grace period; positive max retains its capped swept lines. */
+export function keepRecentSweptLevels(lines, bars, endIdx, holdBars, maxSwept) {
+  if (maxSwept > 0) return lines;
+  if (holdBars <= 0) return lines.filter((line) => !line.swept);
+  const expiredThrough = bars[endIdx - holdBars]?.time ?? -Infinity;
+  return lines.filter((line) => {
+    if (!line.swept) return true;
+    return Number.isFinite(line.sweepTime) && line.sweepTime > expiredThrough;
+  });
+}
+
 /** @param {string} label */
 function parseLevelTags(label) {
   const base = label.split(" (")[0].replace(/\s+(High|Low)$/i, "").trim();

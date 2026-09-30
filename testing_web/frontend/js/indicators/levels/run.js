@@ -8,7 +8,7 @@ import {
 import { buildReleasePlan } from "/js/news/events.js";
 import { htfBarCompleteAt } from "/js/indicators/security/htfPolicy.js";
 import { buildLevelsEngineConfig } from "./config.js";
-import { applyClusterConfluence } from "./confluence.js";
+import { applyClusterConfluence, keepRecentSweptLevels } from "./confluence.js";
 import { onHtfBarClose } from "./htfPivots.js";
 import { resolveHtfAggSeries } from "./htfSeries.js";
 import {
@@ -83,7 +83,8 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
   const pivotRight = Math.max(1, Number(opts.pivotRightBars) || 1);
   const maxBarsBack = Math.max(10, Number(opts.maxBarsBack) || 300);
   const maxUnswept = Math.max(1, Number(opts.maxUnswept) || 15);
-  const maxSwept = Math.max(0, Number(opts.maxSwept) || 5);
+  const maxSwept = Math.max(0, Number(opts.maxSwept ?? 5) || 0);
+  const sweptHoldBars = Math.max(0, Number(opts.sweptHoldBars ?? 3) || 0);
   const maxSessions = Math.max(1, Number(opts.maxSessions) || 3);
   const proximity = (Number(opts.tickSize) || 0.25) * 6;
   const showLabels = opts.showLabels !== false;
@@ -259,6 +260,7 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
   out.push(...sessionLines.filter((l) => !l._drop));
   out.push(...releaseLines.filter((l) => !l._drop));
   out.push(...(opts.referenceLines ?? []).filter((l) => !l._drop));
+  out = keepRecentSweptLevels(out, bars, endIdx, sweptHoldBars, maxSwept);
 
   if (mergeConfluence) {
     out = applyClusterConfluence(out, proximity, confHi, confLo);
