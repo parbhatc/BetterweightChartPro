@@ -2,6 +2,7 @@ import { LineSeries, AreaSeries, HistogramSeries } from "prochart";
 import { getIndicatorClass } from "../catalog.js";
 import { indicatorPriceFormatFromSetting } from "../../chart/timezone/list.js";
 import { attachIndicatorBandFillPrimitive } from "../primitives/bandFill.js";
+import { clearAndDestroyOverlayPrimitive } from "./overlayTeardown.js";
 import {
   seriesKindForPlotType,
   lineOptionsForPlotType,
@@ -55,7 +56,7 @@ export function createSeriesSync(deps) {
     instance._studyBandFill = null;
     instance._studyPaneLegend?.destroy?.();
     instance._studyPaneLegend = null;
-    instance._overlayPrimitive?.destroy?.();
+    clearAndDestroyOverlayPrimitive(instance._overlayPrimitive);
     instance._overlayPrimitive = null;
     if (!pane || !instance.series) return;
     for (const s of instance.series.values()) {

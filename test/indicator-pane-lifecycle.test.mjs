@@ -2,6 +2,34 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { IndicatorPaneUiLifecycle } from "../public/js/indicators/ui/indicatorPaneUiLifecycle.js";
+import { clearAndDestroyOverlayPrimitive } from "../public/js/indicators/controller/overlayTeardown.js";
+
+test("indicator removal clears retained overlay geometry before detaching", () => {
+  const calls = [];
+  const overlay = {
+    setLabels(lines) {
+      calls.push(["labels", lines]);
+    },
+    setBoxes(boxes) {
+      calls.push(["boxes", boxes]);
+    },
+    requestRefresh() {
+      calls.push(["refresh"]);
+    },
+    destroy() {
+      calls.push(["destroy"]);
+    },
+  };
+
+  clearAndDestroyOverlayPrimitive(overlay);
+
+  assert.deepEqual(calls, [
+    ["labels", []],
+    ["boxes", []],
+    ["refresh"],
+    ["destroy"],
+  ]);
+});
 
 test("recreated panes receive a legend bound to their own status element", () => {
   const createdFor = [];
