@@ -1,6 +1,7 @@
 import { barSweepsLevel, birthLevel } from "/js/indicators/script/liquidityMatrix.js";
 import { firstBarIndexAtOrAfter } from "/js/indicators/script/barIndex.js";
 import { retroactiveSweep } from "./sweep.js";
+import { liquidityTakenBeforeChartWindow } from "./htfHistoryWindow.js";
 
 /**
  * True when the level's liquidity was already taken between the END of the
@@ -92,8 +93,14 @@ export function onHtfBarClose(
   }
 
   const pivotEndUtc = hist.t[p] + (Number(cfg.tfSec) || 0);
+  const tfSec = Number(cfg.tfSec) || 0;
+  const chartStartUtc = bars[0]?.time;
 
-  if (isHigh && !liquidityTakenBeforeConfirm(bars, pivotEndUtc, endTime, "high", hist.h[p])) {
+  if (
+    isHigh &&
+    !liquidityTakenBeforeConfirm(bars, pivotEndUtc, endTime, "high", hist.h[p]) &&
+    !liquidityTakenBeforeChartWindow(agg, idx, tfSec, chartStartUtc, "high", hist.h[p])
+  ) {
     const born = birthLevel(
       matrixH,
       {
@@ -116,7 +123,11 @@ export function onHtfBarClose(
     );
     retroactiveSweep(matrixH, born, bars, chartBars, scanToBarIdx, maxSwept, takenLiquidity);
   }
-  if (isLow && !liquidityTakenBeforeConfirm(bars, pivotEndUtc, endTime, "low", hist.l[p])) {
+  if (
+    isLow &&
+    !liquidityTakenBeforeConfirm(bars, pivotEndUtc, endTime, "low", hist.l[p]) &&
+    !liquidityTakenBeforeChartWindow(agg, idx, tfSec, chartStartUtc, "low", hist.l[p])
+  ) {
     const born = birthLevel(
       matrixL,
       {
