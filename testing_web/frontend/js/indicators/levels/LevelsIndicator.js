@@ -172,7 +172,12 @@ class LevelsIndicator extends BarScriptIndicator {
       ctx.primarySymbol ?? ctx.symbol,
       refs,
       240,
-      { strict: true },
+      // A provider can return valid hourly history in smaller pages than the
+      // requested 240 bars. PDH/PDL can render from the first meaningful page
+      // while the shared HTF loader continues backfilling older reference
+      // periods. Requiring the full request here leaves the legend spinning
+      // forever when the provider has fewer bars or reports partial pages.
+      { strict: false },
     );
   }
 
