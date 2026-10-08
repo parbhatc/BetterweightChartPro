@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { refreshLivePaneIndicators } from "../public/js/app/boot/chart/barLoader.js";
+import {
+  cachedOverlayWhilePending,
+  overlayChartHistoryHeadKey,
+} from "../public/js/indicators/controller/overlaySync.js";
 
 function liveContext({ plots = false, liveOverlay = false } = {}) {
   const calls = [];
@@ -43,4 +47,39 @@ test("new bars still refresh plot-series indicators immediately", () => {
   const ctx = liveContext({ plots: true });
   refreshLivePaneIndicators(ctx, { index: 1 }, { isNewBar: true });
   assert.deepEqual(ctx.calls, [["ensure-data"], ["plots-immediate", 1]]);
+});
+
+test("host replay rebinds overlay timing before waiting for indicator data", () => {
+  const ctx = liveContext();
+  ctx.opts.replayHostControlled = true;
+  ctx.indicatorController.syncOverlayTimeCtxForPane = (paneIndex) => {
+    ctx.calls.push(["sync-overlay-time", paneIndex]);
+  };
+  ctx.ensureIndicatorDataThenOverlay = (pane) => {
+    ctx.calls.push(["ensure-data-then-overlay", pane.index]);
+  };
+
+  refreshLivePaneIndicators(ctx, { index: 5 }, { isNewBar: true });
+
+  assert.deepEqual(ctx.calls, [
+    ["sync-overlay-time", 5],
+    ["ensure-data-then-overlay", 5],
+  ]);
+});
+
+test("appending replay bars preserves the overlay history-head cache key", () => {
+  const before = [{ time: 100 }, { time: 200 }];
+  const afterAppend = [...before, { time: 300 }];
+  const afterHistoryShift = [{ time: 50 }, ...afterAppend];
+
+  assert.equal(overlayChartHistoryHeadKey(afterAppend), overlayChartHistoryHeadKey(before));
+  assert.notEqual(overlayChartHistoryHeadKey(afterHistoryShift), overlayChartHistoryHeadKey(before));
+});
+
+test("pending HTF refreshes retain the last valid overlay frame", () => {
+  const overlay = [{ timeStart: 100, timeEnd: 200, label: "PDH" }];
+
+  assert.equal(cachedOverlayWhilePending({ _overlayBoxCache: overlay }), overlay);
+  assert.deepEqual(cachedOverlayWhilePending({ _overlayBoxCache: [] }), []);
+  assert.deepEqual(cachedOverlayWhilePending({}), []);
 });

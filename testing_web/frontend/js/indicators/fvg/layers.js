@@ -9,6 +9,7 @@ import {
 } from "/js/indicators/security/htfAccess.js";
 import { aggregateReplayFormingBar } from "/js/replay/formingBar.js";
 import { fvgAtBar } from "./detect.js";
+import { confirmedHtfIndicesAfterAppend } from "./replayProgress.js";
 import { onBarLayer, scanLayerSeries } from "./zones.js";
 
 /** @param {object} script @param {object} ub @param {object} cb @param {number} i */
@@ -202,9 +203,14 @@ export function refreshHtfLayersForLive(script, snapshot, mode = "tick") {
     const startIdx = Math.max(2, series.length - maxBack);
     const lastIdx = series.length - 1;
     if (lastIdx >= startIdx) {
-      if (mode === "append" && lastIdx >= 1) {
-        const confirmIdx = lastIdx - 1;
-        if (confirmIdx >= startIdx) onBarLayer(script, layer, series, startIdx, confirmIdx);
+      if (mode === "append") {
+        for (const confirmIdx of confirmedHtfIndicesAfterAppend(
+          entry.series.length,
+          series.length,
+          startIdx,
+        )) {
+          onBarLayer(script, layer, series, startIdx, confirmIdx);
+        }
       }
       onBarLayer(script, layer, series, startIdx, lastIdx);
     }

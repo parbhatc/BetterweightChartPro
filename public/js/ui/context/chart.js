@@ -119,6 +119,9 @@ export function mountChartContextMenu(opts) {
     const trade = getTradeContextActions();
     const tradeRows = [];
     if (hasTradeContextActions() && trade) {
+      if (trade.onAutoBuy || trade.onAutoSell) {
+        tradeRows.push(rowItem({ id: "trade-auto", label: "Auto", hasSubmenu: true }));
+      }
       if (trade.onMarketBuy) {
         tradeRows.push(rowItem({ id: "trade-market-buy", label: "Market Buy", hasSubmenu: true }));
       }
@@ -174,6 +177,19 @@ export function mountChartContextMenu(opts) {
     const price = s.price ?? 0;
     const time = s.crosshairTime ?? undefined;
 
+    const autoMatch = id.match(/^trade-auto-(buy|sell)$/);
+    if (autoMatch) {
+      const side = autoMatch[1];
+      runContextMenuAction("chart", id, close, () => {
+        if (side === "buy") {
+          trade?.onAutoBuy?.(price, time);
+        } else {
+          trade?.onAutoSell?.(price, time);
+        }
+      });
+      return;
+    }
+
     const match = id.match(/^trade-market-(buy|sell)-(\d+)$/);
     if (match) {
       const side = match[1];
@@ -187,6 +203,51 @@ export function mountChartContextMenu(opts) {
           trade?.onMarketSell?.(qty, price, time);
         }
       });
+    }
+  }
+
+  /** @param {HTMLElement} anchorRow */
+  function openAutoSubmenu(anchorRow) {
+    closeSubmenu();
+    const trade = getTradeContextActions();
+    const items = [
+      trade?.onAutoBuy ? { id: "trade-auto-buy", label: "Buy" } : null,
+      trade?.onAutoSell ? { id: "trade-auto-sell", label: "Sell" } : null,
+    ].filter(Boolean);
+    if (!items.length) return;
+
+    const rows = items.map((item) => rowItem(item)).join("");
+    submenuEl = document.createElement("div");
+    submenuEl.className = "ctx-menu ctx-menu--sub ctx-menu--trade-sub";
+    submenuEl.innerHTML = `<div class="ctx-menu__scroll"><table class="ctx-menu__table"><tbody>${rows}</tbody></table></div>`;
+    document.body.appendChild(submenuEl);
+    positionSubmenu(anchorRow);
+
+    submenuEl.addEventListener("click", (ev) => {
+      const row = ev.target.closest("[data-action]");
+      if (!row) return;
+      runTradeAction(row.dataset.action);
+    });
+  }
+
+  /** @param {HTMLElement} anchorRow */
+  function positionSubmenu(anchorRow) {
+    if (!submenuEl) return;
+    const rect = anchorRow.getBoundingClientRect();
+    const menuRect = root.getBoundingClientRect();
+    const pad = 8;
+    let left = menuRect.right - 2;
+    let top = rect.top;
+    submenuEl.style.left = `${left}px`;
+    submenuEl.style.top = `${top}px`;
+    const subRect = submenuEl.getBoundingClientRect();
+    if (subRect.right > window.innerWidth - pad) {
+      left = menuRect.left - subRect.width + 2;
+      submenuEl.style.left = `${Math.max(pad, left)}px`;
+    }
+    if (subRect.bottom > window.innerHeight - pad) {
+      top = Math.max(pad, window.innerHeight - subRect.height - pad);
+      submenuEl.style.top = `${top}px`;
     }
   }
 
@@ -210,22 +271,7 @@ export function mountChartContextMenu(opts) {
     submenuEl.innerHTML = `<div class="ctx-menu__scroll"><table class="ctx-menu__table"><tbody>${rows}</tbody></table></div>`;
     document.body.appendChild(submenuEl);
 
-    const rect = anchorRow.getBoundingClientRect();
-    const menuRect = root.getBoundingClientRect();
-    const pad = 8;
-    let left = menuRect.right - 2;
-    let top = rect.top;
-    submenuEl.style.left = `${left}px`;
-    submenuEl.style.top = `${top}px`;
-    const subRect = submenuEl.getBoundingClientRect();
-    if (subRect.right > window.innerWidth - pad) {
-      left = menuRect.left - subRect.width + 2;
-      submenuEl.style.left = `${Math.max(pad, left)}px`;
-    }
-    if (subRect.bottom > window.innerHeight - pad) {
-      top = Math.max(pad, window.innerHeight - subRect.height - pad);
-      submenuEl.style.top = `${top}px`;
-    }
+    positionSubmenu(anchorRow);
 
     submenuEl.addEventListener("click", (ev) => {
       const row = ev.target.closest("[data-action]");
@@ -235,6 +281,10 @@ export function mountChartContextMenu(opts) {
   }
 
   function runAction(id, row) {
+    if (id === "trade-auto") {
+      openAutoSubmenu(row);
+      return;
+    }
     if (id === "trade-market-buy") {
       openMarketSubmenu("buy", row);
       return;

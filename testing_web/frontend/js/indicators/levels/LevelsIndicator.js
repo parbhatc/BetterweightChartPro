@@ -21,6 +21,7 @@ import {
   htfSeriesRecomputeKey,
 } from "/js/indicators/security/htfPolicy.js";
 import { LEVEL_REFERENCE_PALETTE } from "./palette.js";
+import { ATH_HISTORY_BARS, ATH_RESOLUTION } from "./allTimeHigh.js";
 
 const HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => {
   const hour = Math.floor(index / 2);
@@ -37,9 +38,16 @@ const MIDPOINT_END_OPTIONS = [
 ];
 
 function referencePeriodResolutions(inputs) {
-  return inputs.previousDayEnabled !== false || inputs.previousWeekEnabled === true
-    ? ["60"]
-    : [];
+  const resolutions = [];
+  if (inputs.previousDayEnabled !== false || inputs.previousWeekEnabled === true) {
+    resolutions.push("60");
+  }
+  if (inputs.athEnabled === true) resolutions.push(ATH_RESOLUTION);
+  return resolutions;
+}
+
+function referencePeriodCountBack(resolution) {
+  return resolution === ATH_RESOLUTION ? ATH_HISTORY_BARS : 240;
 }
 
 class LevelsIndicator extends BarScriptIndicator {
@@ -71,6 +79,11 @@ class LevelsIndicator extends BarScriptIndicator {
       createColor("previousWeekColor", "PWH / PWL color", { color: LEVEL_REFERENCE_PALETTE.previousWeek, opacity: 100 }, {
         section: "Previous periods",
         disabled: (inputs) => inputs.previousWeekEnabled !== true,
+      }),
+      createBool("athEnabled", "All-time high (ATH)", false, { section: "Previous periods" }),
+      createColor("athColor", "ATH color", { color: LEVEL_REFERENCE_PALETTE.allTimeHigh, opacity: 100 }, {
+        section: "Previous periods",
+        disabled: (inputs) => inputs.athEnabled !== true,
       }),
       createBool("midpointEnabled", "Session midpoint", false, { section: "Session midpoint" }),
       createSelect("midpointStartTime", "Start", "18:00", HALF_HOUR_OPTIONS, {
@@ -156,7 +169,7 @@ class LevelsIndicator extends BarScriptIndicator {
       needs.htf.push({
         symbol: pane.symbol ?? "",
         resolution: tfId,
-        countBack: 240,
+        countBack: referencePeriodCountBack(tfId),
       });
     }
     return needs;
@@ -167,6 +180,9 @@ class LevelsIndicator extends BarScriptIndicator {
     if (levelsHtf.htfPending(instance.inputs, ctx)) return true;
     const refs = referencePeriodResolutions(instance.inputs);
     if (!refs.length) return false;
+    const perTfWant = Object.fromEntries(
+      refs.map((tfId) => [tfId, referencePeriodCountBack(tfId)]),
+    );
     return htfPendingForLayers(
       ctx,
       ctx.primarySymbol ?? ctx.symbol,
@@ -177,7 +193,7 @@ class LevelsIndicator extends BarScriptIndicator {
       // while the shared HTF loader continues backfilling older reference
       // periods. Requiring the full request here leaves the legend spinning
       // forever when the provider has fewer bars or reports partial pages.
-      { strict: false },
+      { strict: false, perTfWant },
     );
   }
 
@@ -191,6 +207,7 @@ class LevelsIndicator extends BarScriptIndicator {
     }
     if (instance.inputs.previousDayEnabled !== false) enabled.push({ label: "PDH/PDL" });
     if (instance.inputs.previousWeekEnabled === true) enabled.push({ label: "PWH/PWL" });
+    if (instance.inputs.athEnabled === true) enabled.push({ label: "ATH" });
     if (instance.inputs.midpointEnabled === true) enabled.push({ label: "Mid" });
     if (!enabled.length) return [];
     return [enabled.map((r) => r.label).join(", ")];
@@ -215,7 +232,7 @@ class LevelsIndicator extends BarScriptIndicator {
         ...referencePeriodResolutions(instance.inputs),
       ],
     );
-    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.sweptHoldBars}|${instance.inputs.mergeConfluence}|${instance.inputs.confHiColor}|${instance.inputs.confLoColor}|${instance.inputs.previousDayEnabled}|${instance.inputs.previousDayColor}|${instance.inputs.previousWeekEnabled}|${instance.inputs.previousWeekColor}|${instance.inputs.midpointEnabled}|${instance.inputs.midpointStartTime}|${instance.inputs.midpointEndTime}|${instance.inputs.midpointColor}|${instance.style.graphicLabels}`;
+    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.sweptHoldBars}|${instance.inputs.mergeConfluence}|${instance.inputs.confHiColor}|${instance.inputs.confLoColor}|${instance.inputs.previousDayEnabled}|${instance.inputs.previousDayColor}|${instance.inputs.previousWeekEnabled}|${instance.inputs.previousWeekColor}|${instance.inputs.athEnabled}|${instance.inputs.athColor}|${instance.inputs.midpointEnabled}|${instance.inputs.midpointStartTime}|${instance.inputs.midpointEndTime}|${instance.inputs.midpointColor}|${instance.style.graphicLabels}`;
   }
 
   /**

@@ -92,6 +92,7 @@ export const DEFAULT_SETTINGS = {
     watermarkInterval: false,
     watermarkDescription: false,
     showNewsMarkers: true,
+    showExecutionMarkers: true,
     scalesTextColor: "#a1a1aa",
     scalesFontSize: "13",
     scalesLineColor: "rgba(242, 242, 242, 0)",

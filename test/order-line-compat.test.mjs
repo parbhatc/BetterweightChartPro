@@ -5,6 +5,37 @@ import { createOrderLinePriceLineSync } from "../public/js/chart/orderLine/order
 import { OrderLineManager } from "../public/js/chart/orderLine/OrderLineManager.js";
 import { OrderLinePillPrimitive } from "../public/js/chart/orderLine/OrderLinePillPrimitive.js";
 import { createPositionOverlay } from "../public/js/chart/orderLine/positionOverlay.js";
+import { ExecutionShapeManager } from "../public/js/chart/executionShape/ExecutionShapeManager.js";
+
+test("execution markers can be hidden and restored without removing them", async () => {
+  let visible = true;
+  let primitive = null;
+  const pane = {
+    series: {
+      attachPrimitive(next) { primitive = next; },
+      detachPrimitive(current) {
+        if (primitive === current) primitive = null;
+      },
+    },
+  };
+  const manager = new ExecutionShapeManager(() => pane, {
+    isVisible: () => visible,
+  });
+
+  const marker = await manager.createExecutionShape();
+  marker.setTime(1_798_520_400).setPrice(20_000).setDirection("buy");
+  assert.equal(manager._activeStates().length, 1);
+
+  visible = false;
+  assert.deepEqual(manager._activeStates(), []);
+  assert.ok(primitive, "hiding markers keeps the renderer and marker data available");
+
+  visible = true;
+  assert.equal(manager._activeStates().length, 1);
+
+  manager.destroy();
+  assert.equal(primitive, null);
+});
 
 test("order-line hit testing reuses pane geometry until layout invalidation", () => {
   let rectReads = 0;
@@ -188,6 +219,36 @@ test("order-line pill placement uses the primitive render target width", () => {
     "right-side cancel pill should be inset 10px from the 320px render target",
   );
   primitive.detached();
+});
+
+test("a pinned order line migrates to the pane under the Auto cursor", () => {
+  const makePane = (index) => {
+    const primitives = new Set();
+    const series = {
+      attachPrimitive(primitive) { primitives.add(primitive); },
+      detachPrimitive(primitive) { primitives.delete(primitive); },
+    };
+    return { index, series, primitives };
+  };
+  const nq = makePane(0);
+  const es = makePane(1);
+  const panes = [nq, es];
+  const sync = createOrderLinePriceLineSync(() => nq, () => panes);
+  const state = { id: "auto-preview", price: 100, text: "Risk $100", quantity: "1", paneIndex: 1 };
+
+  sync.sync([state]);
+  assert.equal(nq.primitives.size, 0);
+  assert.equal(es.primitives.size, 1);
+
+  state.paneIndex = 0;
+  state.price = 101;
+  sync.sync([state]);
+  assert.equal(nq.primitives.size, 1);
+  assert.equal(es.primitives.size, 0);
+
+  sync.destroy();
+  assert.equal(nq.primitives.size, 0);
+  assert.equal(es.primitives.size, 0);
 });
 
 test("order-line pill text updates invalidate only the lightweight top layer", () => {

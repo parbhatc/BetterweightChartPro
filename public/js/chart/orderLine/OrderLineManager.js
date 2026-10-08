@@ -40,6 +40,10 @@ export class OrderLineManager {
    */
   constructor(getActivePane, opts = {}) {
     this._getActivePane = getActivePane;
+    this._getAllPanes = opts.getAllPanes ?? (() => {
+      const pane = getActivePane();
+      return pane ? [pane] : [];
+    });
     this._getIsPanning = opts.getIsPanning ?? (() => false);
     this._settingsStore = opts.settingsStore ?? null;
     setOrderLinePanHooks({ getIsPanning: () => this._getIsPanning() });
@@ -74,7 +78,7 @@ export class OrderLineManager {
     this._onContextMenu = this._onContextMenu.bind(this);
     this._invalidatePaneRect = this._invalidatePaneRect.bind(this);
 
-    this._priceLineSync = createOrderLinePriceLineSync(getActivePane);
+    this._priceLineSync = createOrderLinePriceLineSync(getActivePane, this._getAllPanes);
     this._settingsStore?.onChange?.(() => this.requestRefresh());
   }
 
@@ -165,12 +169,17 @@ export class OrderLineManager {
   }
 
   /** TradingView createOrderLine — async for Auren compatibility. */
-  createOrderLine() {
-    const pane = this._getActivePane();
+  createOrderLine(opts = {}) {
+    const requestedIndex = Number(opts?.paneIndex);
+    const pane = Number.isInteger(requestedIndex)
+      ? this._getAllPanes().find((candidate) => candidate?.index === requestedIndex)
+      : this._getActivePane();
     if (!pane?.series) return Promise.resolve(null);
     this._bindPane(pane);
     const id = `ol-${nextId++}`;
-    const adapter = createOrderLineAdapter(this, id);
+    const adapter = createOrderLineAdapter(this, id, {
+      paneIndex: Number.isInteger(requestedIndex) ? requestedIndex : null,
+    });
     this._adapters.set(id, adapter);
     this.requestRefresh();
     return Promise.resolve(adapter);

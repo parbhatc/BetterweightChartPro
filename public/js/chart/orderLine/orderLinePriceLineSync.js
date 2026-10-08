@@ -90,46 +90,54 @@ export function stateToOrderLineOptions(state) {
 /**
  * Sync TradingView order lines to native series.createOrderLine().
  * @param {() => object | null | undefined} getActivePane
+ * @param {() => object[]} [getAllPanes]
  */
-export function createOrderLinePriceLineSync(getActivePane) {
-  /** @type {import("prochart").ISeriesApi | null} */
-  let seriesRef = null;
-  /** @type {Map<string, import("prochart").IOrderLine>} */
+export function createOrderLinePriceLineSync(getActivePane, getAllPanes = () => []) {
+  /** @type {Map<string, { series: import("prochart").ISeriesApi, line: import("prochart").IOrderLine }>} */
   const lines = new Map();
+
+  /** @param {import("./types.js").OrderLineState} state */
+  function paneForState(state) {
+    if (Number.isInteger(state.paneIndex)) {
+      const pinned = getAllPanes().find((pane) => pane?.index === state.paneIndex);
+      if (pinned?.series) return pinned;
+    }
+    return getActivePane();
+  }
 
   /**
    * @param {import("./types.js").OrderLineState[]} states
    * @param {Map<string, ReturnType<import("./createOrderLineAdapter.js").createOrderLineAdapter>>} [adapters]
    */
   function sync(states, adapters) {
-    const pane = getActivePane();
-    if (!pane?.series) {
-      destroy();
-      return;
-    }
-
-    if (seriesRef !== pane.series) {
-      destroy();
-      seriesRef = pane.series;
-    }
-
     /** @type {Set<string>} */
     const activeIds = new Set();
 
     for (const state of states) {
       if (state.removed || !Number.isFinite(state.price)) continue;
+      const pane = paneForState(state);
+      if (!pane?.series) continue;
       activeIds.add(state.id);
 
       const options = stateToOrderLineOptions(state);
       const existing = lines.get(state.id);
-      let handle = existing;
+      let handle = existing?.line;
+      if (existing && existing.series !== pane.series) {
+        try {
+          removeCompatOrderLine(existing.series, existing.line);
+        } catch {
+          /* ignore */
+        }
+        lines.delete(state.id);
+        handle = null;
+      }
       if (handle) {
         handle.applyOptions(options);
       } else {
         handle = pane.series.createOrderLine
           ? pane.series.createOrderLine(options)
           : createCompatOrderLine(pane.series, options);
-        lines.set(state.id, handle);
+        lines.set(state.id, { series: pane.series, line: handle });
       }
 
       const adapter = adapters?.get(state.id);
@@ -138,10 +146,10 @@ export function createOrderLinePriceLineSync(getActivePane) {
       }
     }
 
-    for (const [id, line] of lines) {
+    for (const [id, entry] of lines) {
       if (activeIds.has(id)) continue;
       try {
-        removeCompatOrderLine(pane.series, line);
+        removeCompatOrderLine(entry.series, entry.line);
       } catch {
         /* ignore */
       }
@@ -152,17 +160,14 @@ export function createOrderLinePriceLineSync(getActivePane) {
   }
 
   function destroy() {
-    if (seriesRef) {
-      for (const line of lines.values()) {
-        try {
-          removeCompatOrderLine(seriesRef, line);
-        } catch {
-          /* ignore */
-        }
+    for (const entry of lines.values()) {
+      try {
+        removeCompatOrderLine(entry.series, entry.line);
+      } catch {
+        /* ignore */
       }
     }
     lines.clear();
-    seriesRef = null;
   }
 
   return { sync, destroy };

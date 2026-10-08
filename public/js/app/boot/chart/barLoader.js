@@ -23,6 +23,11 @@ export function refreshLivePaneIndicators(ctx, pane, meta = {}) {
   const hasPlotSeries = ctx.indicatorController?.paneHasPlotSeriesIndicators?.(pane.index);
   if (meta.isNewBar) {
     if (ctx.opts?.replayHostControlled && ctx.ensureIndicatorDataThenOverlay) {
+      // Host replay paints the new candle before its async HTF sufficiency
+      // check completes. Rebind cached overlay geometry to the new chart time
+      // map immediately so right-edge labels do not blink out between those
+      // two phases.
+      ctx.indicatorController?.syncOverlayTimeCtxForPane?.(pane.index);
       ctx.ensureIndicatorDataThenOverlay(pane);
       return;
     }

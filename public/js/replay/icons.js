@@ -12,6 +12,8 @@ export const PAUSE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28
 
 export const STEP_FORWARD = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M20 6v16h1V6h-1Zm-3.908 7.628L9.834 7.996A.5.5 0 0 0 9 8.368v11.264a.5.5 0 0 0 .834.372l6.258-5.632a.5.5 0 0 0 0-.744Zm.67 1.487a1.5 1.5 0 0 0 0-2.23l-6.259-5.632C9.538 6.384 8 7.07 8 8.368v11.264c0 1.299 1.538 1.984 2.503 1.115l6.258-5.632Z"></path></svg>`;
 
+export const STEP_BACKWARD = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 6v16H7V6h1Zm3.908 7.628 6.258-5.632a.5.5 0 0 1 .834.372v11.264a.5.5 0 0 1-.834.372l-6.258-5.632a.5.5 0 0 1 0-.744Zm-.67 1.487a1.5 1.5 0 0 1 0-2.23l6.259-5.632C18.462 6.384 20 7.07 20 8.368v11.264c0 1.299-1.538 1.984-2.503 1.115l-6.258-5.632Z"></path></svg>`;
+
 export const JUMP_TO_END = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M18 22V6h1v16h-1ZM8.834 7.996l6.258 5.632a.5.5 0 0 1 0 .744l-6.258 5.632A.5.5 0 0 1 8 19.632V8.368a.5.5 0 0 1 .834-.372Zm6.927 4.89a1.5 1.5 0 0 1 0 2.229l-6.258 5.632C8.538 21.616 7 20.93 7 19.632V8.368C7 7.07 8.538 6.384 9.503 7.253l6.258 5.632ZM21 6v16h1V6h-1Z"></path></svg>`;
 
 export const CLOSE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8 8l12 12M20 8 8 20"></path></svg>`;

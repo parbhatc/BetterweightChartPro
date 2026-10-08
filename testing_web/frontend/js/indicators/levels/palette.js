@@ -15,6 +15,7 @@ export const LEVEL_SESSION_PALETTE = Object.freeze({
 });
 
 export const LEVEL_REFERENCE_PALETTE = Object.freeze({
+  allTimeHigh: "#b38b3b",
   previousDay: "#8a7654",
   previousWeek: "#5e7482",
   midpoint: "#71805b",

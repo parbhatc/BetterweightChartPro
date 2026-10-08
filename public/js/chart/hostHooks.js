@@ -6,6 +6,8 @@
 /** @typedef {object} TradeContextHandlers
  * @property {(quantity: number, price: number, time?: number) => void} [onMarketBuy]
  * @property {(quantity: number, price: number, time?: number) => void} [onMarketSell]
+ * @property {(price: number, time?: number) => void} [onAutoBuy]
+ * @property {(price: number, time?: number) => void} [onAutoSell]
  * @property {(quantity: number, limitPrice: number, price: number, time?: number) => void} [onLimitBuy]
  * @property {(quantity: number, stopPrice: number, price: number, time?: number) => void} [onStopSell]
  */
@@ -31,5 +33,7 @@ export function getTradeContextActions() {
 export function hasTradeContextActions() {
   if (!tradeContextHandlers) return false;
   const h = tradeContextHandlers;
-  return Boolean(h.onMarketBuy || h.onMarketSell || h.onLimitBuy || h.onStopSell);
+  return Boolean(
+    h.onMarketBuy || h.onMarketSell || h.onAutoBuy || h.onAutoSell || h.onLimitBuy || h.onStopSell
+  );
 }

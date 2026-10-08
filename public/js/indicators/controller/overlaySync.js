@@ -49,6 +49,24 @@ export function shouldReplaceOverlayPrimitive(instance, pane) {
 }
 
 /**
+ * Identity of the loaded history head. Appending a live/replay bar must not
+ * invalidate the existing overlay cache: it remains the best frame to display
+ * while the new bar is recomputed. A changed first bar still identifies a
+ * prepend, day replacement, symbol reload, or trimmed history window.
+ * @param {object[]} chartBars
+ */
+export function overlayChartHistoryHeadKey(chartBars) {
+  return String(chartBars?.[0]?.time ?? "");
+}
+
+/** Keep the last valid frame visible while an incremental HTF tail refreshes. */
+export function cachedOverlayWhilePending(instance) {
+  return Array.isArray(instance?._overlayBoxCache) && instance._overlayBoxCache.length
+    ? instance._overlayBoxCache
+    : [];
+}
+
+/**
  * @param {object} deps
  * @param {() => object[]} deps.getAllChartPanes
  * @param {(pane: object) => { utcBars: object[], chartBars: object[] }} deps.getPaneBars
@@ -133,7 +151,7 @@ export function createOverlaySync(deps) {
     }
 
     const { utcBars, chartBars } = getPaneBars(pane);
-    const chartHeadKey = `${chartBars[0]?.time ?? ""}|${chartBars.length}`;
+    const chartHeadKey = overlayChartHistoryHeadKey(chartBars);
     if (instance._overlayChartHeadKey && instance._overlayChartHeadKey !== chartHeadKey) {
       clearOverlayInstanceCache(instance);
     }
@@ -170,8 +188,13 @@ export function createOverlaySync(deps) {
         ? Indicator.overlayPending(instance, overlayCtx)
         : undefined;
     const prevPending = instance._initPending === true;
+    const pendingCachedOverlay =
+      hookPending === true ? cachedOverlayWhilePending(instance) : [];
     if (hookPending === true) {
-      instance._initPending = true;
+      // A replay step can briefly outrun an hourly/daily cache at a bucket
+      // boundary. Keep the last valid overlay and legend fully mounted while
+      // that small tail request completes. Initial loads still show pending.
+      instance._initPending = pendingCachedOverlay.length === 0;
     } else if (hookPending === false) {
       instance._initPending = false;
     }
@@ -191,15 +214,10 @@ export function createOverlaySync(deps) {
       typeof Indicator.shouldRefreshOverlayOnCacheHit === "function" &&
       Indicator.shouldRefreshOverlayOnCacheHit(instance, overlayCtx);
     if (hookPending === true) {
-      // Serve the cached overlay only while it still matches the current data.
-      // After a data replacement (replay day jump) the pre-jump boxes are wrong-
-      // day levels — show nothing until the pending fetch lands and recomputes.
-      overlayData =
-        instance._overlayRecomputeKey === recomputeKey &&
-        Array.isArray(instance._overlayBoxCache) &&
-        instance._overlayBoxCache.length
-          ? instance._overlayBoxCache
-          : [];
+      // History/symbol/resolution replacement clears this cache before this
+      // point, so any surviving frame belongs to the same chart history and is
+      // safe to retain during an incremental tail fetch.
+      overlayData = pendingCachedOverlay;
     } else if (cacheHit && !refreshLiveOnCacheHit) {
       overlayData = instance._overlayBoxCache;
     } else {

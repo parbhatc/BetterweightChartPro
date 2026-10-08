@@ -103,9 +103,15 @@ export function createChartWidgetApi(ctx) {
     settingsStore,
     symbolInfo: getSymbolInfo,
     getIsPanning: () => Boolean(ctx.ui?.chartPanning),
+    getAllPanes: getAllChartPanes,
   });
   const toolbar = createToolbarApi(ctx);
-  const executionShapes = createExecutionShapeManager(getActivePane);
+  const executionShapes = createExecutionShapeManager(getActivePane, {
+    isVisible: () => settingsStore.get().canvas?.showExecutionMarkers !== false,
+  });
+  const unsubscribeExecutionMarkerSettings = settingsStore.onChange(() => {
+    executionShapes.requestRefresh();
+  });
   const shortcutRegistry = createWidgetShortcutRegistry(getActivePane);
   /** @type {ReturnType<typeof createTradingViewChartApi> | null} */
   let tvChartApi = null;
@@ -180,6 +186,17 @@ export function createChartWidgetApi(ctx) {
 
     getAllChartPanes() {
       return getAllChartPanes();
+    },
+
+    /** Activate a chart pane by layout index (used by cross-pane host tools). */
+    activatePane(index) {
+      const paneIndex = Number(index);
+      if (!Number.isInteger(paneIndex) || paneIndex < 0) return Promise.resolve(false);
+      return Promise.resolve(ctx.activatePaneIndex?.(paneIndex)).then(() => {
+        orderLines.requestRefresh();
+        executionShapes.requestRefresh();
+        return true;
+      });
     },
 
     syncHostReplayPanes() {
@@ -613,6 +630,8 @@ export function createChartWidgetApi(ctx) {
     /** Tear down host-global side effects (touch scroll lock, clocks, debug HUD). */
     destroy() {
       widget.positionOverlay?.destroy?.();
+      unsubscribeExecutionMarkerSettings?.();
+      executionShapes.destroy?.();
       toolbar.destroy?.();
       releaseTouchScrollLock?.();
       destroyDebugHud();

@@ -77,6 +77,7 @@ export function attachReplayBoot(ctx) {
 
 
 
+  replay.stepBackward = () => void ctx.replayEngine.stepBackward();
   replay.stepForward = () => void ctx.replayEngine.stepForward();
 
   replay.jumpToEnd = () => void ctx.replayEngine.jumpToEnd();

@@ -1,6 +1,11 @@
 import { etParts } from "/js/core/etTime.js";
 import { resolveHtfSeries } from "/js/indicators/security/htfAccess.js";
 import { markPreviousPeriodSweeps } from "./referenceSweep.js";
+import {
+  allTimeHighFromBars,
+  ATH_HISTORY_BARS,
+  ATH_RESOLUTION,
+} from "./allTimeHigh.js";
 
 const MINUTES_PER_DAY = 24 * 60;
 const DEFAULT_SESSION_START = "18:00";
@@ -175,7 +180,7 @@ function addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, sessionRange
 }
 
 /**
- * Build PDH/PDL (on by default), opt-in PWH/PWL, and session midpoint lines.
+ * Build PDH/PDL (on by default), opt-in PWH/PWL and ATH, and session midpoint lines.
  * Previous periods aggregate supported hourly history into futures trading
  * days/weeks (6:00 PM ET boundaries); midpoint uses pane bars so it updates on
  * every forming candle and remains replay-safe.
@@ -222,6 +227,28 @@ export function buildReferenceLevelLines(utcBars, chartBars, anchorUnix, opts, c
       referenceRange,
       opts.showLabels,
     );
+  }
+  if (opts.athEnabled) {
+    const daily = resolveHtfSeries(
+      ctx,
+      symbol,
+      ATH_RESOLUTION,
+      ATH_HISTORY_BARS,
+      { request: false },
+    ).utcBars;
+    const ath = allTimeHighFromBars(daily, anchorUnix);
+    if (ath != null && referenceRange) {
+      out.push(
+        makeReferenceLine(
+          ath,
+          "ATH",
+          opts.athColor,
+          "high",
+          referenceRange,
+          opts.showLabels,
+        ),
+      );
+    }
   }
   addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, midpointRange);
   markPreviousPeriodSweeps(out, utcBars, chartBars, referenceRange);

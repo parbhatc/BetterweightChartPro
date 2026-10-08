@@ -12,8 +12,9 @@ import {
  * TradingView-compatible order line adapter returned by chart.createOrderLine().
  * @param {import("./OrderLineManager.js").OrderLineManager} manager
  * @param {string} id
+ * @param {{ paneIndex?: number | null }} [opts]
  */
-export function createOrderLineAdapter(manager, id) {
+export function createOrderLineAdapter(manager, id, opts = {}) {
   /** @type {import("./types.js").OrderLineState} */
   const state = {
     id,
@@ -38,6 +39,7 @@ export function createOrderLineAdapter(manager, id) {
     removed: false,
     target: null,
     isMoving: false,
+    paneIndex: Number.isInteger(opts.paneIndex) ? Number(opts.paneIndex) : null,
     pillSide: "right",
     pillOffset: 20,
     lineFullWidth: false,
@@ -109,6 +111,12 @@ export function createOrderLineAdapter(manager, id) {
 
     getPrice() {
       return state.price;
+    },
+    setPaneIndex(index) {
+      const next = Number(index);
+      state.paneIndex = Number.isInteger(next) && next >= 0 ? next : null;
+      manager.requestRefresh();
+      return adapter;
     },
     setPrice(price) {
       const p = Number(price);

@@ -47,6 +47,19 @@ export function createReplayPlayback(ctx, replay, state, deps) {
     return { nextTime, nextIdx };
   }
 
+  /** Resolve one replay interval backward without moving before loaded history. */
+  function resolvePreviousReplayCursor(rs, snap, pane) {
+    if (!snap?.bars?.length || rs.currentBarTime == null) return null;
+    const delta = replayStepDeltaSec(rs, pane);
+    if (!Number.isFinite(delta) || delta <= 0) return null;
+    const firstTime = snap.bars[0]?.time;
+    if (firstTime == null || rs.currentBarTime <= firstTime) return null;
+    const previousTime = Math.max(firstTime, rs.currentBarTime - delta);
+    const previousIdx = replayBarIndexForUtcTime(snap.bars, previousTime);
+    if (previousIdx == null) return null;
+    return { previousTime, previousIdx };
+  }
+
   function stopPlayTimer() {
     if (state.playTimer != null) {
       clearInterval(state.playTimer);
@@ -101,6 +114,7 @@ export function createReplayPlayback(ctx, replay, state, deps) {
     chartResolution,
     replayStepDeltaSec,
     resolveNextReplayCursor,
+    resolvePreviousReplayCursor,
     stopPlayTimer,
     startPlayTimer,
   };

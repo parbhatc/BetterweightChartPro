@@ -321,6 +321,26 @@ export function attachReplayEngine(ctx, replay) {
       await ltBars.ensureReplayLtBarsForCursor(pane, resolved.nextTime);
       replay.setReplayCursor(resolved.nextTime, { index: resolved.nextIdx });
     },
+    stepBackward: async () => {
+      const rs = replay.getState();
+      if (!rs.active) return;
+      if (isReplayHostControlled(ctx)) {
+        emitReplayHostAction(ctx, "stepBackward", {
+          currentBarIndex: rs.currentBarIndex,
+          currentBarTime: rs.currentBarTime,
+          selectedBarIndex: rs.selectedBarIndex,
+          selectedBarTime: rs.selectedBarTime,
+        });
+        return;
+      }
+      if (rs.currentBarTime == null) return;
+      const pane = ctx.getActivePane?.() ?? ctx.chartPanes.get(0);
+      const snap = pane?._replaySnapshot;
+      const resolved = snap ? playback.resolvePreviousReplayCursor(rs, snap, pane) : null;
+      if (!resolved) return;
+      await ltBars.ensureReplayLtBarsForCursor(pane, resolved.previousTime);
+      replay.setReplayCursor(resolved.previousTime, { index: resolved.previousIdx });
+    },
     jumpToEnd: async () => {
       const rs = replay.getState();
       if (!rs.active) return;

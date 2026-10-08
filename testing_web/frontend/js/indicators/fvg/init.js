@@ -149,6 +149,8 @@ export function initFvgEngine(script) {
     showFvg,
     showLiveForming,
     showIfvg,
+    showCeLine: inputs.showCeLine === true,
+    ceLineColor: inputsColorWithOpacity(inputs, "ceLineColor", "#787b86", 75),
     showPartial: true,
     maxFvgZones,
     maxIfvgZones,

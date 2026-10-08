@@ -6,6 +6,7 @@ import {
   PAUSE,
   PLAY,
   SELECT_MODES,
+  STEP_BACKWARD,
   STEP_FORWARD,
 } from "./icons.js";
 import { normalizeResolutionId } from "../chart/resolutionFormat.js";
@@ -118,6 +119,9 @@ export function mountReplayToolbar(opts) {
       </button>
     </div>
     <div class="tv-chart-replay-bar__group">
+      <button type="button" class="tv-chart-replay-bar__btn tv-chart-replay-bar__btn--icon" data-action="step-backward" title="Step backward" aria-label="Step backward" disabled>
+        <span class="tv-chart-replay-bar__icon" aria-hidden="true">${STEP_BACKWARD}</span>
+      </button>
       <button type="button" class="tv-chart-replay-bar__btn tv-chart-replay-bar__btn--icon" data-action="step-forward" title="Step forward" disabled>
         <span class="tv-chart-replay-bar__icon" aria-hidden="true">${STEP_FORWARD}</span>
       </button>
@@ -153,6 +157,7 @@ export function mountReplayToolbar(opts) {
   const selectLabel = controls.querySelector("[data-select-label]");
   const playBtn = controls.querySelector('[data-action="play"]');
   const playIcon = controls.querySelector("[data-play-icon]");
+  const stepBackBtn = controls.querySelector('[data-action="step-backward"]');
   const stepBtn = controls.querySelector('[data-action="step-forward"]');
   const jumpBtn = controls.querySelector('[data-action="jump-end"]');
   const speedBtn = controls.querySelector('[data-action="speed"]');
@@ -171,6 +176,7 @@ export function mountReplayToolbar(opts) {
   function setTransportEnabled(on) {
     const enabled = isReplayHostControlled(ctx) ? replay.isActive() : on;
     playBtn?.toggleAttribute("disabled", !enabled);
+    stepBackBtn?.toggleAttribute("disabled", !enabled);
     stepBtn?.toggleAttribute("disabled", !enabled);
     jumpBtn?.toggleAttribute("disabled", !enabled);
   }
@@ -527,6 +533,7 @@ export function mountReplayToolbar(opts) {
     replay.play();
   });
 
+  stepBackBtn?.addEventListener("click", () => replay.stepBackward());
   stepBtn?.addEventListener("click", () => replay.stepForward());
   jumpBtn?.addEventListener("click", () => replay.jumpToEnd());
 

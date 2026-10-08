@@ -26,8 +26,8 @@ export function createTradingViewChartApi(opts) {
       return String(getResolution() ?? "1");
     },
 
-    createOrderLine() {
-      return orderLines.createOrderLine();
+    createOrderLine(options) {
+      return orderLines.createOrderLine(options);
     },
 
     createExecutionShape() {

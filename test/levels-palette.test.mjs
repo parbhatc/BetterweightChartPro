@@ -13,6 +13,7 @@ test("Levels defaults use distinct muted colors and migrate former neon inputs",
   assert.deepEqual(LEVEL_HTF_PALETTE["60"], { hi: "#607a73", lo: "#8a5f62" });
   assert.deepEqual(LEVEL_HTF_PALETTE["15"], { hi: "#887f58", lo: "#77667f" });
   assert.equal(LEVEL_SESSION_PALETTE.asia, "#607a73");
+  assert.equal(LEVEL_REFERENCE_PALETTE.allTimeHigh, "#b38b3b");
   assert.equal(LEVEL_REFERENCE_PALETTE.midpoint, "#71805b");
   assert.equal(migrateLegacyLevelColor("#9400d3", "#9400d3", "#75647d"), "#75647d");
   assert.equal(migrateLegacyLevelColor("#123456", "#9400d3", "#75647d"), "#123456");

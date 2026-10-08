@@ -200,6 +200,10 @@ export function mountReplayMode(opts) {
       replayDebug("pause");
       patch({ playing: false });
     },
+    stepBackward: () => {
+      if (!state.active || state.selectedBarTime == null) return;
+      replayDebug("stepBackward", { from: state.currentBarTime });
+    },
     stepForward: () => {
       if (!state.active || state.selectedBarTime == null) return;
       replayDebug("stepForward", { from: state.currentBarTime });

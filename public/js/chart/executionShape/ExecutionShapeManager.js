@@ -4,9 +4,13 @@ import { ExecutionShapesPrimitive } from "./ExecutionShapesPrimitive.js";
 let nextId = 1;
 
 export class ExecutionShapeManager {
-  /** @param {() => object | null | undefined} getActivePane */
-  constructor(getActivePane) {
+  /**
+   * @param {() => object | null | undefined} getActivePane
+   * @param {{ isVisible?: () => boolean }} [opts]
+   */
+  constructor(getActivePane, opts = {}) {
     this._getActivePane = getActivePane;
+    this._isVisible = typeof opts.isVisible === "function" ? opts.isVisible : () => true;
     /** @type {Map<string, ReturnType<typeof createExecutionShapeAdapter>>} */
     this._adapters = new Map();
     /** @type {import("./ExecutionShapesPrimitive.js").ExecutionShapesPrimitive | null} */
@@ -17,6 +21,7 @@ export class ExecutionShapeManager {
 
   /** @returns {import("./types.js").ExecutionShapeState[]} */
   _activeStates() {
+    if (!this._isVisible()) return [];
     /** @type {import("./types.js").ExecutionShapeState[]} */
     const out = [];
     for (const adapter of this._adapters.values()) {
@@ -78,9 +83,17 @@ export class ExecutionShapeManager {
   requestRefresh() {
     this._primitive?.requestRefresh();
   }
+
+  destroy() {
+    this._adapters.clear();
+    this._detachPrimitive();
+  }
 }
 
-/** @param {() => object | null | undefined} getActivePane */
-export function createExecutionShapeManager(getActivePane) {
-  return new ExecutionShapeManager(getActivePane);
+/**
+ * @param {() => object | null | undefined} getActivePane
+ * @param {{ isVisible?: () => boolean }} [opts]
+ */
+export function createExecutionShapeManager(getActivePane, opts) {
+  return new ExecutionShapeManager(getActivePane, opts);
 }

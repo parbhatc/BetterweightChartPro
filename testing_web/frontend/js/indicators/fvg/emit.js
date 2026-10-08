@@ -6,6 +6,7 @@ import { formingSeriesForLayer } from "./layers.js";
 import { passesCorrelatedFilter } from "./zones.js";
 import { debugFvgDrawBox, debugFvgEmitResult } from "./fvgDebug.js";
 import { DEFAULT_FVG_BEAR_COLOR, DEFAULT_FVG_BULL_COLOR } from "./palette.js";
+import { fvgCePrice } from "./ce.js";
 
 const LABEL_DISTANCE_BARS = 10;
 
@@ -125,6 +126,21 @@ export function emitZoneBox(script, layer, series, zone, opts = {}) {
     isForming: Boolean(zone.forming),
     cacheKey: `${isIfvg ? 1 : 0}|${zone.partial ? 1 : 0}|${zone.forming ? 1 : 0}`,
   });
+
+  const cePrice = cfg.showCeLine ? fvgCePrice(zone) : null;
+  if (cePrice != null) {
+    script.drawBox({
+      kind: "line",
+      timeStart: drawStart,
+      timeEnd: extendRight ? endTime : Math.max(endTime, drawStart),
+      extendRight,
+      priceTop: cePrice,
+      lineColor: cfg.ceLineColor,
+      lineWidth: 1,
+      lineDash: [2, 3],
+      cacheKey: `ce|${isIfvg ? 1 : 0}|${zone.forming ? 1 : 0}`,
+    });
+  }
 }
 
 /** @param {object} script @param {{ silent?: boolean }} [opts] */

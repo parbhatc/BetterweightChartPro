@@ -97,6 +97,8 @@ export function buildLevelsEngineOpts(inputs, style, ctx, engine, levelsHtf) {
     previousDayColor: migrateLegacyLevelColor(inputs.previousDayColor, "#f59e0b", LEVEL_REFERENCE_PALETTE.previousDay, indicatorPreset),
     previousWeekEnabled: inputs.previousWeekEnabled === true,
     previousWeekColor: migrateLegacyLevelColor(inputs.previousWeekColor, "#38bdf8", LEVEL_REFERENCE_PALETTE.previousWeek, indicatorPreset),
+    athEnabled: inputs.athEnabled === true,
+    athColor: migrateLegacyLevelColor(inputs.athColor, "#facc15", LEVEL_REFERENCE_PALETTE.allTimeHigh, indicatorPreset),
     midpointEnabled: inputs.midpointEnabled === true,
     midpointStartTime: String(inputs.midpointStartTime ?? "18:00"),
     midpointEndTime: String(inputs.midpointEndTime ?? "current"),

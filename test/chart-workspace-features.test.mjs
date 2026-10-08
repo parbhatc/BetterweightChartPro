@@ -500,6 +500,9 @@ test("appearance exposes independent Default, Gray, and Dark palettes and never 
   assert.equal(settings.get().canvas.showNewsMarkers, true);
   settings.set("canvas", "showNewsMarkers", false);
   assert.equal(settings.get().canvas.showNewsMarkers, false);
+  assert.equal(settings.get().canvas.showExecutionMarkers, true);
+  settings.set("canvas", "showExecutionMarkers", false);
+  assert.equal(settings.get().canvas.showExecutionMarkers, false);
 
   settings.replace({ scales: {
     bidAskDefaultsVersion: 1,

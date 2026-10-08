@@ -17,6 +17,20 @@ export function buildInputs() {
     createField("fvgTimeframes", "fvgTimeframes", DEFAULT_FVG_TIMEFRAMES, { section: "Timeframes" }),
     createBool("hideLowerTf", "Hide FVGs lower than enabled timeframes", true, { section: "FVG settings" }),
     createBool("showFvg", "Show FVG", true, { section: "FVG settings" }),
+    createBool("showCeLine", "Show CE midpoint", false, {
+      section: "CE line",
+      showInStatusLine: false,
+    }),
+    createColor(
+      "ceLineColor",
+      "CE line color",
+      { color: "#787b86", opacity: 75 },
+      {
+        section: "CE line",
+        disabled: (inputs) => inputs.showCeLine !== true,
+        showInStatusLine: false,
+      },
+    ),
     createSelect(
       "filledType",
       "Filled FVG Type",

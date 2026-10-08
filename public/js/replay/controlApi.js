@@ -20,6 +20,7 @@ export function createReplayControlApi(deps) {
       toggleSelectBar: noop,
       play: noop,
       pause: noop,
+      stepBackward: noop,
       stepForward: noop,
       jumpToEnd: noop,
       setSpeed: noop,
@@ -42,6 +43,9 @@ export function createReplayControlApi(deps) {
     toggleSelectBar: () => replay.toggleSelectBar(),
     play: () => replay.play(),
     pause: () => replay.pause(),
+    stepBackward: () => {
+      if (typeof replayEngine?.stepBackward === "function") void replayEngine.stepBackward();
+    },
     stepForward: () => {
       if (typeof replayEngine?.stepForward === "function") void replayEngine.stepForward();
       else replay.stepForward();

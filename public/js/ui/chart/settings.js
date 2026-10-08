@@ -777,7 +777,8 @@ export function mountChartSettings(opts) {
       { fields: true },
     )}${sectionBlock(
       "Events",
-      `${checkRow("Show news markers", "canvas", "showNewsMarkers")}`,
+      `${checkRow("Show news markers", "canvas", "showNewsMarkers")}
+        ${checkRow("Show execution markers", "canvas", "showExecutionMarkers")}`,
     )}${sectionBlock(
       "Scales",
       `${scalesTextFieldRow("canvas")}

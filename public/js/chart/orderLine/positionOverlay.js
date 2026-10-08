@@ -214,6 +214,12 @@ export function createPositionOverlay(widget) {
   let externalMark = null;
   let pillOffset = DEFAULT_PILL_OFFSET;
   let bracketPillOffset = DEFAULT_BRACKET_PILL_OFFSET;
+  let presentation = {
+    symbolLabel: "",
+    quantityLabel: null,
+    tickSize: null,
+    tickValue: null,
+  };
 
   /** @type {Set<(oldPrice: number | null, newPrice: number | null) => void>} */
   const stopLossListeners = new Set();
@@ -290,7 +296,27 @@ export function createPositionOverlay(widget) {
   }
 
   function tickMeta() {
-    return resolveTickMeta(widget.getSymbolInfo?.());
+    const resolved = resolveTickMeta(widget.getSymbolInfo?.());
+    return {
+      tickSize:
+        Number.isFinite(presentation.tickSize) && presentation.tickSize > 0
+          ? presentation.tickSize
+          : resolved.tickSize,
+      tickValue:
+        Number.isFinite(presentation.tickValue) && presentation.tickValue > 0
+          ? presentation.tickValue
+          : resolved.tickValue,
+    };
+  }
+
+  function positionQuantityText(qty) {
+    return presentation.quantityLabel || String(Math.abs(qty));
+  }
+
+  function positionBodyText(pnlText) {
+    return presentation.symbolLabel
+      ? `${presentation.symbolLabel} · ${pnlText}`
+      : pnlText;
   }
 
   function currentPlotWidth() {
@@ -404,7 +430,7 @@ export function createPositionOverlay(widget) {
     const color = positionSideColor(qty);
     line
       .setText("")
-      .setQuantity(String(Math.abs(qty)))
+      .setQuantity(positionQuantityText(qty))
       .setLineColor(color)
       .setBodyBackgroundColor(color)
       .setQuantityBackgroundColor(color)
@@ -473,7 +499,7 @@ export function createPositionOverlay(widget) {
     const { tickSize, tickValue } = tickMeta();
     const pnl = calcPnl(position.entry, price, position.qty, tickSize, tickValue);
     const profit = pnl >= 0;
-    const text = formatPnl(pnl, "both", tickSize, tickValue);
+    const text = positionBodyText(formatPnl(pnl, "both", tickSize, tickValue));
     if (text === bracket.lastText && profit === bracket.lastProfit) return;
 
     const colors = lineColors(profit);
@@ -703,7 +729,7 @@ export function createPositionOverlay(widget) {
 
     const patch = { text };
     if (profitChanged) {
-      patch.quantityText = String(Math.abs(position.qty));
+      patch.quantityText = positionQuantityText(position.qty);
       patch.fill = colors.fill;
       patch.quantityFill = sideColor;
       patch.textColor = getPositionTextColor();
@@ -715,7 +741,7 @@ export function createPositionOverlay(widget) {
         return;
       }
       position.line.setText(text);
-      position.line.setQuantity(String(Math.abs(position.qty)));
+      position.line.setQuantity(positionQuantityText(position.qty));
       position.line
         .setLineColor(sideColor)
         .setBodyBackgroundColor(colors.fill)
@@ -997,6 +1023,35 @@ export function createPositionOverlay(widget) {
       const mark = markPrice();
       if (position?.line && mark != null) refreshPositionPnl(mark);
       return pillOffset;
+    },
+    /**
+     * Override the position pill's instrument label and tick economics. This is
+     * used when a related contract is displayed on the active chart, such as an
+     * MNQ position on an NQ chart.
+     * @param {{ symbolLabel?: string | null, quantityLabel?: string | null, tickSize?: number | null, tickValue?: number | null }} next
+     */
+    setPresentation(next = {}) {
+      presentation = {
+        symbolLabel: String(next.symbolLabel || "").trim(),
+        quantityLabel: next.quantityLabel == null ? null : String(next.quantityLabel),
+        tickSize:
+          Number.isFinite(Number(next.tickSize)) && Number(next.tickSize) > 0
+            ? Number(next.tickSize)
+            : null,
+        tickValue:
+          Number.isFinite(Number(next.tickValue)) && Number(next.tickValue) > 0
+            ? Number(next.tickValue)
+            : null,
+      };
+      if (position?.line) {
+        stylePositionLine(position.line, position.qty);
+        position.lastText = null;
+        position.lastProfit = null;
+        lastPnlPaintAt = 0;
+        const mark = markPrice();
+        refreshPositionPnl(mark != null ? mark : position.entry);
+      }
+      return { ...presentation };
     },
     /**
      * Override the position P&L mark with the host's executable liquidation

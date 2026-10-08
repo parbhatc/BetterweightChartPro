@@ -22,6 +22,7 @@
  * @property {boolean} removed
  * @property {{ price: number, type: string | null } | null} target
  * @property {boolean} isMoving
+ * @property {number | null} [paneIndex] pane that owns the line; null follows the active pane
  * @property {"left"|"right"} [pillSide] control pill anchor on chart pane
  * @property {number} [pillOffset] px inset from the anchored edge (right default)
  * @property {boolean} [lineFullWidth] span the horizontal line across the full chart pane
