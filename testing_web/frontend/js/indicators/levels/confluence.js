@@ -19,8 +19,24 @@ export function keepRecentSweptLevels(lines, bars, endIdx, holdBars, maxSwept) {
 
 /** @param {string} label */
 function parseLevelTags(label) {
-  const base = label.split(" (")[0].replace(/\s+(High|Low)$/i, "").trim();
+  const base = label.split(" (")[0].replace(/\s+(?:Swing\s+)?(?:High|Low)$/i, "").trim();
   return base.split(/\s*(?:&|\+)\s*/).map((s) => s.trim()).filter(Boolean);
+}
+
+/** Lower values have higher visual priority when merged. */
+function levelColorPriority(line) {
+  const tags = parseLevelTags(line.label ?? "");
+  // Asia is the visually defining level when it overlaps an HTF pivot. Keep
+  // the HTF name on the right, but preserve Asia's blue line across the chart.
+  if (line.sessionTag === "Asia" || tags.includes("Asia")) return -1;
+  const tfIndex = tags.reduce((best, tag) => {
+    const index = TF_TAG_ORDER.indexOf(tag);
+    return index >= 0 ? Math.min(best, index) : best;
+  }, Infinity);
+  if (Number.isFinite(tfIndex)) return tfIndex;
+  if (line.referenceLevel === true) return 20;
+  if (tags.some((tag) => SESSION_TAG_ORDER.includes(tag))) return 30;
+  return 40;
 }
 
 /** @param {Set<string>} tags @param {"High"|"Low"} side */
@@ -35,12 +51,13 @@ function formatMergedTags(tags, side) {
     const tj = TF_TAG_ORDER.indexOf(b);
     return (ti >= 0 ? ti : 99) - (tj >= 0 ? tj : 99) || a.localeCompare(b);
   });
-  const suffix = ordered.some((tag) => REFERENCE_TAGS.has(tag)) ? "" : ` ${side}`;
+  const hasReference = ordered.some((tag) => REFERENCE_TAGS.has(tag));
+  const suffix = hasReference ? "" : ` ${side}`;
   return `${ordered.join(" & ")}${suffix}`;
 }
 
-/** @param {LiqLine[]} lines @param {number} proximity @param {string} confHi @param {string} confLo */
-export function applyClusterConfluence(lines, proximity, confHi, confLo) {
+/** @param {LiqLine[]} lines @param {number} proximity */
+export function applyClusterConfluence(lines, proximity) {
   const n = lines.length;
   const parent = Array.from({ length: n }, (_, i) => i);
 
@@ -62,22 +79,6 @@ export function applyClusterConfluence(lines, proximity, confHi, confLo) {
    * 9:15 low swept at 9:40 must not merge with a fresh 10:00 low at the same
    * price; the old line stays swept, the new one lives on its own. */
   const sweptBefore = (a, b) => a.swept && a.sweepTime != null && a.sweepTime <= bornOf(b);
-
-  // Midpoints do not have a high/low side. Attach each one to only its nearest
-  // overlapping level so it cannot bridge separate high and low clusters.
-  for (let i = 0; i < n; i++) {
-    if (lines[i]._drop || lines[i].referenceTag !== "Mid") continue;
-    let closest = -1;
-    let closestDistance = Infinity;
-    for (let j = 0; j < n; j++) {
-      if (i === j || lines[j]._drop || lines[j].referenceTag === "Mid") continue;
-      const distance = Math.abs(lines[i].price - lines[j].price);
-      if (distance > proximity || distance >= closestDistance) continue;
-      closest = j;
-      closestDistance = distance;
-    }
-    if (closest >= 0) unite(i, closest);
-  }
 
   for (let i = 0; i < n; i++) {
     if (lines[i]._drop) continue;
@@ -114,7 +115,18 @@ export function applyClusterConfluence(lines, proximity, confHi, confLo) {
       for (const t of parseLevelTags(l.label)) tags.add(t);
     }
     const side = group[0].kind === "high" ? "High" : "Low";
-    const confColor = group[0].kind === "high" ? confHi : confLo;
+    const sessionMembers = group
+      .filter((line) => line.sessionTag || line.sessionBorn != null)
+      .sort((a, b) => {
+        const ai = SESSION_TAG_ORDER.indexOf(a.sessionTag);
+        const bi = SESSION_TAG_ORDER.indexOf(b.sessionTag);
+        return (ai >= 0 ? ai : 99) - (bi >= 0 ? bi : 99);
+      });
+    const sessionTags = new Set(sessionMembers.map((line) => line.sessionTag).filter(Boolean));
+    const nonSessionTags = new Set([...tags].filter((tag) => !SESSION_TAG_ORDER.includes(tag)));
+    const colorSource = group.reduce((best, line) =>
+      levelColorPriority(line) < levelColorPriority(best) ? line : best,
+    );
     const sweptMembers = group.filter((l) => l.swept && l.sweepTime != null);
     // Swept only when EVERY member is swept — an unswept member means liquidity
     // still rests at this price (e.g. a live Asia low re-formed on an old swept
@@ -140,8 +152,14 @@ export function applyClusterConfluence(lines, proximity, confHi, confLo) {
         survivor.endChartTime = l.endChartTime;
       }
     }
-    survivor.label = formatMergedTags(tags, side);
-    survivor.color = confColor;
+    const splitSessionLabel = sessionTags.size > 0 && nonSessionTags.size > 0;
+    survivor.label = formatMergedTags(splitSessionLabel ? nonSessionTags : tags, side);
+    if (splitSessionLabel) {
+      survivor.splitSessionLabel = true;
+      survivor.sessionLabel = [...sessionTags].join(" & ");
+      survivor.sessionLabelColor = sessionMembers[0]?.sessionLabelColor ?? sessionMembers[0]?.color;
+    }
+    survivor.color = colorSource.color;
     survivor.lineWidth = 3;
     if (allSwept && sweptMembers.length) {
       const times = sweptMembers.map((l) => l.sweepTime).filter((t) => t != null);

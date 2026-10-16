@@ -21,7 +21,6 @@ import {
   htfSeriesRecomputeKey,
 } from "/js/indicators/security/htfPolicy.js";
 import { LEVEL_REFERENCE_PALETTE } from "./palette.js";
-import { ATH_HISTORY_BARS, ATH_RESOLUTION } from "./allTimeHigh.js";
 
 const HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => {
   const hour = Math.floor(index / 2);
@@ -32,23 +31,15 @@ const HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => {
   return { id, label: `${hour12}:${String(minute).padStart(2, "0")} ${suffix}` };
 });
 
-const MIDPOINT_END_OPTIONS = [
-  { id: "current", label: "Current candle" },
-  ...HALF_HOUR_OPTIONS,
-];
-
 function referencePeriodResolutions(inputs) {
   const resolutions = [];
   if (inputs.previousDayEnabled !== false || inputs.previousWeekEnabled === true) {
     resolutions.push("60");
   }
-  if (inputs.athEnabled === true) resolutions.push(ATH_RESOLUTION);
   return resolutions;
 }
 
-function referencePeriodCountBack(resolution) {
-  return resolution === ATH_RESOLUTION ? ATH_HISTORY_BARS : 240;
-}
+function referencePeriodCountBack() { return 240; }
 
 class LevelsIndicator extends BarScriptIndicator {
 
@@ -80,18 +71,23 @@ class LevelsIndicator extends BarScriptIndicator {
         section: "Previous periods",
         disabled: (inputs) => inputs.previousWeekEnabled !== true,
       }),
-      createBool("athEnabled", "All-time high (ATH)", false, { section: "Previous periods" }),
-      createColor("athColor", "ATH color", { color: LEVEL_REFERENCE_PALETTE.allTimeHigh, opacity: 100 }, {
-        section: "Previous periods",
-        disabled: (inputs) => inputs.athEnabled !== true,
-      }),
       createBool("midpointEnabled", "Session midpoint", false, { section: "Session midpoint" }),
       createSelect("midpointStartTime", "Start", "18:00", HALF_HOUR_OPTIONS, {
+        section: "Session midpoint",
+        disabled: (inputs) => inputs.midpointEnabled !== true,
+      }),
+      createSelect("midpointLineStyle", "Line style", "dotted", [
+        { id: "solid", label: "Solid" },
+        { id: "dashed", label: "Dashed" },
+        { id: "dotted", label: "Dotted" },
+      ], {
         section: "Session midpoint",
         inline: true,
         disabled: (inputs) => inputs.midpointEnabled !== true,
       }),
-      createSelect("midpointEndTime", "End", "current", MIDPOINT_END_OPTIONS, {
+      createInt("midpointLineWidth", "Thickness", 1, {
+        min: 1,
+        max: 5,
         section: "Session midpoint",
         inline: true,
         disabled: (inputs) => inputs.midpointEnabled !== true,
@@ -107,6 +103,7 @@ class LevelsIndicator extends BarScriptIndicator {
       }),
       createInt("pivotLeftBars", "Pivot left bars", 1, { min: 1, section: "Pivot", inline: true }),
       createInt("pivotRightBars", "Pivot right bars", 1, { min: 1, section: "Pivot", inline: true }),
+      createBool("showPriceInLabels", "Show price in labels", true, { section: "Display limits" }),
       createInt("maxBarsBack", "Max bars to find levels", 300, {
         min: 10,
         section: "Display limits",
@@ -126,15 +123,6 @@ class LevelsIndicator extends BarScriptIndicator {
       }),
       createInt("maxSessions", "Max session instances", 3, { min: 1, section: "Display limits" }),
       createBool("mergeConfluence", "Merge confluence levels", true, { section: "Confluence" }),
-      createColor("confHiColor", "Confluence high", { color: LEVEL_REFERENCE_PALETTE.confluenceHigh, opacity: 100 }, {
-        section: "Confluence",
-        inline: true,
-      }),
-      createColor("confLoColor", "Confluence low", { color: LEVEL_REFERENCE_PALETTE.confluenceLow, opacity: 100 }, {
-        section: "Confluence",
-        inline: true,
-        disabled: (inputs) => inputs.mergeConfluence === false,
-      }),
     ]);
   }
 
@@ -207,7 +195,6 @@ class LevelsIndicator extends BarScriptIndicator {
     }
     if (instance.inputs.previousDayEnabled !== false) enabled.push({ label: "PDH/PDL" });
     if (instance.inputs.previousWeekEnabled === true) enabled.push({ label: "PWH/PWL" });
-    if (instance.inputs.athEnabled === true) enabled.push({ label: "ATH" });
     if (instance.inputs.midpointEnabled === true) enabled.push({ label: "Mid" });
     if (!enabled.length) return [];
     return [enabled.map((r) => r.label).join(", ")];
@@ -232,7 +219,7 @@ class LevelsIndicator extends BarScriptIndicator {
         ...referencePeriodResolutions(instance.inputs),
       ],
     );
-    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.sweptHoldBars}|${instance.inputs.mergeConfluence}|${instance.inputs.confHiColor}|${instance.inputs.confLoColor}|${instance.inputs.previousDayEnabled}|${instance.inputs.previousDayColor}|${instance.inputs.previousWeekEnabled}|${instance.inputs.previousWeekColor}|${instance.inputs.athEnabled}|${instance.inputs.athColor}|${instance.inputs.midpointEnabled}|${instance.inputs.midpointStartTime}|${instance.inputs.midpointEndTime}|${instance.inputs.midpointColor}|${instance.style.graphicLabels}`;
+    return `${time}|${sessions}|${news}|${newsSource}|${newsKey}|${htfKey}|${instance.inputs.maxBarsBack}|${instance.inputs.pivotLeftBars}|${instance.inputs.pivotRightBars}|${instance.inputs.maxUnswept}|${instance.inputs.maxSwept}|${instance.inputs.sweptHoldBars}|${instance.inputs.showPriceInLabels}|${instance.inputs.mergeConfluence}|${instance.inputs.previousDayEnabled}|${instance.inputs.previousDayColor}|${instance.inputs.previousWeekEnabled}|${instance.inputs.previousWeekColor}|${instance.inputs.midpointEnabled}|${instance.inputs.midpointStartTime}|${instance.inputs.midpointLineStyle}|${instance.inputs.midpointLineWidth}|${instance.inputs.midpointColor}|${instance.style.graphicLabels}`;
   }
 
   /**

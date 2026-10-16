@@ -7,20 +7,25 @@ export const LEVEL_HTF_PALETTE = Object.freeze({
 });
 
 export const LEVEL_SESSION_PALETTE = Object.freeze({
-  asia: "#607a73",
-  london: "#75647d",
+  asia: "#2247af",
+  london: "#762632",
   ny_am: "#865f69",
   ny_lunch: "#8a7654",
   ny_pm: "#526b7a",
 });
 
+export const LEVEL_SESSION_LABEL_PALETTE = Object.freeze({
+  asia: LEVEL_SESSION_PALETTE.asia,
+  london: "#ff4d5f",
+  ny_am: "#f06b87",
+  ny_lunch: "#d2a347",
+  ny_pm: "#4f8dd8",
+});
+
 export const LEVEL_REFERENCE_PALETTE = Object.freeze({
-  allTimeHigh: "#b38b3b",
   previousDay: "#8a7654",
   previousWeek: "#5e7482",
-  midpoint: "#71805b",
-  confluenceHigh: "#75647d",
-  confluenceLow: "#8a7654",
+  midpoint: "#837126",
 });
 
 export const LEVEL_DARK_HTF_PALETTE = Object.freeze({
@@ -32,8 +37,8 @@ export const LEVEL_DARK_HTF_PALETTE = Object.freeze({
 });
 
 export const LEVEL_DARK_SESSION_PALETTE = Object.freeze({
-  asia: "#00ffcc",
-  london: "#9400d3",
+  asia: "#2247af",
+  london: "#762632",
   ny_am: "#ff007f",
   ny_lunch: "#ffaa00",
   ny_pm: "#007fff",

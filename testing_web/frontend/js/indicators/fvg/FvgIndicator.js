@@ -55,8 +55,13 @@ function formingLiveKey(instance, ctx) {
   if (inputs.showTapBorder === true) {
     parts.push(`tap:${b.high}|${b.low}`);
   }
+  if (resolveFvgTimeframeRows(inputs).some((row) => row.enabled && row.unmitigatedOnly)) {
+    parts.push(`unmitigated:${b.high}|${b.low}`);
+  }
   const fillType = inputs.filledType === "wick" ? "wick" : "close";
-  const liveFill = inputs.deleteOnFill !== false || inputs.showPartial === true;
+  // Partial-close visibility must follow every lower-timeframe close even when
+  // the partial zone itself is hidden, so a reclaim can show the HTF FVG again.
+  const liveFill = inputs.deleteOnFill !== false || (inputs.showFvg !== false && boxesVisible);
   if (liveFill) {
     parts.push(fillType === "wick" ? `wick:${b.high}|${b.low}` : `cls:${b.close}`);
   }
@@ -149,6 +154,7 @@ class FvgIndicator extends BarScriptIndicator {
     }
     extra += `|lbl:${instance.inputs.showLabels}|${instance.style?.graphicLabels}|${instance.inputs.showSizeOnLabel}|${instance.inputs.showFvgNameOnLabel}|${instance.inputs.centerExtendedLabels}|${instance.inputs.sizeLabelFormat}`;
     extra += `|ce:${instance.inputs.showCeLine}|${instance.inputs.ceLineColor}|${instance.inputs.ceLineColorOpacity}`;
+    extra += `|partial:${instance.inputs.showPartialCloseFvg !== false}`;
     extra += `|fvgBc:${instance.inputs.showFvgBoxColors !== false}|${JSON.stringify(instance.inputs.fvgBoxColorsByTf ?? {})}`;
     if (instance.inputs.requireCorrelatedFvg !== true) return extra;
     const corrTf = instance.inputs.correlatedFvgTf ?? "all";
@@ -226,7 +232,7 @@ class FvgIndicator extends BarScriptIndicator {
     const style = instance.style ?? {};
     if (style.graphicBoxes === false) return false;
     const liveForming = inputs.showLiveForming !== false && inputs.showFvg !== false;
-    const liveFill = inputs.deleteOnFill !== false || inputs.showPartial === true;
+    const liveFill = inputs.deleteOnFill !== false || inputs.showFvg !== false;
     if (liveForming || liveFill) return true;
     return inputs.requireCorrelatedFvg === true;
   }

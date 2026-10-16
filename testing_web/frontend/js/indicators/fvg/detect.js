@@ -55,11 +55,6 @@ export function isIfvgCloseInversion(zone, bar) {
   return bar.close > zone.top;
 }
 
-export function isPartialClose(zone, bar) {
-  if (zone.kind === "bull") return bar.close < zone.bottom;
-  return bar.close > zone.top;
-}
-
 /** @param {object} zone @param {object} bar @param {"close"|"wick"} fillType */
 export function isFvgFilled(zone, bar, fillType) {
   if (zone.kind === "bull") {

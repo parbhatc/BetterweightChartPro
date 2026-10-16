@@ -151,7 +151,7 @@ export function initFvgEngine(script) {
     showIfvg,
     showCeLine: inputs.showCeLine === true,
     ceLineColor: inputsColorWithOpacity(inputs, "ceLineColor", "#787b86", 75),
-    showPartial: true,
+    showPartial: inputs.showPartialCloseFvg !== false,
     maxFvgZones,
     maxIfvgZones,
     ifvgLabel: String(inputs.ifvgLabel ?? "IFVG"),

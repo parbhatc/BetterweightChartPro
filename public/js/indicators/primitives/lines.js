@@ -5,6 +5,8 @@ import { resolveOverlayTimeMapping, createOverlayTimeToXFromMapping } from "./ov
 import { verticalSegmentIntersectsViewport } from "./viewportCulling.js";
 
 const LABEL_FONT = "600 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const HTF_LABEL_FONT = "700 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const SESSION_LABEL_FONT = "700 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
 /** @param {number} x1 @param {number} x2 @param {number} paneW */
 function lineIntersectsViewport(x1, x2, paneW) {
@@ -44,19 +46,54 @@ function drawLine(ctx, line, x1, x2, priceToY, paneW, paneHeight) {
   ctx.stroke();
   ctx.restore();
 
-  if (!line.label || !lineIntersectsViewport(x1, x2, paneW)) return;
+  if (!lineIntersectsViewport(x1, x2, paneW)) return;
+
+  if (line.sessionLabel) {
+    const rightX = Math.min(paneW, Math.max(x1, x2));
+    ctx.save();
+    ctx.font = SESSION_LABEL_FONT;
+    ctx.fillStyle = line.sessionLabelColor ?? line.color ?? "#fafafa";
+    const labelAbove = line.kind === "high";
+    ctx.textBaseline = labelAbove ? "bottom" : "top";
+    ctx.textAlign = "right";
+    ctx.globalAlpha = swept ? 0.7 : 0.95;
+    const labelX = rightX - 8;
+    const labelY = labelAbove ? y1 - 4 : y1 + 4;
+    const labelText = String(line.sessionLabel);
+    const labelWidth = ctx.measureText(labelText).width;
+    const labelTop = labelAbove ? labelY - 16 : labelY - 1;
+    ctx.fillStyle = "rgba(8, 11, 18, 0.82)";
+    ctx.fillRect(labelX - labelWidth - 4, labelTop, labelWidth + 8, 17);
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(8, 11, 18, 0.92)";
+    ctx.fillStyle = line.sessionLabelColor ?? line.color ?? "#fafafa";
+    ctx.strokeText(labelText, labelX, labelY);
+    ctx.fillText(labelText, labelX, labelY);
+    ctx.restore();
+  }
+
+  if (!line.label) return;
 
   if (line.labelAnchor === "right") {
     const rightX = Math.max(x1, x2);
     const ly = y1;
     if (!Number.isFinite(rightX) || !Number.isFinite(ly)) return;
     ctx.save();
-    ctx.font = LABEL_FONT;
+    ctx.font = line.labelEmphasis ? HTF_LABEL_FONT : LABEL_FONT;
     ctx.fillStyle = line.labelTextColor ?? line.color ?? "#fafafa";
     ctx.textBaseline = "middle";
-    ctx.textAlign = "left";
+    ctx.textAlign = line.extendRight ? "right" : "left";
     ctx.globalAlpha = swept ? 0.7 : 0.95;
-    ctx.fillText(String(line.label), rightX + 4, ly);
+    const labelText = String(line.label);
+    const labelX = line.extendRight ? paneW - 4 : rightX + 4;
+    if (line.labelEmphasis) {
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.95)";
+      ctx.strokeText(labelText, labelX, ly);
+    }
+    ctx.fillText(labelText, labelX, ly);
     ctx.restore();
     return;
   }
@@ -134,8 +171,8 @@ class LinesPaneRenderer {
       const paneW = mediaSize.width;
       const pad = 4;
       for (const line of lines) {
-        const x1 = timeToX(line.timeStart);
-        const x2 = timeToX(line.timeEnd);
+        const x1 = line.extendLeft ? 0 : timeToX(line.timeStart);
+        const x2 = line.extendRight ? paneW : timeToX(line.timeEnd);
         if (x1 != null && x2 != null) {
           const lo = Math.min(x1, x2);
           const hi = Math.max(x1, x2);
@@ -179,8 +216,14 @@ function linesEqual(a, b) {
       x.label !== y.label ||
       x.labelBg !== y.labelBg ||
       x.labelTextColor !== y.labelTextColor ||
+      x.labelEmphasis !== y.labelEmphasis ||
       x.labelAnchor !== y.labelAnchor ||
       x.labelPlain !== y.labelPlain ||
+      x.sessionLabel !== y.sessionLabel ||
+      x.sessionLabelColor !== y.sessionLabelColor ||
+      Boolean(x.extendLeft) !== Boolean(y.extendLeft) ||
+      Boolean(x.extendRight) !== Boolean(y.extendRight) ||
+      String(x.dash ?? "") !== String(y.dash ?? "") ||
       x.swept !== y.swept ||
       x.width !== y.width
     ) {

@@ -22,7 +22,7 @@ import {
   walkReleaseBar,
   walkSessionBar,
 } from "./sessions.js";
-import { LEVEL_REFERENCE_PALETTE } from "./palette.js";
+import { formatLevelLabel } from "./labels.js";
 
 /** @typedef {import("/js/indicators/script/liquidityMatrix.js").LiqLine} LiqLine */
 
@@ -88,8 +88,7 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
   const maxSessions = Math.max(1, Number(opts.maxSessions) || 3);
   const proximity = (Number(opts.tickSize) || 0.25) * 6;
   const showLabels = opts.showLabels !== false;
-  const confHi = String(opts.confHiColor ?? LEVEL_REFERENCE_PALETTE.confluenceHigh);
-  const confLo = String(opts.confLoColor ?? LEVEL_REFERENCE_PALETTE.confluenceLow);
+  const showPriceInLabels = opts.showPriceInLabels !== false;
   const mergeConfluence = opts.mergeConfluence !== false;
 
   const { htf, sessions } = buildLevelsEngineConfig(opts.timeLayers ?? [], opts.sessionLayers ?? [], {
@@ -263,7 +262,7 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
   out = keepRecentSweptLevels(out, bars, endIdx, sweptHoldBars, maxSwept);
 
   if (mergeConfluence) {
-    out = applyClusterConfluence(out, proximity, confHi, confLo);
+    out = applyClusterConfluence(out, proximity);
   }
 
   const visStart = bars[0].time;
@@ -276,8 +275,8 @@ export function runLevelsEngine(bars, anchorUnix, opts) {
     }
     if (!showLabels || lvl.showLabel === false) {
       lvl.label = "";
-    } else if (lvl.label && !lvl.label.includes("(")) {
-      lvl.label = `${lvl.label} (${Number(lvl.price).toFixed(2)})`;
+    } else if (lvl.label) {
+      lvl.label = formatLevelLabel(lvl.label, lvl.price, showPriceInLabels);
     }
   }
 

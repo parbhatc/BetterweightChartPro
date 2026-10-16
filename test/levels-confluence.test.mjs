@@ -17,18 +17,66 @@ function line(label, startTime, overrides = {}) {
   };
 }
 
-test("previous-period references merge with matching older timeframe levels", () => {
+test("previous-period references merge while retaining the timeframe color", () => {
   const lines = [
-    line("4H Low (100.00)", 1_000),
-    line("PDL (100.00)", 200_000, { referenceLevel: true }),
+    line("4H Low (100.00)", 1_000, { color: "#4h" }),
+    line("PDL (100.00)", 200_000, { referenceLevel: true, color: "#pdl" }),
   ];
 
-  const merged = applyClusterConfluence(lines, 1.5, "#high", "#low");
+  const merged = applyClusterConfluence(lines, 1.5);
 
   assert.equal(merged.length, 1);
   assert.equal(merged[0].label, "4H & PDL");
-  assert.equal(merged[0].color, "#low");
+  assert.equal(merged[0].color, "#4h");
   assert.equal(merged[0].lineWidth, 3);
+});
+
+test("merged levels use the highest timeframe label and color", () => {
+  const merged = applyClusterConfluence([
+    line("1H Low", 2_000, { color: "#1h" }),
+    line("4H Low", 1_000, { color: "#4h" }),
+  ], 1.5);
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].label, "4H & 1H Low");
+  assert.equal(merged[0].color, "#4h");
+});
+
+test("timeframe color takes priority when merging with a session level", () => {
+  const merged = applyClusterConfluence([
+    line("London Low", 2_000, {
+      color: "#london",
+      sessionLabelColor: "#london-label",
+      sessionBorn: 2_000,
+      sessionTag: "London",
+    }),
+    line("1H Low", 1_000, { color: "#1h" }),
+  ], 1.5);
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].label, "1H Low");
+  assert.equal(merged[0].sessionLabel, "London");
+  assert.equal(merged[0].sessionLabelColor, "#london-label");
+  assert.equal(merged[0].splitSessionLabel, true);
+  assert.equal(merged[0].color, "#1h");
+});
+
+test("Asia color stays on the line when merged with a timeframe level", () => {
+  const merged = applyClusterConfluence([
+    line("Asia Low", 2_000, {
+      color: "#asia",
+      sessionLabelColor: "#asia-label",
+      sessionBorn: 2_000,
+      sessionTag: "Asia",
+    }),
+    line("1H Low", 1_000, { color: "#1h" }),
+  ], 1.5);
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].label, "1H Low");
+  assert.equal(merged[0].sessionLabel, "Asia");
+  assert.equal(merged[0].sessionLabelColor, "#asia-label");
+  assert.equal(merged[0].color, "#asia");
 });
 
 test("ordinary levels still respect the one-day confluence boundary", () => {
@@ -42,7 +90,7 @@ test("ordinary levels still respect the one-day confluence boundary", () => {
   assert.equal(merged.length, 2);
 });
 
-test("session midpoint joins only its nearest overlapping level", () => {
+test("session midpoint remains separate from nearby levels", () => {
   const lines = [
     line("4H Low (99.75)", 1_000, { price: 99.75 }),
     line("1H High (100.50)", 1_000, { price: 100.5, kind: "high" }),
@@ -50,13 +98,19 @@ test("session midpoint joins only its nearest overlapping level", () => {
       referenceLevel: true,
       referenceTag: "Mid",
       kind: "mid",
+      label: "",
+      extendLeft: true,
+      extendRight: true,
     }),
   ];
 
   const merged = applyClusterConfluence(lines, 1.5, "#high", "#low");
 
-  assert.equal(merged.length, 2);
-  assert.equal(merged.some((item) => item.label === "4H & Mid"), true);
+  assert.equal(merged.length, 3);
+  const midpoint = merged.find((item) => item.referenceTag === "Mid");
+  assert.equal(midpoint?.label, "");
+  assert.equal(midpoint?.extendLeft, true);
+  assert.equal(midpoint?.extendRight, true);
   assert.equal(merged.some((item) => item.label.includes("1H")), true);
 });
 

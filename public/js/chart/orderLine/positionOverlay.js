@@ -704,7 +704,7 @@ export function createPositionOverlay(widget) {
     const { tickSize, tickValue } = tickMeta();
     const pnl = calcPnl(position.entry, mark, position.qty, tickSize, tickValue);
     const profit = pnl >= 0;
-    const text = formatPnl(pnl, "both", tickSize, tickValue);
+    const text = positionBodyText(formatPnl(pnl, "both", tickSize, tickValue));
     const colors = lineColors(profit);
     const sideColor = positionSideColor(position.qty);
     const textChanged = text !== position.lastText;
@@ -1063,7 +1063,13 @@ export function createPositionOverlay(widget) {
       const next = Number(price);
       if (!Number.isFinite(next)) return false;
       externalMark = next;
-      if (position?.line) scheduleRefreshPositionPnl(next);
+      if (position?.line) {
+        // Host marks already arrive through a requestAnimationFrame-coalesced
+        // path. Do not let the candle-paint throttle make the account UP&L and
+        // position pill disagree or leave the final broker tick unpainted.
+        lastPnlPaintAt = 0;
+        scheduleRefreshPositionPnl(next);
+      }
       return true;
     },
     setBracketPillOffset(offset) {

@@ -2,11 +2,13 @@ import { buildFvgBoxLabel, fvgZonePassesSizeFilter } from "../ui/symbolSizeRules
 import { resolveLayerExtend } from "../ui/fvgExtendBoxesPanel.js";
 import { resolveLayerBoxFills } from "../ui/fvgBoxColorsPanel.js";
 import { barChartTime, fvgAtBar, takeRecentZones, zoneConfirmTime, zoneFromFvgHit, zoneInvertTime } from "./detect.js";
+import { isPartialFvgVisible } from "./partial.js";
 import { formingSeriesForLayer } from "./layers.js";
 import { passesCorrelatedFilter } from "./zones.js";
 import { debugFvgDrawBox, debugFvgEmitResult } from "./fvgDebug.js";
 import { DEFAULT_FVG_BEAR_COLOR, DEFAULT_FVG_BULL_COLOR } from "./palette.js";
 import { fvgCePrice } from "./ce.js";
+import { isFvgVisibleForMitigationFilter } from "./tap.js";
 
 const LABEL_DISTANCE_BARS = 10;
 
@@ -18,6 +20,7 @@ export function emitZoneBox(script, layer, series, zone, opts = {}) {
   if (isIfvg && !cfg.showIfvg) return;
   if (!isIfvg && zone.forming && !cfg.showLiveForming) return;
   if (!isIfvg && !zone.forming && !cfg.showFvg) return;
+  if (!isIfvg && !isPartialFvgVisible(zone, cfg.showPartial)) return;
 
   const confirmBar = series[zone.confirmIndex];
   const confirmTime = barChartTime(script, confirmBar, zone.confirmIndex) ?? zone.startTime;
@@ -156,6 +159,7 @@ export function emitAllBoxes(script, opts = {}) {
     size: 0,
     formingCorrelated: 0,
     formingSize: 0,
+    mitigated: 0,
     cappedFvg: 0,
     cappedIfvg: 0,
   };
@@ -170,6 +174,10 @@ export function emitAllBoxes(script, opts = {}) {
     const ifvgActive = script.state.layerIfvg.get(layer.label) ?? [];
     const lastIdx = series.length - 1;
     for (const zone of active) {
+      if (!isFvgVisibleForMitigationFilter(layer, zone)) {
+        filtered.mitigated += 1;
+        continue;
+      }
       if (zone.filled) {
         filtered.filled += 1;
         continue;

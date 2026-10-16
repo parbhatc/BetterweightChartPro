@@ -107,6 +107,14 @@ function handleTestingSettingsClick(ev, ctx) {
     return true;
   }
 
+  const tfUnmitigated = target.closest("[data-tf-unmitigated]");
+  if (tfUnmitigated instanceof HTMLElement && !tfUnmitigated.hasAttribute("disabled")) {
+    setTvCheck(tfUnmitigated, !tfUnmitigated.classList.contains("tv-set__check--on"));
+    readDraftFromUi();
+    applyDraft();
+    return true;
+  }
+
   const fvgExtend = target.closest("[data-fvg-extend]");
   if (fvgExtend instanceof HTMLElement && !fvgExtend.hasAttribute("disabled")) {
     setTvCheck(fvgExtend, !fvgExtend.classList.contains("tv-set__check--on"));

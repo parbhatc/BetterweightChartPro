@@ -1,11 +1,6 @@
 import { etParts } from "/js/core/etTime.js";
 import { resolveHtfSeries } from "/js/indicators/security/htfAccess.js";
 import { markPreviousPeriodSweeps } from "./referenceSweep.js";
-import {
-  allTimeHighFromBars,
-  ATH_HISTORY_BARS,
-  ATH_RESOLUTION,
-} from "./allTimeHigh.js";
 
 const MINUTES_PER_DAY = 24 * 60;
 const DEFAULT_SESSION_START = "18:00";
@@ -115,7 +110,9 @@ function makeReferenceLine(price, label, color, kind, range, showLabels) {
     bornTime: range.startTime,
     endTime: range.endTime,
     endChartTime: range.endChartTime,
-    label: showLabels ? `${label} (${Number(price).toFixed(2)})` : "",
+    // Price display is applied centrally after confluence merging so the
+    // setting affects reference, session, news, and HTF labels consistently.
+    label: showLabels ? label : "",
     color,
     lineWidth: 2,
     kind,
@@ -137,13 +134,7 @@ function addPreviousPeriodLines(out, bar, highLabel, lowLabel, color, range, sho
 function addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, sessionRange) {
   if (!opts.midpointEnabled || !sessionRange) return;
   const startMinutes = hmMinutes(opts.midpointStartTime, 18 * 60);
-  const endValue = String(opts.midpointEndTime ?? "current");
-  const endMinutes =
-    endValue === "current" ? null : hmMinutes(endValue, null);
-  const endOffset =
-    endMinutes == null
-      ? minutesFromSessionStart(anchorUnix, startMinutes)
-      : (endMinutes - startMinutes + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  const endOffset = minutesFromSessionStart(anchorUnix, startMinutes);
 
   let high = -Infinity;
   let low = Infinity;
@@ -152,8 +143,7 @@ function addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, sessionRange
   for (let i = sessionRange.first; i <= sessionRange.last; i += 1) {
     const bar = utcBars[i];
     const offset = minutesFromSessionStart(bar.time, startMinutes);
-    // A fixed 09:30 end means the completed range through 09:29.
-    if (endMinutes != null ? offset >= endOffset : offset > endOffset) continue;
+    if (offset > endOffset) continue;
     if (first < 0) first = i;
     last = i;
     high = Math.max(high, Number(bar.high));
@@ -167,20 +157,24 @@ function addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, sessionRange
     endTime: utcBars[last].time,
     endChartTime: chartBars[last]?.time ?? utcBars[last].time,
   };
-  out.push(
-    makeReferenceLine(
-      (high + low) / 2,
-      "Mid",
-      opts.midpointColor,
-      "mid",
-      range,
-      opts.showLabels,
-    ),
+  const line = makeReferenceLine(
+    (high + low) / 2,
+    "Mid",
+    opts.midpointColor,
+    "mid",
+    range,
+    false,
   );
+  const style = String(opts.midpointLineStyle ?? "dotted");
+  line.lineWidth = Math.min(5, Math.max(1, Number(opts.midpointLineWidth) || 1));
+  line.lineDash = style === "dotted" ? [2, 3] : style === "dashed" ? [7, 5] : [];
+  line.extendLeft = true;
+  line.extendRight = true;
+  out.push(line);
 }
 
 /**
- * Build PDH/PDL (on by default), opt-in PWH/PWL and ATH, and session midpoint lines.
+ * Build PDH/PDL (on by default), opt-in PWH/PWL, and session midpoint lines.
  * Previous periods aggregate supported hourly history into futures trading
  * days/weeks (6:00 PM ET boundaries); midpoint uses pane bars so it updates on
  * every forming candle and remains replay-safe.
@@ -227,28 +221,6 @@ export function buildReferenceLevelLines(utcBars, chartBars, anchorUnix, opts, c
       referenceRange,
       opts.showLabels,
     );
-  }
-  if (opts.athEnabled) {
-    const daily = resolveHtfSeries(
-      ctx,
-      symbol,
-      ATH_RESOLUTION,
-      ATH_HISTORY_BARS,
-      { request: false },
-    ).utcBars;
-    const ath = allTimeHighFromBars(daily, anchorUnix);
-    if (ath != null && referenceRange) {
-      out.push(
-        makeReferenceLine(
-          ath,
-          "ATH",
-          opts.athColor,
-          "high",
-          referenceRange,
-          opts.showLabels,
-        ),
-      );
-    }
   }
   addMidpointLine(out, utcBars, chartBars, anchorUnix, opts, midpointRange);
   markPreviousPeriodSweeps(out, utcBars, chartBars, referenceRange);

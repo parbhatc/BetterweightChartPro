@@ -325,9 +325,15 @@ test("live PnL appearance patches never invalidate the price-line stroke", () =>
 
 test("host mark price keeps the position pill on live LTP instead of candle close", async () => {
   const previousRaf = globalThis.requestAnimationFrame;
+  let pendingRaf = null;
   globalThis.requestAnimationFrame = (callback) => {
-    callback();
+    pendingRaf = callback;
     return 1;
+  };
+  const flushRaf = () => {
+    const callback = pendingRaf;
+    pendingRaf = null;
+    callback?.();
   };
   try {
     let liveBarListener = null;
@@ -357,12 +363,17 @@ test("host mark price keeps the position pill on live LTP instead of candle clos
       emitPositionUpl() {},
     });
 
+    overlay.setPresentation({ symbolLabel: "MNQ", tickSize: 0.25, tickValue: 0.5 });
     await overlay.buy({ price: 100, qty: 1 });
     assert.equal(overlay.setMarkPrice(101), true);
-    assert.equal(appearances.at(-1).text, "+$2.00");
+    flushRaf();
+    assert.equal(appearances.at(-1).text, "MNQ · +$2.00");
+    assert.equal(overlay.setMarkPrice(102), true);
+    flushRaf();
+    assert.equal(appearances.at(-1).text, "MNQ · +$4.00");
 
     liveBarListener?.({ close: 99 });
-    assert.equal(appearances.at(-1).text, "+$2.00");
+    assert.equal(appearances.at(-1).text, "MNQ · +$4.00");
   } finally {
     if (previousRaf) globalThis.requestAnimationFrame = previousRaf;
     else delete globalThis.requestAnimationFrame;

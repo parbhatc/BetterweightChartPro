@@ -2,6 +2,17 @@ import { CHECK_SVG, MENU_CHEVRON } from "/js/drawings/settings/dialog/utils.js";
 import { ICON_CLOSE } from "/js/indicators/ui/icons.js";
 import { normalizeResolutionId, resolutionDisplayTitle } from "/js/chart/resolutionFormat.js";
 import { resolutionSec } from "/js/chart/resolutions.js";
+import {
+  DEFAULT_FVG_TIMEFRAMES,
+  normalizeFvgTimeframes,
+  resolveFvgTimeframeRows,
+} from "./fvgTimeframeRows.js";
+
+export {
+  DEFAULT_FVG_TIMEFRAMES,
+  normalizeFvgTimeframes,
+  resolveFvgTimeframeRows,
+} from "./fvgTimeframeRows.js";
 
 const LEGACY_TF_ALIASES = {
   "1m": "1",
@@ -47,71 +58,13 @@ function fvgLayerMatchesChartResolution(layer, chartResolution, chartSec) {
   return coerceFvgResolutionId(layer.tfId) === coerceFvgResolutionId(chartResolution);
 }
 
-/** @typedef {{ enabled: boolean, label: string, timeframe: string }} FvgTimeframeRow */
-
-/** @type {FvgTimeframeRow[]} */
-export const DEFAULT_FVG_TIMEFRAMES = [
-  { enabled: true, label: "FVG", timeframe: "chart" },
-  { enabled: false, label: "15m FVG", timeframe: "15" },
-  { enabled: false, label: "1h FVG", timeframe: "60" },
-  { enabled: false, label: "4h FVG", timeframe: "240" },
-  { enabled: false, label: "D FVG", timeframe: "D" },
-];
-
-const LEGACY_TF_DEFS = [
-  { on: "tf1On", tf: "tf1", label: "tf1Label", defTf: "chart", defLabel: "FVG", defaultOn: true },
-  { on: "tf2On", tf: "tf2", label: "tf2Label", defTf: "15", defLabel: "15m FVG" },
-  { on: "tf3On", tf: "tf3", label: "tf3Label", defTf: "60", defLabel: "1h FVG" },
-  { on: "tf4On", tf: "tf4", label: "tf4Label", defTf: "240", defLabel: "4h FVG" },
-  { on: "tf5On", tf: "tf5", label: "tf5Label", defTf: "D", defLabel: "D FVG" },
-];
-
-/** @param {unknown} raw */
-export function normalizeFvgTimeframes(raw) {
-  if (!Array.isArray(raw)) return DEFAULT_FVG_TIMEFRAMES.map((r) => ({ ...r }));
-  return raw
-    .map((r) => ({
-      enabled: r?.enabled !== false,
-      label: String(r?.label ?? "").trim(),
-      timeframe: String(r?.timeframe ?? "chart").trim() || "chart",
-    }))
-    .filter((r) => r.label);
-}
-
-/** @param {object} inputs */
-function migrateLegacyFvgTimeframes(inputs) {
-  /** @type {FvgTimeframeRow[]} */
-  const rows = [];
-  for (const def of LEGACY_TF_DEFS) {
-    const enabled = def.defaultOn ? inputs[def.on] !== false : Boolean(inputs[def.on]);
-    rows.push({
-      enabled,
-      label: String(inputs[def.label] ?? def.defLabel).trim(),
-      timeframe: String(inputs[def.tf] ?? def.defTf),
-    });
-  }
-  return normalizeFvgTimeframes(rows);
-}
-
-/** @param {object} inputs @returns {FvgTimeframeRow[]} */
-export function resolveFvgTimeframeRows(inputs) {
-  if (Array.isArray(inputs.fvgTimeframes) && inputs.fvgTimeframes.length > 0) {
-    return normalizeFvgTimeframes(inputs.fvgTimeframes);
-  }
-  const hasLegacy = LEGACY_TF_DEFS.some(
-    (d) => d.on in inputs || d.tf in inputs || d.label in inputs,
-  );
-  if (hasLegacy) return migrateLegacyFvgTimeframes(inputs);
-  return DEFAULT_FVG_TIMEFRAMES.map((r) => ({ ...r }));
-}
-
 /**
  * @param {object} inputs
  * @param {number} chartSec
- * @returns {{ tfSec: number, tfId: string, label: string }[]}
+ * @returns {{ tfSec: number, tfId: string, label: string, unmitigatedOnly: boolean }[]}
  */
 export function resolveFvgLayers(inputs, chartSec) {
-  /** @type {{ tfSec: number, tfId: string, label: string }[]} */
+  /** @type {{ tfSec: number, tfId: string, label: string, unmitigatedOnly: boolean }[]} */
   const layers = [];
   for (const row of resolveFvgTimeframeRows(inputs)) {
     if (!row.enabled) continue;
@@ -121,7 +74,12 @@ export function resolveFvgLayers(inputs, chartSec) {
     const tfId = tfRaw === "chart" ? "chart" : coerceFvgResolutionId(tfRaw);
     const tfSec = tfId === "chart" ? chartSec : resolutionSec(tfId);
     if (!tfSec) continue;
-    layers.push({ tfSec, tfId, label });
+    layers.push({
+      tfSec,
+      tfId,
+      label,
+      unmitigatedOnly: row.unmitigatedOnly === true,
+    });
   }
   return layers;
 }
@@ -181,6 +139,7 @@ export function renderFvgTimeframesPanel(input, draftInputs, getTimeframeOptions
       const tf = row.timeframe ?? "chart";
       const tfLabel = timeframeOptionLabel(tf, options);
       const on = row.enabled !== false;
+      const unmitigatedOnly = row.unmitigatedOnly === true;
       return `<div class="tv-ind-settings__tf-rule-row" data-tf-rule-row>
       <div class="tv-ind-settings__tf-rule-enable">
         <button type="button" class="tv-set__check${on ? " tv-set__check--on" : ""}" data-tf-enabled role="checkbox" aria-checked="${on ? "true" : "false"}" aria-label="Enable"${disabledAttr}>
@@ -192,12 +151,17 @@ export function renderFvgTimeframesPanel(input, draftInputs, getTimeframeOptions
         <span data-tf-timeframe-label>${escapeHtml(tfLabel)}</span>
         <span class="tv-set__select-chev">${MENU_CHEVRON}</span>
       </button>
+      <div class="tv-ind-settings__tf-rule-unmitigated">
+        <button type="button" class="tv-set__check${unmitigatedOnly ? " tv-set__check--on" : ""}" data-tf-unmitigated role="checkbox" aria-checked="${unmitigatedOnly ? "true" : "false"}" aria-label="Show only untouched FVGs" title="Hide this timeframe's FVG after price first touches it"${disabledAttr}>
+          <span class="tv-set__check-box">${unmitigatedOnly ? CHECK_SVG : ""}</span>
+        </button>
+      </div>
       <button type="button" class="tv-ind-settings__tf-rule-remove" data-tf-remove aria-label="Remove timeframe"${disabledAttr}>${ICON_CLOSE}</button>
     </div>`;
     })
     .join("");
 
-  return `<div class="tv-ind-settings__tf-rules${disabledClass}" data-tf-rules-root data-tf-rules-field="${input.id}">
+  return `<div class="tv-ind-settings__tf-rules tv-ind-settings__tf-rules--fvg${disabledClass}" data-tf-rules-root data-tf-rules-field="${input.id}">
     <div class="tv-ind-settings__tf-rules-head">
       ${input.title ? `<span class="tv-set__field-label">${input.title}</span>` : "<span></span>"}
       <button type="button" class="tv-ind-settings__tf-rule-add" data-tf-add${disabledAttr}>
@@ -206,7 +170,7 @@ export function renderFvgTimeframesPanel(input, draftInputs, getTimeframeOptions
       </button>
     </div>
     <div class="tv-ind-settings__tf-rules-cols" aria-hidden="true">
-      <span></span><span>Label</span><span>Timeframe</span><span></span>
+      <span></span><span>Label</span><span>Timeframe</span><span>Untouched</span><span></span>
     </div>
     <div class="tv-ind-settings__tf-rules-list" data-tf-rules-list>
       ${rowHtml || `<div class="tv-ind-settings__tf-rules-empty">No timeframes — add one to show FVG layers.</div>`}
@@ -218,13 +182,14 @@ export function renderFvgTimeframesPanel(input, draftInputs, getTimeframeOptions
 export function readFvgTimeframesFromPanel(inputsPanel, fieldId) {
   const root = inputsPanel.querySelector(`[data-tf-rules-field="${fieldId}"]`);
   if (!root) return null;
-  /** @type {FvgTimeframeRow[]} */
+  /** @type {Array<{ enabled: boolean, label: string, timeframe: string, unmitigatedOnly: boolean }>} */
   const rows = [];
   root.querySelectorAll("[data-tf-rule-row]").forEach((row) => {
     if (!(row instanceof HTMLElement)) return;
     const labelEl = row.querySelector("[data-tf-label]");
     const tfBtn = row.querySelector("[data-tf-timeframe]");
     const enabledBtn = row.querySelector("[data-tf-enabled]");
+    const unmitigatedBtn = row.querySelector("[data-tf-unmitigated]");
     const label = labelEl instanceof HTMLInputElement ? labelEl.value.trim() : "";
     if (!label) return;
     const timeframe =
@@ -233,18 +198,23 @@ export function readFvgTimeframesFromPanel(inputsPanel, fieldId) {
       enabledBtn instanceof HTMLElement
         ? enabledBtn.classList.contains("tv-set__check--on")
         : true;
-    rows.push({ enabled, label, timeframe });
+    const unmitigatedOnly =
+      unmitigatedBtn instanceof HTMLElement
+        ? unmitigatedBtn.classList.contains("tv-set__check--on")
+        : false;
+    rows.push({ enabled, label, timeframe, unmitigatedOnly });
   });
   return rows;
 }
 
-/** @param {HTMLElement} list @param {Partial<FvgTimeframeRow>} [seed] @param {{ id: string, label: string }[]} [options] */
+/** @param {HTMLElement} list @param {Partial<{ enabled: boolean, label: string, timeframe: string, unmitigatedOnly: boolean }>} [seed] @param {{ id: string, label: string }[]} [options] */
 export function appendFvgTimeframeRow(list, seed = {}, options = []) {
   const empty = list.querySelector(".tv-ind-settings__tf-rules-empty");
   empty?.remove();
   const tf = seed.timeframe ?? "chart";
   const tfLabel = timeframeOptionLabel(tf, options);
   const on = seed.enabled !== false;
+  const unmitigatedOnly = seed.unmitigatedOnly === true;
   const row = document.createElement("div");
   row.className = "tv-ind-settings__tf-rule-row";
   row.dataset.tfRuleRow = "";
@@ -259,6 +229,11 @@ export function appendFvgTimeframeRow(list, seed = {}, options = []) {
       <span data-tf-timeframe-label>${escapeHtml(tfLabel)}</span>
       <span class="tv-set__select-chev">${MENU_CHEVRON}</span>
     </button>
+    <div class="tv-ind-settings__tf-rule-unmitigated">
+      <button type="button" class="tv-set__check${unmitigatedOnly ? " tv-set__check--on" : ""}" data-tf-unmitigated role="checkbox" aria-checked="${unmitigatedOnly ? "true" : "false"}" aria-label="Show only untouched FVGs" title="Hide this timeframe's FVG after price first touches it">
+        <span class="tv-set__check-box">${unmitigatedOnly ? CHECK_SVG : ""}</span>
+      </button>
+    </div>
     <button type="button" class="tv-ind-settings__tf-rule-remove" data-tf-remove aria-label="Remove timeframe">${ICON_CLOSE}</button>`;
   list.appendChild(row);
   row.querySelector("[data-tf-label]")?.focus();

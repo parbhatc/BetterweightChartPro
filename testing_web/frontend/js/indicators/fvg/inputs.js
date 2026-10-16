@@ -43,7 +43,11 @@ export function buildInputs() {
     ),
     createInt("maxBarsBack", "Max bars to find FVG", 300, { section: "FVG settings" }),
     createInt("maxFvgZones", "Max FVG zones to show", 300, { min: 0, section: "FVG settings" }),
-    createColor("partialCloseColor", "Partial close", { color: "#ff9800", opacity: 20 }, { section: "FVG settings" }),
+    createBool("showPartialCloseFvg", "Show partial-close FVGs", true, { section: "FVG settings" }),
+    createColor("partialCloseColor", "Partial close", { color: "#ff9800", opacity: 20 }, {
+      section: "FVG settings",
+      disabled: (inputs) => inputs.showPartialCloseFvg === false,
+    }),
     createBool("showLiveForming", "Show live forming FVG", true, { section: "Live Forming" }),
     inlinePair(
       "Live Forming",

@@ -53,7 +53,7 @@ test("the testing FVG preset exposes and resets its timeframe colors", () => {
   assert.equal(dark.inputs.ifvgBoxColor, "#ffff00");
 });
 
-test("dark Levels uses the pre-Gray HTF and session colors", () => {
+test("dark Levels uses the vivid HTF colors and matched session colors", () => {
   assert.equal(resolveLevelPalettePreset(undefined), "dark");
   assert.equal(resolveLevelPalettePreset("gray"), "gray");
   const levelsHtfStyles = { all: () => ({
@@ -67,8 +67,8 @@ test("dark Levels uses the pre-Gray HTF and session colors", () => {
   const dark = levelEnginePalette("dark", levelsHtfStyles, levelsSessionDefs);
   assert.equal(dark.htfStyles["240"].hi, LEVEL_DARK_HTF_PALETTE["240"].hi);
   assert.equal(dark.htfStyles["60"].lo, "#ff4d4d");
-  assert.equal(dark.sessionDefs.asia.color, LEVEL_DARK_SESSION_PALETTE.asia);
-  assert.equal(dark.sessionDefs.london.color, "#9400d3");
+  assert.equal(dark.sessionDefs.asia.color, "#2247af");
+  assert.equal(dark.sessionDefs.london.color, "#762632");
   assert.equal(migrateLegacyLevelColor("#f59e0b", "#f59e0b", "#8a7654", "dark"), "#f59e0b");
   assert.equal(migrateLegacyLevelColor("#75647d", "#9400d3", "#75647d", "dark"), "#9400d3");
   assert.equal(migrateLegacyLevelColor("#f59e0b", "#f59e0b", "#8a7654", "gray"), "#8a7654");

@@ -31,16 +31,12 @@ export function testingIndicatorPresetPatch(defId, id) {
         indicatorAppearancePreset: "gray",
         previousDayColor: "#8a7654", previousDayColorOpacity: 100,
         previousWeekColor: "#5e7482", previousWeekColorOpacity: 100,
-        midpointColor: "#71805b", midpointColorOpacity: 100,
-        confHiColor: "#75647d", confHiColorOpacity: 100,
-        confLoColor: "#8a7654", confLoColorOpacity: 100,
+        midpointColor: "#837126", midpointColorOpacity: 100,
       } : {
         indicatorAppearancePreset: "dark",
         previousDayColor: "#f59e0b", previousDayColorOpacity: 100,
         previousWeekColor: "#38bdf8", previousWeekColorOpacity: 100,
-        midpointColor: "#a3e635", midpointColorOpacity: 100,
-        confHiColor: "#9400d3", confHiColorOpacity: 100,
-        confLoColor: "#ffaa00", confLoColorOpacity: 100,
+        midpointColor: "#837126", midpointColorOpacity: 100,
       },
     },
   };

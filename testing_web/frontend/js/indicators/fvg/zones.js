@@ -5,10 +5,10 @@ import {
   isFvgFilled,
   isFvgTapped,
   isIfvgCloseInversion,
-  isPartialClose,
   layerMatchesCorrelatedTfSel,
   zoneFromFvgHit,
 } from "./detect.js";
+import { isPartialClose } from "./partial.js";
 import { debugFvgZoneEvent } from "./fvgDebug.js";
 
 /** @param {object} script @param {{ tfSec: number, tfId: string, label: string }} layer @param {object[]} primarySeries @param {object} zone */
@@ -28,7 +28,7 @@ export function passesCorrelatedFilter(script, layer, primarySeries, zone) {
 
 /** @param {object} script @param {{ tfSec: number, tfId: string, label: string }} layer @param {object[]} series @param {object[]} active @param {object[]} ifvgActive @param {number} i @param {number} lastBarIdx @param {boolean} [logEvents] */
 export function processFvgBar(script, layer, series, active, ifvgActive, i, lastBarIdx, logEvents = true) {
-  const { deleteOnFill, fillType, showIfvg, showPartial } = script.state.cfg;
+  const { deleteOnFill, fillType, showIfvg } = script.state.cfg;
   const isFormingBar = i === lastBarIdx;
 
   for (let z = active.length - 1; z >= 0; z--) {
@@ -48,7 +48,7 @@ export function processFvgBar(script, layer, series, active, ifvgActive, i, last
       active.splice(z, 1);
       continue;
     }
-    if (isFormingBar && showPartial) {
+    if (isFormingBar) {
       if (isPartialClose(zone, series[i])) {
         active[z] = { ...zone, partial: true };
         continue;
