@@ -273,6 +273,7 @@ export async function wireSymbolAndTimeframePickers(ctx) {
         const prevSymbols = panes.map((p) => p.symbol);
         for (const pane of panes) {
           pane.symbol = sym;
+          pane.symbolInfo = null;
         }
         ctx.symbol = sym;
         ctx.refreshWatermark();

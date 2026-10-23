@@ -379,3 +379,109 @@ test("host mark price keeps the position pill on live LTP instead of candle clos
     else delete globalThis.requestAnimationFrame;
   }
 });
+
+test("a bracket drag updates its model price even when rounded P&L text is unchanged", async () => {
+  const lines = [];
+  const createLine = () => {
+    let price = 0;
+    let moving = null;
+    let moved = null;
+    const line = {
+      isMoving: false,
+      getPrice() { return price; },
+      setPrice(next) { price = next; return this; },
+      onMoving(callback) { moving = callback; return this; },
+      onMove(callback) { moved = callback; return this; },
+      onCancel() { return this; },
+      applyAppearance() { return this; },
+      remove() {},
+      fireMoving() { moving?.(); },
+      fireMove() { moved?.(); },
+    };
+    for (const method of [
+      "setText", "setQuantity", "setLineColor", "setBodyBackgroundColor",
+      "setQuantityBackgroundColor", "setBodyTextColor", "setQuantityTextColor",
+      "setLineStyle", "setLineLength", "setPillSide", "setPillOffset",
+      "setCancelTooltip", "setQuantityBorderColor", "setBodyBorderColor",
+    ]) {
+      line[method] = function () { return this; };
+    }
+    lines.push(line);
+    return line;
+  };
+  const overlay = createPositionOverlay({
+    chart: () => ({ createOrderLine: async () => createLine() }),
+    getBars: () => [{ close: 100 }],
+    getSymbolInfo: () => ({ ticker: "CME_MINI:MNQ1!", minmov: 1, pricescale: 4 }),
+    isChartPanning: () => false,
+    onLiveBar: () => () => {},
+    emitPositionUpl() {},
+  });
+
+  overlay.setPresentation({ symbolLabel: "MNQ", tickSize: 0.25, tickValue: 0.5 });
+  await overlay.sell({ price: 100, qty: 1 });
+  await overlay.setTakeProfit(90);
+  const changes = [];
+  overlay.onTakeProfitChanged((oldPrice, newPrice) => {
+    changes.push([oldPrice, newPrice]);
+  });
+  const takeProfitLine = lines[1];
+  takeProfitLine.setPrice(90.000001);
+  takeProfitLine.fireMoving();
+
+  assert.equal(overlay.getPosition().takeProfit, 90.000001);
+  takeProfitLine.fireMove();
+  assert.deepEqual(changes, [[90, 90.000001]]);
+});
+
+test("a partial close keeps the remaining position and brackets on the chart", async () => {
+  const lines = [];
+  const createLine = () => {
+    const state = { quantity: "", removed: false };
+    const line = {
+      isMoving: false,
+      state,
+      applyAppearance() { return this; },
+      onCancel() { return this; },
+      onMove() { return this; },
+      onMoving() { return this; },
+      remove() { state.removed = true; },
+    };
+    for (const method of [
+      "setText", "setLineColor", "setBodyBackgroundColor",
+      "setQuantityBackgroundColor", "setBodyTextColor", "setQuantityTextColor",
+      "setLineStyle", "setLineLength", "setPillSide", "setPillOffset",
+      "setCancelTooltip", "setQuantityBorderColor", "setBodyBorderColor", "setPrice",
+    ]) {
+      line[method] = function () { return this; };
+    }
+    line.setQuantity = function (quantity) { state.quantity = String(quantity); return this; };
+    lines.push(line);
+    return line;
+  };
+  const overlay = createPositionOverlay({
+    chart: () => ({ createOrderLine: async () => createLine() }),
+    getBars: () => [{ close: 95 }],
+    getSymbolInfo: () => ({ ticker: "CME_MINI:MNQ1!", minmov: 1, pricescale: 4 }),
+    isChartPanning: () => false,
+    onLiveBar: () => () => {},
+    emitPositionUpl() {},
+  });
+
+  overlay.setPresentation({ symbolLabel: "MNQ", tickSize: 0.25, tickValue: 0.5 });
+  await overlay.sell({ price: 100, qty: 6 });
+  await overlay.setStopLoss(105);
+  await overlay.setTakeProfit(90);
+  await overlay.modifyPosition({ entry: 100, qty: -5 });
+
+  assert.deepEqual(overlay.getPosition(), {
+    entry: 100,
+    qty: -5,
+    stopLoss: 105,
+    takeProfit: 90,
+  });
+  assert.equal(lines[0].state.removed, false);
+  assert.equal(lines[0].state.quantity, "5");
+  assert.equal(lines[1].state.quantity, "5");
+  assert.equal(lines[2].state.quantity, "5");
+});

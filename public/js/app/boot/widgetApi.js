@@ -415,7 +415,10 @@ export function createChartWidgetApi(ctx) {
       }
       if (layoutManager && sync?.symbol) {
         const panes = getAllChartPanes();
-        for (const pane of panes) pane.symbol = sym;
+        for (const pane of panes) {
+          pane.symbol = sym;
+          pane.symbolInfo = null;
+        }
         refreshWatermark();
         await showChartPendingOverlay({ chartOverlayLoader }, panes);
         try {

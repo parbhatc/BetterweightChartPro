@@ -35,9 +35,41 @@ import {
   stashPaneResolutionCache,
   tryRestorePaneResolutionCache,
 } from "./resolutionCache.js";
+import { symbolTicker } from "../symbol/ticker.js";
 
 /** Load more when the visible range is within this many bars of the left edge. */
 export const HISTORY_EDGE_BARS = 80;
+
+/** @param {unknown} value */
+function symbolIdentityKeys(value) {
+  const raw = String(value ?? "").trim().toUpperCase().split(":").at(-1) ?? "";
+  if (!raw) return [];
+  const keys = [symbolTicker(raw).trim().toUpperCase()];
+  // Datafeeds commonly resolve the shorthand NQ to the continuous NQ1!
+  // contract. Treat only that explicit continuous suffix as the same ID.
+  const continuous = raw.match(/^(.+)1!$/)?.[1];
+  if (continuous) keys.push(continuous);
+  return keys;
+}
+
+/**
+ * Ensure bar requests never reuse metadata for a pane's previous symbol.
+ * SymbolInfo fields vary by datafeed, so accept a match from any stable ID.
+ * @param {object | null | undefined} symbolInfo
+ * @param {string | null | undefined} symbol
+ */
+export function symbolInfoMatchesSymbol(symbolInfo, symbol) {
+  const wanted = new Set(symbolIdentityKeys(symbol));
+  if (!wanted.size || !symbolInfo) return false;
+  return [
+    symbolInfo.ticker,
+    symbolInfo.name,
+    symbolInfo.full_name,
+    symbolInfo.symbol,
+    symbolInfo.broker_symbol,
+    symbolInfo.streamTicker,
+  ].some((value) => symbolIdentityKeys(value).some((key) => wanted.has(key)));
+}
 
 /**
  * A successful load can come from the network or the resolution cache. Keep
@@ -475,9 +507,11 @@ export function createBarLoader(opts) {
   }
 
   async function ensurePaneSymbolInfo(pane) {
-    if (!pane.symbolInfo && pane.symbol) {
+    if (pane.symbol && !symbolInfoMatchesSymbol(pane.symbolInfo, pane.symbol)) {
       pane.symbolInfo = await datafeed.resolveSymbol(pane.symbol);
+      return true;
     }
+    return false;
   }
 
   function trySyncHistoryFromPeer(pane) {
@@ -810,6 +844,10 @@ export function createBarLoader(opts) {
     }
 
     const task = chartDebugTimeAsync("data", `loadPaneBars pane ${pane.index}`, async () => {
+      // Resolve the pane's own symbol before consulting a symbol-keyed cache.
+      // A stale SymbolInfo would otherwise fetch (and then cache) another
+      // pane's bars under this pane's visible symbol after a TF switch.
+      const symbolInfoChanged = await ensurePaneSymbolInfo(pane);
       const replayCtx =
         typeof getReplayLoadContext === "function" ? getReplayLoadContext(pane) : null;
       const replayCapTo =
@@ -827,6 +865,7 @@ export function createBarLoader(opts) {
 
       /** @param {object} loadOpts */
       async function tryReplayCacheLoad(loadOpts) {
+        if (symbolInfoChanged) return null;
         if (!tryRestorePaneResolutionCache(pane, resolutionCacheScope)) return null;
         if (replayCapTo != null && Number.isFinite(replayCapTo) && pane.bars.length) {
           const last = pane.bars.at(-1)?.time;
@@ -863,7 +902,6 @@ export function createBarLoader(opts) {
         if (restored) return restored;
       }
 
-      if (!pane.symbolInfo) pane.symbolInfo = await datafeed.resolveSymbol(pane.symbol);
       const barSec = getBarSecForPane?.(pane) ?? 60;
       // Match TradingView: fill the viewport first, then let
       // ensureIndicatorChartHistory page older bars without blocking candles.

@@ -496,6 +496,9 @@ export function createPositionOverlay(widget) {
   function applyBracketLineVisual(bracket, price) {
     if (!position?.line || !bracket?.line) return;
 
+    // Keep the model price current even when the rounded P&L label and color do
+    // not change. Drag completion and host synchronization read this value.
+    bracket.price = price;
     const { tickSize, tickValue } = tickMeta();
     const pnl = calcPnl(position.entry, price, position.qty, tickSize, tickValue);
     const profit = pnl >= 0;
@@ -503,7 +506,6 @@ export function createPositionOverlay(widget) {
     if (text === bracket.lastText && profit === bracket.lastProfit) return;
 
     const colors = lineColors(profit);
-    bracket.price = price;
     bracket.lastText = text;
     bracket.lastProfit = profit;
 
@@ -594,14 +596,17 @@ export function createPositionOverlay(widget) {
     if (slot === "stopLoss") emitStopLossChanged(null, price);
     else emitTakeProfitChanged(null, price);
 
+    let dragStartPrice = null;
     line.onCancel(() => removeBracketSlot(slot));
     line.onMoving(() => {
       if (!position?.[slot]) return;
+      if (dragStartPrice == null) dragStartPrice = position[slot].price;
       applyBracketLineVisual(position[slot], line.getPrice());
     });
     line.onMove(() => {
       if (!position?.[slot]) return;
-      const prev = position[slot].price;
+      const prev = dragStartPrice ?? position[slot].price;
+      dragStartPrice = null;
       const next = line.getPrice();
       applyBracketLineVisual(position[slot], next);
       if (slot === "stopLoss") emitStopLossChanged(prev, next);

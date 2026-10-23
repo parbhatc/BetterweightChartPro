@@ -35,7 +35,11 @@ import { renderMeasureDrawing, isMeasureDrawingType } from "../../tools/measure/
 import { renderAnnotationDrawing, isAnnotationDrawingType } from "../../tools/annotation/index.js";
 import { strokeSegment } from "../../tools/line/math.js";
 import { extendedSegmentEndpoints, resolveExtendFlags } from "../../tools/line/extend.js";
-import { drawTrendLineDecorations, strokeTrendLineShaft } from "../../tools/line/trendStyle.js";
+import {
+  drawTrendLineDecorations,
+  isTrendLineFamilyType,
+  strokeTrendLineShaft,
+} from "../../tools/line/trendStyle.js";
 import { isOnePointTool, isPositionTool, LINE_STYLE_DASH } from "../../registry/tools.js";
 import {
   drawTrendAngleDecoration,
@@ -104,7 +108,7 @@ export function renderDrawing(ctx, drawing, timeToX, priceToY, right, bottom, st
       renderTrendAngleDrawing(ctx, drawing, timeToX, priceToY, right, bottom, color, lw, state);
       break;
     case "horizontal-ray":
-      drawHorizontalRay(ctx, drawing.points, timeToX, priceToY, right);
+      drawHorizontalRay(ctx, drawing, timeToX, priceToY, right);
       break;
     case "cross-line":
       drawCrossLine(ctx, drawing.points, timeToX, priceToY, right, bottom);
@@ -206,7 +210,7 @@ export function renderDrawing(ctx, drawing, timeToX, priceToY, right, bottom, st
     drawEndpointAnchors(ctx, drawing, timeToX, priceToY, color, lw, isPreview, state);
   }
 
-  drawDrawingLabel(ctx, drawing, timeToX, priceToY, right);
+  drawDrawingLabel(ctx, drawing, timeToX, priceToY, right, bottom);
   ctx.restore();
 }
 
@@ -226,12 +230,63 @@ function renderTrendLineDrawing(ctx, drawing, timeToX, priceToY, right, bottom, 
   const b = pt(drawing.points, 1, timeToX, priceToY);
   if (!a || !b) return;
   const segment = extendedSegmentEndpoints(a, b, resolveExtendFlags(drawing), 0, right, bottom);
-  strokeTrendLineShaft(ctx, segment, drawing.leftEnd, drawing.rightEnd, lw);
+  if (!strokeTrendLineShaftAroundMiddleLabel(ctx, drawing, segment)) {
+    strokeTrendLineShaft(ctx, segment, drawing.leftEnd, drawing.rightEnd, lw);
+  }
   drawTrendLineDecorations(ctx, drawing, segment, a, b, color, lw, {
     isSelected: state.isSelected,
     barSec: state.barSec,
     precision: state.precision,
   });
+}
+
+/**
+ * TradingView removes the shaft directly behind center/middle trend-line text.
+ * @returns {boolean} true when the split shaft was drawn
+ */
+function strokeTrendLineShaftAroundMiddleLabel(ctx, drawing, segment) {
+  const raw = drawing.label;
+  if (
+    raw == null ||
+    !String(raw).trim() ||
+    (drawing.textAlignH ?? "center") !== "center" ||
+    (drawing.textAlignV ?? "top") !== "middle"
+  ) {
+    return false;
+  }
+
+  const dx = segment.x2 - segment.x1;
+  const dy = segment.y2 - segment.y1;
+  const length = Math.hypot(dx, dy);
+  if (length < 0.001) return false;
+
+  const fontSize = drawing.fontSize ?? 14;
+  ctx.save();
+  ctx.font = `500 ${fontSize}px system-ui, sans-serif`;
+  const textWidth = String(raw)
+    .split(/\n/)
+    .reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
+  ctx.restore();
+
+  const halfGap = textWidth / 2 + 4;
+  if (length <= halfGap * 2) return false;
+  const ux = dx / length;
+  const uy = dy / length;
+  const midX = (segment.x1 + segment.x2) / 2;
+  const midY = (segment.y1 + segment.y2) / 2;
+  const gapStart = { x: midX - ux * halfGap, y: midY - uy * halfGap };
+  const gapEnd = { x: midX + ux * halfGap, y: midY + uy * halfGap };
+
+  ctx.save();
+  if (drawing.leftEnd === "arrow" || drawing.rightEnd === "arrow") ctx.lineCap = "butt";
+  ctx.beginPath();
+  ctx.moveTo(segment.x1, segment.y1);
+  ctx.lineTo(gapStart.x, gapStart.y);
+  ctx.moveTo(gapEnd.x, gapEnd.y);
+  ctx.lineTo(segment.x2, segment.y2);
+  ctx.stroke();
+  ctx.restore();
+  return true;
 }
 
 function renderTrendAngleDrawing(ctx, drawing, timeToX, priceToY, right, bottom, color, lw, state) {
@@ -256,7 +311,7 @@ function renderTrendAngleDrawing(ctx, drawing, timeToX, priceToY, right, bottom,
   drawTrendAngleDecoration(ctx, seg.ax, seg.ay, seg.bx, seg.by, angleDeg, color);
 }
 
-function drawDrawingLabel(ctx, drawing, timeToX, priceToY, right) {
+function drawDrawingLabel(ctx, drawing, timeToX, priceToY, right, bottom) {
   if (drawing.type === "text" || drawing.type === "text-annotation") return;
   const raw = drawing.label;
   if (raw == null || !String(raw).trim()) return;
@@ -264,13 +319,26 @@ function drawDrawingLabel(ctx, drawing, timeToX, priceToY, right) {
   const a = pt(drawing.points, 0, timeToX, priceToY);
   const rawB = pt(drawing.points, 1, timeToX, priceToY) ?? a;
   if (!a) return;
-  const labelA = drawing.extendLeft ? { x: 0, y: a.y } : a;
-  const b = rawB
-    ? {
-        x: drawing.extendRight ? right : rawB.x,
-        y: rawB.y,
-      }
-    : a;
+  const isHorizontalRay = drawing.type === "horizontal-ray";
+  const rotateWithLine = isTrendLineFamilyType(drawing.type) && rawB !== a;
+  const labelSegment = rotateWithLine
+    ? extendedSegmentEndpoints(a, rawB, resolveExtendFlags(drawing), 0, right, bottom)
+    : null;
+  const labelA = labelSegment
+    ? { x: labelSegment.x1, y: labelSegment.y1 }
+    : drawing.extendLeft
+      ? { x: 0, y: a.y }
+      : a;
+  const b = labelSegment
+    ? { x: labelSegment.x2, y: labelSegment.y2 }
+    : isHorizontalRay
+      ? { x: right, y: a.y }
+      : rawB
+        ? {
+            x: drawing.extendRight ? right : rawB.x,
+            y: rawB.y,
+          }
+        : a;
 
   // Programmatic journal annotations can begin well outside the visible
   // viewport (for example, an overnight FVG reviewed at the cash open).
@@ -296,13 +364,10 @@ function drawDrawingLabel(ctx, drawing, timeToX, priceToY, right) {
     ax = (visibleA.x + visibleB.x) / 2;
     ay = (visibleA.y + visibleB.y) / 2;
   }
-
-  let x = ax;
-  let y = ay;
-  if (alignV === "top") {
-    y -= gap;
-  } else if (alignV === "bottom") {
-    y += gap;
+  if (isHorizontalRay && alignV === "middle") {
+    const inset = Math.min(5, Math.max(0, (visibleB.x - visibleA.x) / 2));
+    if (alignH === "left") ax = visibleA.x + inset;
+    else if (alignH === "right") ax = visibleB.x - inset;
   }
 
   const lines = String(raw).split(/\n/);
@@ -315,12 +380,29 @@ function drawDrawingLabel(ctx, drawing, timeToX, priceToY, right) {
   ctx.textBaseline = "top";
 
   const blockHeight = lines.length * lineHeight;
-  let startY = y;
-  if (alignV === "middle") startY = y - blockHeight / 2 + lineHeight * 0.15;
-  else if (alignV === "bottom") startY = y - blockHeight;
+  let startY = 0;
+  if (isHorizontalRay && alignV === "top") startY = -gap - blockHeight;
+  else if (isHorizontalRay && alignV === "bottom") startY = gap;
+  else if (rotateWithLine && alignV === "top") startY = -blockHeight - 2;
+  else if (rotateWithLine && alignV === "bottom") startY = 2;
+  else if (alignV === "top") startY = -gap;
+  else if (alignV === "middle") startY = -blockHeight / 2 + lineHeight * 0.15;
+  else startY = gap - blockHeight;
+
+  let x = ax;
+  let y = ay;
+  if (rotateWithLine) {
+    let angle = Math.atan2(visibleB.y - visibleA.y, visibleB.x - visibleA.x);
+    if (angle > Math.PI / 2) angle -= Math.PI;
+    else if (angle < -Math.PI / 2) angle += Math.PI;
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    x = 0;
+    y = 0;
+  }
 
   lines.forEach((line, i) => {
-    ctx.fillText(line, x, startY + i * lineHeight);
+    ctx.fillText(line, x, y + startY + i * lineHeight);
   });
   ctx.restore();
 }
@@ -581,13 +663,72 @@ function drawSegment(ctx, points, timeToX, priceToY) {
 }
 
 
-function drawHorizontalRay(ctx, points, timeToX, priceToY, rightX) {
-  const a = pt(points, 0, timeToX, priceToY);
+function drawHorizontalRay(ctx, drawing, timeToX, priceToY, rightX) {
+  const a = pt(drawing.points, 0, timeToX, priceToY);
   if (!a) return;
   ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(rightX, a.y);
+  const visibleStart = Math.max(0, Math.min(rightX, a.x));
+  const raw = drawing.label;
+  const cutsLine = raw != null
+    && String(raw).trim()
+    && (drawing.textAlignV ?? "top") === "middle";
+
+  if (!cutsLine) {
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(rightX, a.y);
+    ctx.stroke();
+    drawHorizontalRayOrigin(ctx, a);
+    return;
+  }
+
+  const fontSize = drawing.fontSize ?? 14;
+  const alignH = drawing.textAlignH ?? "center";
+  const inset = Math.min(5, Math.max(0, (rightX - visibleStart) / 2));
+  const anchorX = alignH === "left"
+    ? visibleStart + inset
+    : alignH === "right"
+      ? rightX - inset
+      : (visibleStart + rightX) / 2;
+  ctx.save();
+  ctx.font = `500 ${fontSize}px system-ui, sans-serif`;
+  const textWidth = String(raw)
+    .split(/\n/)
+    .reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
+  ctx.restore();
+
+  const textLeft = alignH === "left"
+    ? anchorX
+    : alignH === "right"
+      ? anchorX - textWidth
+      : anchorX - textWidth / 2;
+  const textRight = alignH === "left"
+    ? anchorX + textWidth
+    : alignH === "right"
+      ? anchorX
+      : anchorX + textWidth / 2;
+  const lineGap = 4;
+  const gapStart = Math.max(visibleStart, textLeft - lineGap);
+  const gapEnd = Math.min(rightX, textRight + lineGap);
+
+  if (a.x < gapStart) {
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(gapStart, a.y);
+  }
+  if (gapEnd < rightX) {
+    ctx.moveTo(gapEnd, a.y);
+    ctx.lineTo(rightX, a.y);
+  }
   ctx.stroke();
+  drawHorizontalRayOrigin(ctx, a);
+}
+
+function drawHorizontalRayOrigin(ctx, point) {
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, Math.max(1.25, ctx.lineWidth * 0.75), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawCrossLine(ctx, points, timeToX, priceToY, rightX, bottom) {

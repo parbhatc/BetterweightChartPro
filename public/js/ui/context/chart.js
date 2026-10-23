@@ -8,6 +8,7 @@ import { hitPriceScale, hitTimeScale } from "../../chart/scale/settings.js";
 import { DRAWING_UI_SELECTOR } from "../../drawings/constants.js";
 import { runContextMenuAction } from "../../debug/chart/contextMenu.js";
 import { getTradeContextActions, hasTradeContextActions } from "../../chart/hostHooks.js";
+import { getAutoTradeMenuItems } from "./tradeMenu.js";
 
 const TRADE_QTY_PRESETS = [1, 2, 3, 5, 10, 15];
 
@@ -119,9 +120,7 @@ export function mountChartContextMenu(opts) {
     const trade = getTradeContextActions();
     const tradeRows = [];
     if (hasTradeContextActions() && trade) {
-      if (trade.onAutoBuy || trade.onAutoSell) {
-        tradeRows.push(rowItem({ id: "trade-auto", label: "Auto", hasSubmenu: true }));
-      }
+      tradeRows.push(...getAutoTradeMenuItems(trade).map((item) => rowItem(item)));
       if (trade.onMarketBuy) {
         tradeRows.push(rowItem({ id: "trade-market-buy", label: "Market Buy", hasSubmenu: true }));
       }
@@ -207,30 +206,6 @@ export function mountChartContextMenu(opts) {
   }
 
   /** @param {HTMLElement} anchorRow */
-  function openAutoSubmenu(anchorRow) {
-    closeSubmenu();
-    const trade = getTradeContextActions();
-    const items = [
-      trade?.onAutoBuy ? { id: "trade-auto-buy", label: "Buy" } : null,
-      trade?.onAutoSell ? { id: "trade-auto-sell", label: "Sell" } : null,
-    ].filter(Boolean);
-    if (!items.length) return;
-
-    const rows = items.map((item) => rowItem(item)).join("");
-    submenuEl = document.createElement("div");
-    submenuEl.className = "ctx-menu ctx-menu--sub ctx-menu--trade-sub";
-    submenuEl.innerHTML = `<div class="ctx-menu__scroll"><table class="ctx-menu__table"><tbody>${rows}</tbody></table></div>`;
-    document.body.appendChild(submenuEl);
-    positionSubmenu(anchorRow);
-
-    submenuEl.addEventListener("click", (ev) => {
-      const row = ev.target.closest("[data-action]");
-      if (!row) return;
-      runTradeAction(row.dataset.action);
-    });
-  }
-
-  /** @param {HTMLElement} anchorRow */
   function positionSubmenu(anchorRow) {
     if (!submenuEl) return;
     const rect = anchorRow.getBoundingClientRect();
@@ -281,8 +256,8 @@ export function mountChartContextMenu(opts) {
   }
 
   function runAction(id, row) {
-    if (id === "trade-auto") {
-      openAutoSubmenu(row);
+    if (/^trade-auto-(buy|sell)$/.test(id)) {
+      runTradeAction(id);
       return;
     }
     if (id === "trade-market-buy") {

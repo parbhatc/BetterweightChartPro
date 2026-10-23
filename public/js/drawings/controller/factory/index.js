@@ -73,7 +73,13 @@ function trendLineStyleDefaults(overrides = {}) {
 
 /** @type {Record<string, Record<string, unknown>>} */
 export const TREND_LINE_FAMILY_DEFAULTS = {
-  "trend-line": trendLineStyleDefaults({ extendLeft: false, extendRight: false }),
+  "trend-line": trendLineStyleDefaults({
+    extendLeft: false,
+    extendRight: false,
+    // Text belongs to the individual annotation. A new trend line must never
+    // inherit the previous line's label (for example, "SMT").
+    label: "",
+  }),
   ray: trendLineStyleDefaults({ extendLeft: false, extendRight: true }),
   "info-line": trendLineStyleDefaults({
     extendLeft: true,

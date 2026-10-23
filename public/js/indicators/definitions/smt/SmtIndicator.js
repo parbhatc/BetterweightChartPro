@@ -7,7 +7,7 @@ import {
   pivotLowAt,
   pivotLowAtSparse,
 } from "../../math/pivots.js";
-import { symbolTicker } from "../../../app/symbol/ticker.js";
+import { symbolDisplayTicker, symbolTicker } from "../../../app/symbol/ticker.js";
 import { BarScriptIndicator } from "../../BarScriptIndicator.js";
 import {
   createBool,
@@ -81,7 +81,7 @@ class SmtIndicator extends BarScriptIndicator {
   legendParams(instance, ctx = {}) {
     const compare = compareSymbol.resolve(instance.inputs, ctx.primarySymbol ?? "");
     const [left, right] = pivotLens(instance.inputs, "leftLen", "rightLen", 1);
-    return [symbolTicker(compare), String(left), String(right)];
+    return [symbolDisplayTicker(compare), String(left), String(right)];
   }
 
   /** @param {import("../../types.js").IndicatorInstance} instance */
@@ -180,7 +180,7 @@ class SmtIndicator extends BarScriptIndicator {
     this.state.lowColor = styleColor(style, "lowColor", "#089981");
     this.state.highLabelPrefix = style.highLabelPrefix ?? "SMT + ";
     this.state.lowLabelPrefix = style.lowLabelPrefix ?? "SMT - ";
-    this.state.compareTicker = symbolTicker(cmp.compare);
+    this.state.compareTicker = symbolDisplayTicker(cmp.compare);
     this.state.highLabelBg = styleColorWithOpacity(style, "highLabelBg", "#ff1100", 80);
     this.state.lowLabelBg = styleColorWithOpacity(style, "lowLabelBg", "#089981", 80);
     this.state.highLabelTextColor = "#ffffff";

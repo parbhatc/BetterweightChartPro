@@ -2,7 +2,11 @@ import { resolutionSec } from "../../chart/resolutions.js";
 import { invalidatePaneChartView } from "../../chart/pane/viewCache.js";
 import { captureViewportBarLayout } from "../../chart/pane/viewportBarLayout.js";
 import { isReplayHostControlled } from "../hostControl.js";
-import { patchReplayHtfFormingBar, resolveReplayCursorOnTfSwitch } from "../formingBar.js";
+import {
+  patchReplayHtfFormingBar,
+  resolveHostReplayResolutionAnchor,
+  resolveReplayCursorOnTfSwitch,
+} from "../formingBar.js";
 import { barsCoverReplayAnchor, replayBarIndexForUtcTime } from "../persist.js";
 import { replayDebug } from "../debug.js";
 
@@ -51,15 +55,11 @@ export function createReplayResolutionChange(ctx, replay, state, deps) {
       const fromSec = fromRes ? resolutionSec(fromRes) : null;
       const toSec = resolutionSec(activePane.resolution);
 
-      let anchorUtc =
+      const mappedAnchorUtc =
         (typeof ctx.opts?.getPlaybackAnchorSec === "function"
           ? ctx.opts.getPlaybackAnchorSec(activePane.resolution)
           : null) ?? rs.currentBarTime;
-
-      // HTF → LTF: keep raw replay cursor (e.g. 9:29), not HTF bucket open (9:15).
-      if (rawAnchorUtc != null && fromSec != null && toSec != null && toSec < fromSec) {
-        anchorUtc = rawAnchorUtc;
-      }
+      const anchorUtc = resolveHostReplayResolutionAnchor(mappedAnchorUtc, rawAnchorUtc);
 
       let bars = activePane.bars;
       let cursorUtc = anchorUtc ?? bars.at(-1)?.time;

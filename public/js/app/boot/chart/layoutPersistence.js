@@ -12,6 +12,7 @@ import {
   captureViewportBarLayout,
   restoreViewportBarLayout,
 } from "../../../chart/pane/viewportBarLayout.js";
+import { persistAutosaveDrawingSnapshot } from "./layoutDrawingSnapshot.js";
 /**
  * @param {import("./state.js").BootContext} ctx
  */
@@ -137,6 +138,10 @@ export function attachLayoutPersistence(ctx) {
       ctx.headerToolbarUi?.updateSaveState();
     }
     if (!autoSave) return;
+    // Persist the live drawing snapshot immediately. The library update stays
+    // debounced below, but a refresh during that debounce must not restore an
+    // older (often empty) drawing set while the toolbar says auto-save is on.
+    persistAutosaveDrawingSnapshot(ctx);
     if (ctx.layoutAutosaveTimer) clearTimeout(ctx.layoutAutosaveTimer);
     ctx.layoutAutosaveTimer = setTimeout(() => {
       ctx.layoutAutosaveTimer = null;

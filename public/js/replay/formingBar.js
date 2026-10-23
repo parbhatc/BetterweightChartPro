@@ -1,6 +1,17 @@
 import { resolutionSec } from "../chart/resolutions.js";
 
 /**
+ * The host's resolution-aware anchor is authoritative during a timeframe switch.
+ * A raw coarse-bar anchor identifies the bucket open, not the final revealed
+ * lower-timeframe bar inside that bucket (1m 09:41 maps to 30s 09:41:30).
+ */
+export function resolveHostReplayResolutionAnchor(mappedAnchorUtc, rawAnchorUtc) {
+  return mappedAnchorUtc != null && Number.isFinite(mappedAnchorUtc)
+    ? mappedAnchorUtc
+    : rawAnchorUtc;
+}
+
+/**
  * Aggregate lower-TF bars into one HTF candle open at htfOpenUtc through toUtc (inclusive).
  * @param {object[]} ltBars
  * @param {number} htfOpenUtc

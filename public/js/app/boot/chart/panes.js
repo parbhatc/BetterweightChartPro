@@ -95,7 +95,7 @@ export function attachPaneHelpers(ctx) {
   }
 
   function refreshPaneCandleData(pane, opts = {}) {
-    refreshPaneCandles(pane, ctx.settingsStore, ctx.symbolInfo, ctx.resolutions, (p) => {
+    refreshPaneCandles(pane, ctx.settingsStore, pane.symbolInfo ?? ctx.symbolInfo, ctx.resolutions, (p) => {
       if (p.index === 0) ctx.timeAdapter = p.timeAdapter;
     }, opts);
   }
@@ -105,7 +105,7 @@ export function attachPaneHelpers(ctx) {
       pane,
       olderUtcBars,
       ctx.settingsStore,
-      ctx.symbolInfo,
+      pane.symbolInfo ?? ctx.symbolInfo,
       ctx.resolutions,
       opts,
     );
