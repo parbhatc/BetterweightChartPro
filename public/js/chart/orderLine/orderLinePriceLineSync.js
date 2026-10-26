@@ -43,7 +43,7 @@ export function stateToOrderLineOptions(state) {
     price: state.price,
     color,
     lineVisible: true,
-    axisLabelVisible: false,
+    axisLabelVisible: true,
     axisLabelColor: color,
     axisLabelTextColor: "#ffffff",
     axisLabelText: formatOrderLinePrice(state.price),

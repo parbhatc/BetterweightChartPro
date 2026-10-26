@@ -1,11 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createOrderLineAdapter } from "../public/js/chart/orderLine/createOrderLineAdapter.js";
-import { createOrderLinePriceLineSync } from "../public/js/chart/orderLine/orderLinePriceLineSync.js";
+import {
+  createOrderLinePriceLineSync,
+  stateToOrderLineOptions,
+} from "../public/js/chart/orderLine/orderLinePriceLineSync.js";
 import { OrderLineManager } from "../public/js/chart/orderLine/OrderLineManager.js";
 import { OrderLinePillPrimitive } from "../public/js/chart/orderLine/OrderLinePillPrimitive.js";
 import { createPositionOverlay } from "../public/js/chart/orderLine/positionOverlay.js";
 import { ExecutionShapeManager } from "../public/js/chart/executionShape/ExecutionShapeManager.js";
+
+test("order lines expose their price on the chart axis", () => {
+  const options = stateToOrderLineOptions({
+    id: "position",
+    price: 29_453.5,
+    lineColor: "#10b981",
+  });
+  assert.equal(options.axisLabelVisible, true);
+  assert.equal(options.axisLabelText, "29453.50");
+});
 
 test("execution markers can be hidden and restored without removing them", async () => {
   let visible = true;
