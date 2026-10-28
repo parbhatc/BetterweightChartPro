@@ -4,11 +4,13 @@ export { createSimpleDatafeed } from "./simple.js";
 export { createTradingViewDatafeed } from "./tradingview/index.js";
 export { createTradeseaDatafeed } from "./tradesea/index.js";
 export { datafeedSupportsQuotes, quoteSymbolKey } from "./quotes.js";
+export { createHistoryRequestCache, HISTORY_CACHE_TTL_MS } from "./historyRequests.js";
 
 import { createDatafeed } from "./client.js";
 import { createStaticDatafeed } from "./custom.js";
 import { createTradingViewDatafeed } from "./tradingview/index.js";
 import { createTradeseaDatafeed } from "./tradesea/index.js";
+import { createHistoryRequestCache } from "./historyRequests.js";
 
 /**
  * Pick a datafeed from boot options: custom instance, static bars, or HTTP UDF.
@@ -18,7 +20,7 @@ import { createTradeseaDatafeed } from "./tradesea/index.js";
  * @param {Record<string, import("./types.js").Bar[]>} [options.symbols]
  * @param {string} [options.datafeedUrl]
  */
-export function resolveDatafeed(options = {}) {
+function createResolvedDatafeed(options = {}) {
   if (options.datafeed) return options.datafeed;
   if (options.datafeedType === "tradesea") {
     return createTradeseaDatafeed(options.datafeedUrl ?? "/datafeed/ts");
@@ -40,4 +42,16 @@ export function resolveDatafeed(options = {}) {
     });
   }
   return createDatafeed(options.datafeedUrl ?? "/datafeed");
+}
+
+/**
+ * Give every widget one shared history boundary for its panes and indicators,
+ * including custom host datafeeds. Hosts can disable it with historyCache:false
+ * or configure the small bounded response cache with a historyCache object.
+ */
+export function resolveDatafeed(options = {}) {
+  const datafeed = createResolvedDatafeed(options);
+  return options.historyCache === false
+    ? datafeed
+    : createHistoryRequestCache(datafeed, options.historyCache);
 }

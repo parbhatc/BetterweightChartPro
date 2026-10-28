@@ -9,6 +9,12 @@ export function symbolsMatch(a, b) {
   return bare(a).toUpperCase() === bare(b).toUpperCase();
 }
 
+/** A selected series can change before its replacement candle array is ready. */
+export function paneBarsMatchCurrentSeries(pane) {
+  const loaded = pane?._barSeriesIdentity;
+  return !loaded || (loaded.symbol === pane.symbol && loaded.resolution === pane.resolution);
+}
+
 /**
  * Sync lookup for symbol bars: active pane → any pane → resolution cache → HTF store.
  * @param {object} opts
@@ -28,6 +34,7 @@ export function lookupSymbolBars(opts) {
   const resolutions = opts.resolutions ?? [];
   for (const p of panes) {
     if (!symbolsMatch(p.symbol, symbol) || p.resolution !== resolution || !p.bars?.length) continue;
+    if (!paneBarsMatchCurrentSeries(p)) continue;
     if (!settingsStore) continue;
     const view = getPaneChartView(p, settingsStore, p.symbolInfo ?? symbolInfoExtra, resolutions);
     if (!view.utcBars.length) continue;

@@ -153,7 +153,13 @@ class LevelsIndicator extends BarScriptIndicator {
       });
     }
     for (const tfId of referencePeriodResolutions(inputs)) {
-      if (needs.htf.some((need) => need.resolution === tfId)) continue;
+      const existing = needs.htf.find((need) => need.resolution === tfId);
+      if (existing) {
+        // The reference period and pivot scan share one series, but the shorter
+        // pivot lookback must not shrink PDH/PDL or PWH/PWL history coverage.
+        existing.countBack = Math.max(existing.countBack, referencePeriodCountBack(tfId));
+        continue;
+      }
       needs.htf.push({
         symbol: pane.symbol ?? "",
         resolution: tfId,

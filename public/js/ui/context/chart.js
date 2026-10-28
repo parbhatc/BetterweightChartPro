@@ -9,6 +9,7 @@ import { DRAWING_UI_SELECTOR } from "../../drawings/constants.js";
 import { runContextMenuAction } from "../../debug/chart/contextMenu.js";
 import { getTradeContextActions, hasTradeContextActions } from "../../chart/hostHooks.js";
 import { getAutoTradeMenuItems } from "./tradeMenu.js";
+import { bindChartPortal, isChartHostInteractive } from "../chart/hostInteraction.js";
 
 const TRADE_QTY_PRESETS = [1, 2, 3, 5, 10, 15];
 
@@ -65,6 +66,7 @@ export function mountChartContextMenu(opts) {
   root.hidden = true;
   root.setAttribute("role", "menu");
   document.body.appendChild(root);
+  bindChartPortal(root, container, close);
 
   let openX = 0;
   let openY = 0;
@@ -335,6 +337,7 @@ export function mountChartContextMenu(opts) {
   });
 
   document.addEventListener("keydown", (ev) => {
+    if (!isChartHostInteractive(container)) return;
     if (ev.key === "Escape") close();
     if (ev.altKey && ev.key.toLowerCase() === "r") {
       ev.preventDefault();

@@ -2,6 +2,7 @@ import { getIndicatorClass } from "../../../indicators/catalog.js";
 import {
   collectPaneDataNeeds,
   instanceUsesCompareSymbols,
+  instanceUsesHtfKeys,
   paneDataNeedsEmpty,
 } from "../../../indicators/security/indicatorDataNeeds.js";
 import {
@@ -11,11 +12,13 @@ import {
   getHtfBars,
   getHtfSeriesVersion,
   htfCacheStaleForAnchor,
+  invalidateHtfBarRequests,
   noteReplayAnchor,
   prependHtfBars,
+  seedHtfBars,
 } from "../../bar/htfBarCache.js";
 import { resolutionSec } from "../../../chart/resolutions.js";
-import { ensureSymbolBars, lookupSymbolBars } from "../../bar/symbolBarCache.js";
+import { ensureSymbolBars, lookupSymbolBars, paneBarsMatchCurrentSeries, symbolsMatch } from "../../bar/symbolBarCache.js";
 import { getPaneChartView } from "../../../chart/pane/viewCache.js";
 import { uniqueEtDaysFromBars } from "../../../core/etTime.js";
 import {
@@ -113,16 +116,17 @@ export function createIndicatorDataLoader({
 }) {
   /** @type {ReturnType<typeof setTimeout> | null} */
   let loadTimer = null;
-  /** @type {Set<number>} */
-  const paneInFlight = new Set();
-  /** @type {Set<string>} */
-  const htfFetchInFlight = new Set();
+  /** @type {Map<string, Promise<void>>} */
+  const paneInFlight = new Map();
+  /** @type {Map<string, { want: number }>} */
+  const htfFetchInFlight = new Map();
   /** @type {Set<string>} */
   const compareFetchInFlight = new Set();
   /** @type {Map<string, number>} */
   const compareUnavailableUntil = new Map();
   /** @type {Map<string, ReturnType<typeof setTimeout>>} */
   const compareRetryTimers = new Map();
+  const paneOverlayInFlight = new Map();
 
   const compareKey = (symbol, resolution) => `${symbol}|${resolution}`;
 
@@ -136,6 +140,7 @@ export function createIndicatorDataLoader({
 
   function markCompareUnavailable(pane, symbol, resolution, countBack, err) {
     const key = compareKey(symbol, resolution);
+    const startEpoch = getDataEpoch();
     const retryAt = Date.now() + COMPARE_RETRY_MS;
     compareUnavailableUntil.set(key, retryAt);
     indicatorDebug("data.compare unavailable", {
@@ -151,6 +156,7 @@ export function createIndicatorDataLoader({
     compareRetryTimers.set(key, setTimeout(() => {
       compareRetryTimers.delete(key);
       compareUnavailableUntil.delete(key);
+      if (getDataEpoch() !== startEpoch) return;
       requestOverlayRefresh(pane.index);
       scheduleCompareBarsFetch(pane, symbol, resolution, countBack);
     }, COMPARE_RETRY_MS));
@@ -207,6 +213,7 @@ export function createIndicatorDataLoader({
   /** @param {object} pane @returns {Promise<boolean>} true when any HTF tail was extended */
   async function extendHtfTailForReplay(pane) {
     if (!pane?.symbol || !ctx.datafeed) return false;
+    if (!paneBarsMatchCurrentSeries(pane)) return false;
     const anchorSec = paneAnchorSec(pane);
     if (anchorSec == null) return false;
     const startEpoch = getDataEpoch();
@@ -269,6 +276,102 @@ export function createIndicatorDataLoader({
     return extended;
   }
 
+  /** Repair only retained dependency tails after primary panes recover from suspension. */
+  async function recoverIndicatorDataForPanes(panes, options = {}) {
+    const shouldContinue = typeof options.shouldContinue === "function" ? options.shouldContinue : () => true;
+    if (!shouldContinue() || !ctx.datafeed || ctx.opts?.replayHostControlled || ctx.replayEngine?.isReplayLocked?.()) {
+      return { series: 0, updatedSeries: 0, failedSeries: [] };
+    }
+    const startEpoch = getDataEpoch();
+    const captures = options.since?.panes ?? [];
+    const jobs = new Map();
+    for (const pane of panes) {
+      if (!pane?.symbol || !paneBarsMatchCurrentSeries(pane)) continue;
+      const capture = captures.find((entry) => entry.index === pane.index &&
+        entry.symbol === pane.symbol && entry.resolution === pane.resolution);
+      if (captures.length && !capture) continue;
+      if (capture && Number.isFinite(capture.generation) && capture.generation !== (pane._historyGeneration ?? 0)) continue;
+      const view = getPaneChartView(pane, ctx.settingsStore, pane.symbolInfo ?? ctx.symbolInfo, ctx.resolutions);
+      const needs = collectPaneDataNeeds(controller.indicatorsForPane(pane.index), { ...pane, bars: view.utcBars }, getIndicatorClass);
+      const seriesNeeds = mergeCountBackNeeds(needs.htf, needs.compareHtf);
+      for (const [symbol, countBack] of needs.compareChart) {
+        const key = `${symbol}|${pane.resolution}`;
+        seriesNeeds.set(key, Math.max(seriesNeeds.get(key) ?? 0, countBack));
+      }
+      const anchorSec = pane.bars?.at(-1)?.time;
+      if (!Number.isFinite(anchorSec)) continue;
+      for (const key of seriesNeeds.keys()) {
+        const sep = key.indexOf("|");
+        const symbol = key.slice(0, sep);
+        const resolution = key.slice(sep + 1);
+        const stored = getHtfBars(symbol, resolution);
+        const fromSec = Number.isFinite(capture?.fromTime) ? capture.fromTime
+          : Number.isFinite(capture?.lastTime) ? capture.lastTime
+            : stored?.utcBars?.at(-1)?.time;
+        const previous = jobs.get(key);
+        const owner = { pane, symbol: pane.symbol, resolution: pane.resolution, generation: pane._historyGeneration ?? 0 };
+        if (previous) {
+          previous.anchorSec = Math.max(previous.anchorSec, anchorSec);
+          if (Number.isFinite(fromSec)) previous.fromSec = Math.min(previous.fromSec ?? fromSec, fromSec);
+          previous.owners.push(owner);
+        } else {
+          jobs.set(key, { key, symbol, resolution, pane: { ...pane }, anchorSec, fromSec, owners: [owner] });
+        }
+      }
+    }
+    const changed = new Map();
+    const failedSeries = [];
+    for (const job of jobs.values()) invalidateHtfBarRequests(job.symbol, job.resolution);
+    const currentOwner = (owner) => shouldContinue() &&
+      (ctx.getAllChartPanes?.() ?? panes).includes(owner.pane) &&
+      owner.pane.symbol === owner.symbol && owner.pane.resolution === owner.resolution &&
+      (owner.pane._historyGeneration ?? 0) === owner.generation && paneBarsMatchCurrentSeries(owner.pane);
+    await Promise.all([...jobs.values()].map(async (job) => {
+      try {
+        if (getDataEpoch() !== startEpoch || !job.owners.some(currentOwner)) return;
+        const versionBefore = getHtfSeriesVersion(job.symbol, job.resolution);
+        const peer = ctx.getAllChartPanes?.().find((candidate) => candidate.resolution === job.resolution &&
+          panes.includes(candidate) && symbolsMatch(candidate.symbol ?? "", job.symbol) && paneBarsMatchCurrentSeries(candidate));
+        if (peer?.bars?.length) {
+          // Primary recovery already filled this exact visible series. Share
+          // its repaired bars; never start another indicator lookback here.
+          const shared = lookupSymbolBars({ ...symbolBarLookupOpts(peer, job.symbol), resolution: job.resolution });
+          if (shared?.utcBars?.length) {
+            seedHtfBars(job.symbol, job.resolution, shared.utcBars, shared.chartBars, shared.source, { verifyRange: true });
+          }
+        } else if (getHtfBars(job.symbol, job.resolution)?.utcBars?.length) {
+          const info = job.symbol === job.pane.symbol ? job.pane.symbolInfo ?? ctx.symbolInfo : await ctx.datafeed.resolveSymbol(job.symbol);
+          if (!info || getDataEpoch() !== startEpoch || !job.owners.some(currentOwner)) return;
+          await extendHtfCacheForAnchor({
+            datafeed: ctx.datafeed, symbolInfo: info, symbol: job.symbol, resolution: job.resolution,
+            pane: job.pane, anchorSec: job.anchorSec, fromSec: job.fromSec, requestReason: "htf.resume",
+            refresh: true, shouldContinue: () => getDataEpoch() === startEpoch && job.owners.some(currentOwner),
+          });
+        }
+        if (getDataEpoch() === startEpoch && getHtfSeriesVersion(job.symbol, job.resolution) !== versionBefore) changed.set(job.key, job);
+      } catch (error) {
+        failedSeries.push(job.key);
+        indicatorDebug("data.resume failed", { key: job.key, error: String(error) });
+      }
+    }));
+    if (getDataEpoch() === startEpoch) {
+      const affected = new Map();
+      for (const job of changed.values()) {
+        for (const owner of job.owners) {
+          if (!currentOwner(owner)) continue;
+          if (!affected.has(owner.pane.index)) affected.set(owner.pane.index, { keys: new Set(), symbols: new Set() });
+          affected.get(owner.pane.index).keys.add(job.key);
+          affected.get(owner.pane.index).symbols.add(job.symbol);
+        }
+      }
+      for (const [index, dependencies] of affected) {
+        controller.invalidateOverlayCacheForPane(index, { htfKeys: dependencies.keys, compareSymbols: dependencies.symbols });
+        if (options.refresh !== false) requestOverlayRefresh(index);
+      }
+    }
+    return { series: jobs.size, updatedSeries: changed.size, failedSeries };
+  }
+
   function symbolBarLookupOpts(pane, symbol) {
     return {
       symbol,
@@ -281,8 +384,35 @@ export function createIndicatorDataLoader({
     };
   }
 
+  async function borrowVisiblePaneHistory(pane, symbol, resolution, countBack) {
+    if (!ctx.ensureIndicatorChartHistory) return;
+    const sourcePane = ctx.getAllChartPanes?.().find((candidate) =>
+      candidate.resolution === resolution && symbolsMatch(candidate.symbol ?? "", symbol) &&
+      paneBarsMatchCurrentSeries(candidate),
+    );
+    if (!sourcePane) return;
+    const startEpoch = getDataEpoch();
+    const sourceSymbol = sourcePane.symbol;
+    // Join only the primary candle loader, whose promise is independent of
+    // indicator completion. Waiting for the whole indicator phase would let
+    // mutually comparing panes deadlock each other.
+    await ctx.ensureIndicatorChartHistory(sourcePane, {
+      countBack,
+      shouldContinue: () => getDataEpoch() === startEpoch &&
+        sourcePane.symbol === sourceSymbol && sourcePane.resolution === resolution,
+    });
+    if (getDataEpoch() !== startEpoch) return;
+    const shared = lookupSymbolBars({ ...symbolBarLookupOpts(pane, symbol), resolution });
+    if (shared?.utcBars?.length) {
+      seedHtfBars(symbol, resolution, shared.utcBars, shared.chartBars, shared.source);
+    }
+  }
+
   /** @param {object} pane @param {string} symbol @param {string} resolution @param {number} countBack @param {object} [symbolInfo] */
   async function fillHtfHistory(pane, symbol, resolution, countBack) {
+    const startEpoch = getDataEpoch();
+    await borrowVisiblePaneHistory(pane, symbol, resolution, countBack);
+    if (getDataEpoch() !== startEpoch) return;
     let symbolInfo;
     if (symbol === pane.symbol) {
       symbolInfo = pane.symbolInfo ?? ctx.symbolInfo;
@@ -339,16 +469,20 @@ export function createIndicatorDataLoader({
   /** @param {object} pane @param {string} symbol @param {number} countBack */
   async function fillCompareChart(pane, symbol, countBack) {
     const anchorSec = paneAnchorSec(pane);
+    const startEpoch = getDataEpoch();
+    const tailCap = anchorSec ?? pane.bars?.at(-1)?.time ?? null;
     const versionBeforeInitialPage = getHtfSeriesVersion(symbol, pane.resolution);
+    await borrowVisiblePaneHistory(pane, symbol, pane.resolution, countBack);
+    if (getDataEpoch() !== startEpoch) return false;
     let hit = lookupSymbolBars({ ...symbolBarLookupOpts(pane, symbol), resolution: pane.resolution });
     const tailStale =
-      anchorSec != null && htfCacheStaleForAnchor(symbol, pane.resolution, anchorSec);
+      tailCap != null && htfCacheStaleForAnchor(symbol, pane.resolution, tailCap);
     if (!hit || hit.utcBars.length < countBack || tailStale) {
       const symbolInfo = await ctx.datafeed.resolveSymbol(symbol);
       if (tailStale && htfStoreBarCount(symbol, pane.resolution) > 0) {
         await extendHtfCacheForAnchor({
           ...htfEnsureOpts(pane, symbol, pane.resolution, 16, symbolInfo),
-          anchorSec,
+          anchorSec: tailCap,
           symbolInfo,
         });
       } else {
@@ -376,11 +510,11 @@ export function createIndicatorDataLoader({
       hasBars: Boolean(entry?.utcBars?.length),
       versionBefore: versionBeforeInitialPage,
       versionAfter: getHtfSeriesVersion(symbol, pane.resolution),
-      anchorSec,
+      anchorSec: tailCap,
       tailStale:
-        anchorSec == null
+        tailCap == null
           ? false
-          : htfCacheStaleForAnchor(symbol, pane.resolution, anchorSec),
+          : htfCacheStaleForAnchor(symbol, pane.resolution, tailCap),
     })) {
       refreshPanesUsingCompareSymbol(symbol);
     }
@@ -455,7 +589,7 @@ export function createIndicatorDataLoader({
   /** @param {object} pane */
   async function ensureGlobalNews(pane) {
     const newsStore = getNewsSettingsStore();
-    if (!newsStore.isEnabled()) return;
+    if (!newsStore.isEnabled()) return false;
     const view = getPaneChartView(
       pane,
       ctx.settingsStore,
@@ -464,19 +598,36 @@ export function createIndicatorDataLoader({
     );
     const days = uniqueEtDaysFromBars(view.utcBars);
     const settings = newsStore.get();
-    if (!days.length) return;
-    await fillNewsCalendar({ source: settings.source ?? "forexfactory", types: [], days });
+    const source = settings.source ?? "forexfactory";
+    const missingDays = days.filter((day) => !getCachedNewsDay(day, { source, types: [] }));
+    if (!missingDays.length) return false;
+    await fillNewsCalendar({ source, types: [], days: missingDays });
+    return true;
   }
 
   /** @param {object} pane @param {{ skipRefresh?: boolean }} [opts] */
-  async function ensurePaneData(pane, opts = {}) {
+  function ensurePaneData(pane, opts = {}) {
+    if (!pane?.symbol) return Promise.resolve();
+    if (!paneBarsMatchCurrentSeries(pane)) return Promise.resolve();
+    const key = `${getDataEpoch()}|${pane.index}|${pane.symbol}|${pane.resolution}|${pane._historyGeneration ?? 0}`;
+    const pending = paneInFlight.get(key);
+    if (pending) return pending;
+    const task = loadPaneData(pane, opts).finally(() => paneInFlight.delete(key));
+    paneInFlight.set(key, task);
+    return task;
+  }
+
+  async function loadPaneData(pane, opts = {}) {
     if (!pane?.symbol) return;
+    if (!paneBarsMatchCurrentSeries(pane)) return;
     if (isChartPanning()) {
       deferHeavyWork();
       return;
     }
-    if (paneInFlight.has(pane.index)) return;
     const startEpoch = getDataEpoch();
+    const generation = pane._historyGeneration ?? 0;
+    const currentPane = () => getDataEpoch() === startEpoch &&
+      (pane._historyGeneration ?? 0) === generation && paneBarsMatchCurrentSeries(pane);
 
     // Do not queue current-window indicator data behind the slower primary
     // candle backfill. Initial boot already owns that backfill through
@@ -484,10 +635,10 @@ export function createIndicatorDataLoader({
     // the background and schedule one deeper pass only when bars were added.
     if (!pane._indicatorHistoryBulkLoad) {
       const chartBarsBefore = pane.bars?.length ?? 0;
-      void Promise.resolve(ctx.ensureIndicatorChartHistory?.(pane))
+      void Promise.resolve(ctx.ensureIndicatorChartHistory?.(pane, { shouldContinue: currentPane }))
         .then(() => {
           if (
-            getDataEpoch() === startEpoch &&
+            currentPane() &&
             (pane.bars?.length ?? 0) > chartBarsBefore
           ) {
             scheduleLoad(0);
@@ -540,62 +691,73 @@ export function createIndicatorDataLoader({
       compareHtf: Object.fromEntries(needs.compareHtf),
     });
 
-    paneInFlight.add(pane.index);
-    try {
-      await ensureGlobalNews(pane);
-      if (getDataEpoch() !== startEpoch) return;
-      if (!ctx.datafeed) {
+    // Calendar latency must not delay independent candle/compare history.
+    void ensureGlobalNews(pane)
+      .then((changed) => {
+          if (!changed || !currentPane()) return;
         controller.invalidateOverlayCacheForPane(pane.index);
         requestOverlayRefresh(pane.index);
-        return;
-      }
-      const barCountsBefore = snapshotPaneBarCounts(needs, pane);
-      if (isChartPanning()) {
-        deferHeavyWork();
-        return;
-      }
+      })
+      .catch((err) => indicatorDebug("data.news failed", { pane: pane.index, error: String(err) }));
+    if (!currentPane()) return;
+    if (!ctx.datafeed) {
+      controller.invalidateOverlayCacheForPane(pane.index);
+      requestOverlayRefresh(pane.index);
+      return;
+    }
+    const barCountsBefore = snapshotPaneBarCounts(needs, pane);
+    if (isChartPanning()) {
+      deferHeavyWork();
+      return;
+    }
 
-      // HTF and compare-symbol series are independent. Loading them in a
-      // single serial chain made later indicators inherit the latency of every
-      // earlier indicator (Levels could block SMT for several seconds).
-      // Per-series stores still deduplicate identical symbol/resolution work.
-      const htfNeeds = mergeCountBackNeeds(needs.htf, needs.compareHtf);
-      const seriesTasks = [];
-      for (const [key, countBack] of htfNeeds) {
-        const sep = key.indexOf("|");
-        const symbol = key.slice(0, sep);
-        const resolution = key.slice(sep + 1);
-        seriesTasks.push(fillHtfHistory(pane, symbol, resolution, countBack));
-      }
-      for (const [symbol, countBack] of needs.compareChart) {
-        // Do not let routine loader passes continuously restart the cooldown;
-        // the retry timer below owns the next attempt after an empty/error run.
-        if (isCompareDataUnavailable(symbol, pane.resolution)) continue;
-        seriesTasks.push((async () => {
-          try {
-            const loaded = await fillCompareChart(pane, symbol, countBack);
-            if (loaded) clearCompareUnavailable(symbol, pane.resolution);
-            else markCompareUnavailable(pane, symbol, pane.resolution, countBack);
-          } catch (err) {
-            markCompareUnavailable(pane, symbol, pane.resolution, countBack, err);
+    // HTF and compare-symbol series are independent. Loading them in a
+    // single serial chain made later indicators inherit the latency of every
+    // earlier indicator (Levels could block SMT for several seconds).
+    // Per-series stores still deduplicate identical symbol/resolution work.
+    const htfNeeds = mergeCountBackNeeds(needs.htf, needs.compareHtf);
+    const seriesTasks = [];
+    const seriesPane = { ...pane };
+    for (const [key, countBack] of htfNeeds) {
+      const sep = key.indexOf("|");
+      const symbol = key.slice(0, sep);
+      const resolution = key.slice(sep + 1);
+      seriesTasks.push(fillHtfHistory(seriesPane, symbol, resolution, countBack));
+    }
+    for (const [symbol, countBack] of needs.compareChart) {
+      // Do not let routine loader passes continuously restart the cooldown;
+      // the retry timer below owns the next attempt after an empty/error run.
+      if (isCompareDataUnavailable(symbol, pane.resolution)) continue;
+      seriesTasks.push((async () => {
+        try {
+          const loaded = await fillCompareChart(seriesPane, symbol, countBack);
+          if (getDataEpoch() !== startEpoch) return;
+          if (loaded) clearCompareUnavailable(symbol, pane.resolution);
+          else markCompareUnavailable(pane, symbol, pane.resolution, countBack);
+        } catch (err) {
+          if (getDataEpoch() === startEpoch) {
+            markCompareUnavailable(seriesPane, symbol, seriesPane.resolution, countBack, err);
           }
-        })());
+        }
+      })());
+    }
+    const seriesResults = await Promise.allSettled(seriesTasks);
+    for (const result of seriesResults) {
+      if (result.status === "rejected") {
+        indicatorDebug("data.series failed", { pane: pane.index, error: String(result.reason) });
       }
-      await Promise.all(seriesTasks);
-      // A symbol/TF/replay transition happened mid-load: results were dropped
-      // by the store, and pane state may no longer match — skip refresh.
-      if (getDataEpoch() !== startEpoch) return;
-      if (!paneBarCountsChanged(needs, pane, barCountsBefore)) return;
-      controller.invalidateOverlayCacheForPane(pane.index, {
-        htfKeys: new Set([...needs.htf.keys(), ...needs.compareHtf.keys()]),
-        compareSymbols: new Set(needs.compareChart.keys()),
-      });
-      if (!opts.skipRefresh) requestOverlayRefresh(pane.index);
-      for (const sym of needs.compareChart.keys()) {
-        refreshPanesUsingCompareSymbol(sym);
-      }
-    } finally {
-      paneInFlight.delete(pane.index);
+    }
+    // A symbol/TF/replay transition happened mid-load: results were dropped
+    // by the store, and pane state may no longer match — skip refresh.
+    if (!currentPane()) return;
+    if (!paneBarCountsChanged(needs, pane, barCountsBefore)) return;
+    controller.invalidateOverlayCacheForPane(pane.index, {
+      htfKeys: new Set([...needs.htf.keys(), ...needs.compareHtf.keys()]),
+      compareSymbols: new Set(needs.compareChart.keys()),
+    });
+    if (!opts.skipRefresh) requestOverlayRefresh(pane.index);
+    for (const sym of needs.compareChart.keys()) {
+      refreshPanesUsingCompareSymbol(sym);
     }
   }
 
@@ -632,15 +794,26 @@ export function createIndicatorDataLoader({
     }
   }
 
+  function refreshPanesUsingHtfKey(key) {
+    const keys = new Set([key]);
+    for (const pane of ctx.getAllChartPanes()) {
+      const instances = controller.indicatorsForPane(pane.index) ?? [];
+      if (!instances.some((instance) => instanceUsesHtfKeys(instance, pane, getIndicatorClass, keys))) continue;
+      controller.invalidateOverlayCacheForPane(pane.index, { htfKeys: keys });
+      requestOverlayRefresh(pane.index);
+    }
+  }
+
   /** @param {object} pane @param {string} symbol @param {string} resolution @param {number} countBack */
   function scheduleCompareBarsFetch(pane, symbol, resolution, countBack) {
     if (!pane || !ctx.datafeed || !symbol || !resolution) return;
+    if (!paneBarsMatchCurrentSeries(pane)) return;
     if (isChartPanning()) {
       deferHeavyWork();
       return;
     }
     const want = Math.max(50, Number(countBack) || 300);
-    const key = compareKey(symbol, resolution);
+    const key = `${getDataEpoch()}|${compareKey(symbol, resolution)}`;
     if (compareFetchInFlight.has(key)) return;
 
     const hit = lookupSymbolBars({
@@ -656,8 +829,9 @@ export function createIndicatorDataLoader({
     // Sufficiency must be time-based too: a long-but-stale cache (tail ends
     // before the replay cursor) still needs a tail top-up, or SMT-style
     // compares freeze at the last covered pivot.
+    const tailCap = anchorSec ?? pane.bars?.at(-1)?.time ?? null;
     const tailStale =
-      anchorSec != null && htfCacheStaleForAnchor(symbol, resolution, anchorSec);
+      tailCap != null && htfCacheStaleForAnchor(symbol, resolution, tailCap);
     if (hit && hit.utcBars.length >= want && !tailStale) {
       clearCompareUnavailable(symbol, resolution);
       return;
@@ -667,41 +841,21 @@ export function createIndicatorDataLoader({
     compareFetchInFlight.add(key);
     const startEpoch = getDataEpoch();
     const beforeVersion = getHtfSeriesVersion(symbol, resolution);
-    void ctx.datafeed
-      .resolveSymbol(symbol)
-      .then((symbolInfo) => {
-        if (tailStale && htfStoreBarCount(symbol, resolution) > 0) {
-          return extendHtfCacheForAnchor({
-            ...htfEnsureOpts(pane, symbol, resolution, 16, symbolInfo),
-            anchorSec,
-            symbolInfo,
-          });
-        }
-        return ensureSymbolBars({
-          datafeed: ctx.datafeed,
-          symbolInfo,
-          symbol,
-          resolution,
-          countBack: want,
-          pane,
-          settingsStore: ctx.settingsStore,
-          symbolInfoExtra: symbolInfo,
-          getAllChartPanes: ctx.getAllChartPanes,
-          resolutions: ctx.resolutions,
-          playbackAnchorSec: anchorSec,
-        });
+    const snapshot = { ...pane, resolution };
+    void Promise.resolve().then(async () => {
+      const loaded = await fillCompareChart(snapshot, symbol, want);
+      if (getDataEpoch() !== startEpoch) return;
+      if (!loaded) {
+        markCompareUnavailable(snapshot, symbol, resolution, want);
+        return;
+      }
+      clearCompareUnavailable(symbol, resolution);
+      if (getHtfSeriesVersion(symbol, resolution) === beforeVersion) return;
+      refreshPanesUsingCompareSymbol(symbol);
+    })
+      .catch((err) => {
+        if (getDataEpoch() === startEpoch) markCompareUnavailable(snapshot, symbol, resolution, want, err);
       })
-      .then((entry) => {
-        if (!entry?.utcBars?.length) {
-          markCompareUnavailable(pane, symbol, resolution, want);
-          return;
-        }
-        clearCompareUnavailable(symbol, resolution);
-        if (getDataEpoch() !== startEpoch) return;
-        if (getHtfSeriesVersion(symbol, resolution) === beforeVersion) return;
-        refreshPanesUsingCompareSymbol(symbol);
-      })
-      .catch((err) => markCompareUnavailable(pane, symbol, resolution, want, err))
       .finally(() => compareFetchInFlight.delete(key));
   }
 
@@ -709,84 +863,64 @@ export function createIndicatorDataLoader({
   function scheduleHtfBarsFetch(pane, symbol, resId, countBack) {
     const sym = symbol ?? pane?.symbol;
     if (!sym || !pane || !ctx.datafeed) return;
+    if (!paneBarsMatchCurrentSeries(pane)) return;
     if (isChartPanning()) {
       deferHeavyWork();
       return;
     }
-    const anchorSec =
-      typeof ctx.opts?.getPlaybackAnchorSec === "function"
-        ? ctx.opts.getPlaybackAnchorSec(pane.resolution)
-        : null;
-    if (ctx.opts?.replayHostControlled && anchorSec != null) {
-      const startEpoch = getDataEpoch();
-      const confirmedOnly = confirmedOnlyFor(pane, resId);
-      const stored = getHtfBars(sym, resId);
-      if (
-        stored?.utcBars?.length &&
-        !htfCacheStaleForAnchor(sym, resId, anchorSec, { confirmedOnly })
-      ) {
-        return;
-      }
-      const key = `${sym}|${resId}`;
-      if (htfFetchInFlight.has(key)) return;
-      htfFetchInFlight.add(key);
-      const beforeVersion = getHtfSeriesVersion(sym, resId);
-      const symbolInfo = sym === pane.symbol ? pane.symbolInfo ?? ctx.symbolInfo : null;
-      void Promise.resolve(symbolInfo ?? ctx.datafeed.resolveSymbol(sym))
-        .then((info) => {
-          if (!info) return null;
-          const ensureOpts = htfEnsureOpts(pane, sym, resId, countBack, info);
-          if (
-            stored?.utcBars?.length &&
-            htfCacheStaleForAnchor(sym, resId, anchorSec, { confirmedOnly })
-          ) {
-            return extendHtfCacheForAnchor({
-              ...ensureOpts,
-              anchorSec,
-              symbolInfo: info,
-            });
-          }
-          return ensureHtfBars(ensureOpts);
-        })
-        .then((entry) => {
-          if (getDataEpoch() !== startEpoch) return;
-          const afterVersion = entry?.version ?? getHtfSeriesVersion(sym, resId);
-          if (afterVersion === beforeVersion) return;
-          controller.invalidateOverlayCacheForPane(pane.index, {
-            htfKeys: new Set([key]),
-          });
-          requestOverlayRefresh(pane.index);
-        })
-        .finally(() => htfFetchInFlight.delete(key));
+    const startEpoch = getDataEpoch();
+    const key = sym + "|" + resId;
+    const flightKey = startEpoch + "|" + key;
+    const want = Math.max(50, Number(countBack) || 300);
+    const pending = htfFetchInFlight.get(flightKey);
+    if (pending) {
+      pending.want = Math.max(pending.want, want);
       return;
     }
-    const key = `${sym}|${resId}`;
-    if (htfFetchInFlight.has(key)) return;
-    htfFetchInFlight.add(key);
-    const startEpoch = getDataEpoch();
+    const request = { want };
+    const snapshot = { ...pane };
     const beforeVersion = getHtfSeriesVersion(sym, resId);
-    void ensureHtfBars(htfEnsureOpts(pane, sym, resId, countBack))
-      .then((entry) => {
+    htfFetchInFlight.set(flightKey, request);
+    // Coalesce all requirements from this render before sending the first
+    // request. A larger study arriving during I/O receives one deeper pass.
+    void Promise.resolve().then(async () => {
+      let requested;
+      do {
         if (getDataEpoch() !== startEpoch) return;
-        const afterVersion = entry?.version ?? getHtfSeriesVersion(sym, resId);
-        if (afterVersion === beforeVersion) return;
-        controller.invalidateOverlayCacheForPane(pane.index, {
-          htfKeys: new Set([key]),
-        });
-        requestOverlayRefresh(pane.index);
-      })
-      .finally(() => htfFetchInFlight.delete(key));
+        requested = request.want;
+        await fillHtfHistory(snapshot, sym, resId, requested);
+      } while (getDataEpoch() === startEpoch && request.want > requested);
+      if (getDataEpoch() !== startEpoch) return;
+      if (getHtfSeriesVersion(sym, resId) === beforeVersion) return;
+      refreshPanesUsingHtfKey(key);
+    })
+      .catch((err) => indicatorDebug("data.htf failed", { key, error: String(err) }))
+      .finally(() => htfFetchInFlight.delete(flightKey));
   }
 
   /** @param {object} pane — host replay: load HTF then paint overlay once (no short-series flash). */
-  async function ensurePaneDataThenOverlay(pane) {
-    if (!pane?.symbol) return;
+  function ensurePaneDataThenOverlay(pane) {
+    if (!pane?.symbol) return Promise.resolve();
+    if (!paneBarsMatchCurrentSeries(pane)) return Promise.resolve();
     if (isChartPanning()) {
       deferHeavyWork();
-      return;
+      return Promise.resolve();
     }
-    await ensurePaneData(pane, { skipRefresh: true });
-    requestOverlayRefresh(pane.index);
+    const epoch = getDataEpoch();
+    const symbol = pane.symbol;
+    const resolution = pane.resolution;
+    const generation = pane._historyGeneration ?? 0;
+    const key = epoch + "|" + pane.index + "|" + symbol + "|" + resolution + "|" + generation;
+    const pending = paneOverlayInFlight.get(key);
+    if (pending) return pending;
+    const task = (async () => {
+      await ensurePaneData(pane, { skipRefresh: true });
+      if (getDataEpoch() !== epoch || pane.symbol !== symbol || pane.resolution !== resolution ||
+        (pane._historyGeneration ?? 0) !== generation || !paneBarsMatchCurrentSeries(pane)) return;
+      requestOverlayRefresh(pane.index);
+    })().finally(() => paneOverlayInFlight.delete(key));
+    paneOverlayInFlight.set(key, task);
+    return task;
   }
 
   return {
@@ -794,6 +928,7 @@ export function createIndicatorDataLoader({
     ensureNow: () => scheduleLoad(0),
     ensurePaneDataThenOverlay,
     extendHtfTailForReplay,
+    recoverIndicatorDataForPanes,
     scheduleCompareBarsFetch,
     scheduleHtfBarsFetch,
     isCompareDataUnavailable,

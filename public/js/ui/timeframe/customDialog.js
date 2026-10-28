@@ -1,5 +1,6 @@
 import { validateCustomInterval } from "../../chart/resolutions.js";
 import { mountDialogDrag } from "../../drawings/settings/dialog/utils.js";
+import { bindChartPortal } from "../chart/hostInteraction.js";
 
 /** @typedef {{ id: "T"|"S"|"m"|"h"|"D"|"W"|"M", label: string }} IntervalType */
 
@@ -65,6 +66,7 @@ export function openCustomIntervalDialog(opts) {
   </div>`;
 
   document.body.appendChild(overlay);
+  bindChartPortal(overlay, anchorEl, close);
 
   const dialog = overlay.querySelector(".tv-tf-dialog");
   const typeBtn = overlay.querySelector("[data-type-toggle]");

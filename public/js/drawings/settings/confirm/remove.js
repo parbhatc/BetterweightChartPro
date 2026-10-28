@@ -1,7 +1,8 @@
 import { loadSkipLockedConfirm, saveSkipLockedConfirm } from "../../toolbars/utility/settings/store.js";
+import { bindChartPortal } from "../../../ui/chart/hostInteraction.js";
 
 /**
- * @param {{ onYes: () => void, onNo: () => void }} handlers
+ * @param {{ onYes: () => void, onNo: () => void, owner?: HTMLElement }} handlers
  * @returns {() => void} close
  */
 export function showRemoveLockedConfirmDialog(handlers) {
@@ -29,6 +30,7 @@ export function showRemoveLockedConfirmDialog(handlers) {
     </div>`;
 
   document.body.appendChild(overlay);
+  bindChartPortal(overlay, handlers.owner, close);
 
   function close() {
     overlay.remove();

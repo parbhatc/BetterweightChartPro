@@ -1,8 +1,11 @@
+import { isChartHostInteractive } from "../../../ui/chart/hostInteraction.js";
+
 /**
  * @param {import("./state.js").BootContext} ctx
  */
 export function wireKeyboardShortcuts(ctx) {
   document.addEventListener("keydown", (ev) => {
+    if (!isChartHostInteractive(ctx.el)) return;
     if (!ev.altKey || ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) {
       return;
     }

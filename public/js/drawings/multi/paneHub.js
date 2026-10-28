@@ -602,6 +602,7 @@ export function createMultiPaneDrawingHub(opts) {
   const mainToolbar = mountMainToolbar({ controller: facade, toolbarEl });
 
   const editToolbar = mountEditToolbar({
+    owner: toolbarEl,
 
     controller: facade,
 

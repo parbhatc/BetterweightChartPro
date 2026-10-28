@@ -34,22 +34,32 @@ export function startIndicatorReload(ctx, panes) {
 
   return (async () => {
     try {
-      for (const entry of entries) {
-        if (!isCurrent(entry)) continue;
-        await ctx.ensureIndicatorChartHistory?.(entry.pane, {
+      const results = await Promise.allSettled(entries.map(async (entry) => {
+        if (!isCurrent(entry)) return;
+        const countBefore = entry.pane.bars?.length ?? 0;
+        const firstBefore = entry.pane.bars?.[0]?.time;
+        // Current-window HTF/compare studies should paint while the slower
+        // primary candle history is paging. Independent panes also start
+        // together so the first pane cannot hold every other pane's studies.
+        const currentWindow = Promise.resolve(ctx.ensureIndicatorDataThenOverlay?.(entry.pane));
+        const history = Promise.resolve(ctx.ensureIndicatorChartHistory?.(entry.pane, {
           shouldContinue: () => isCurrent(entry),
-        });
-      }
-      for (const entry of entries) {
-        if (!isCurrent(entry)) continue;
-        await ctx.ensureIndicatorDataThenOverlay?.(entry.pane);
-      }
-      for (const entry of entries) {
-        if (!isCurrent(entry)) continue;
+        }));
+        const phases = await Promise.allSettled([currentWindow, history]);
+        const phaseFailure = phases.find((phase) => phase.status === "rejected");
+        if (phaseFailure) throw phaseFailure.reason;
+        if (!isCurrent(entry)) return;
+        // Only ask studies for the expanded lookback if history changed.
+        if ((entry.pane.bars?.length ?? 0) > countBefore || entry.pane.bars?.[0]?.time !== firstBefore) {
+          await ctx.ensureIndicatorDataThenOverlay?.(entry.pane);
+        }
+        if (!isCurrent(entry)) return;
         if (ctx.indicatorController?.paneHasPlotSeriesIndicators?.(entry.pane.index)) {
           ctx.refreshIndicatorsImmediate?.(entry.pane.index);
         }
-      }
+      }));
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure) throw failure.reason;
     } finally {
       for (const entry of entries) {
         if (entry.pane._indicatorReloadToken !== entry.token) continue;

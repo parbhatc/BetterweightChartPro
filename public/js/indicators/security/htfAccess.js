@@ -3,7 +3,7 @@
 // Fetching/storing/replay-anchor handling lives in app/bar/htfBarCache.js.
 import { normalizeResolutionId } from "../../chart/resolutionFormat.js";
 import { resolutionSec } from "../../chart/resolutions.js";
-import { alignedHtfBucketOpen } from "./sessionBuckets.js";
+import { alignedHtfBucketOpen, alignedSeriesBucketOpen } from "./sessionBuckets.js";
 
 // The app cache registers its reader when boot code loads. Keeping this module
 // independent from app/debug/catalog modules prevents an ESM cycle when hosts
@@ -171,12 +171,18 @@ export function mergeWithHtfStore(symbol, resolution, hit) {
 
 /** @param {object} ctx @param {string} [symbol] @param {string} resolution */
 export function getSecuritySeries(ctx, symbol, resolution) {
-  const sym = symbol ?? ctx.primarySymbol ?? ctx.symbol;
-  const raw =
-    ctx.getSecurityBars?.(sym, resolution) ??
-    ctx.getBars?.(resolution) ??
-    ctx.getHtfBars?.(resolution) ??
-    null;
+  const primary = ctx.primarySymbol ?? ctx.symbol;
+  const sym = symbol ?? primary;
+  let raw = null;
+  // A missing symbol-aware result is authoritative. Falling through to a
+  // same-symbol alias can label primary-chart candles as compare-symbol data.
+  if (typeof ctx.getSecurityBars === "function") {
+    raw = ctx.getSecurityBars(sym, resolution);
+  } else if (primary == null || sym == null || sym === primary) {
+    raw = typeof ctx.getBars === "function"
+      ? ctx.getBars(resolution)
+      : ctx.getHtfBars?.(resolution) ?? null;
+  }
   const merged = sym ? mergeWithHtfStore(sym, resolution, raw) : raw;
   const htfSec = htfTfSecForCtx(ctx, resolution);
   const sliced = sliceSeriesToAnchor(merged, ctxPlaybackAnchorSec(ctx), htfSec);
@@ -185,9 +191,17 @@ export function getSecuritySeries(ctx, symbol, resolution) {
 
 /** @param {object} ctx @param {string} [symbol] @param {string} resolution @param {number} countBack */
 export function requestSecuritySeries(ctx, symbol, resolution, countBack) {
-  ctx.requestSecurityBars?.(symbol, resolution, countBack);
-  ctx.requestBars?.(resolution, countBack);
-  ctx.requestHtfBars?.(resolution, countBack);
+  // These are compatibility alternatives. Calling every alias triples each
+  // scheduling attempt and makes a compare-symbol request also fetch the
+  // pane's primary symbol through the older same-symbol callbacks.
+  if (typeof ctx.requestSecurityBars === "function") {
+    ctx.requestSecurityBars(symbol, resolution, countBack);
+  } else {
+    const primary = ctx.primarySymbol ?? ctx.symbol;
+    if (primary != null && symbol != null && symbol !== primary) return;
+    if (typeof ctx.requestBars === "function") ctx.requestBars(resolution, countBack);
+    else ctx.requestHtfBars?.(resolution, countBack);
+  }
 }
 
 /**
@@ -223,7 +237,6 @@ export function resolveHtfSeries(ctx, symbol, tfId, want, opts = {}) {
   if (htfSec != null && utcBars.length) {
     const cap = anchorSec ?? ctx.utcBars?.at(-1)?.time ?? null;
     if (cap != null) {
-      const newestClosedOpen = Math.floor(cap / htfSec) * htfSec - htfSec;
       let lastConfirmedOpen = null;
       for (let i = utcBars.length - 1; i >= 0; i--) {
         if (!utcBars[i].isForming) {
@@ -231,7 +244,11 @@ export function resolveHtfSeries(ctx, symbol, tfId, want, opts = {}) {
           break;
         }
       }
-      tailStale = lastConfirmedOpen != null && lastConfirmedOpen < newestClosedOpen;
+      const newestClosedOpen = alignedSeriesBucketOpen(cap, htfSec, lastConfirmedOpen) - htfSec;
+      const checkedThrough = stored?.tailCheckedThroughSec;
+      const freshThroughBucket = Number.isFinite(checkedThrough) &&
+        alignedSeriesBucketOpen(checkedThrough, htfSec, lastConfirmedOpen) >= alignedSeriesBucketOpen(cap, htfSec, lastConfirmedOpen);
+      tailStale = !freshThroughBucket && lastConfirmedOpen != null && lastConfirmedOpen < newestClosedOpen;
     }
   }
 

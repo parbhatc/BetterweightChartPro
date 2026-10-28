@@ -30,6 +30,7 @@ import {
   setActiveTemplateName,
 } from "../defaults/layoutTemplates.js";
 import { showLayoutConfirmDialog, showLayoutNameDialog } from "../../../ui/header/layout/dialogs.js";
+import { bindChartPortal } from "../../../ui/chart/hostInteraction.js";
 
 const EDIT_TOOL_HINTS = {
   templates: "Templates",
@@ -59,6 +60,7 @@ const ICONS = {
 
 /**
  * @param {object} opts
+ * @param {HTMLElement} [opts.owner]
  * @param {ReturnType<typeof import("../../controller/index.js").createDrawingController>} opts.controller
  * @param {import("prochart").IChartApi} [opts.chart]
  * @param {() => import("prochart").IChartApi | null} [opts.getChart]
@@ -69,7 +71,7 @@ export function mountEditToolbar(opts) {
   const resolveChart = () => getChart?.() ?? chartOpt ?? null;
   const colorPicker = createColorPicker();
   const tvMenu = createTvMenu();
-  const settingsDialog = createDrawingSettingsDialog({ controller, getContext });
+  const settingsDialog = createDrawingSettingsDialog({ controller, getContext, owner: opts.owner });
 
   const root = document.createElement("div");
   root.className = "tv-floating-toolbar tv-drawing-edit-toolbar";
@@ -82,6 +84,7 @@ export function mountEditToolbar(opts) {
     </div>
   </div>`;
   document.body.appendChild(root);
+  bindChartPortal(root, opts.owner);
 
   const widgets = root.querySelector("[data-edit-widgets]");
   const dragHandle = root.querySelector("[data-edit-drag]");
@@ -337,6 +340,7 @@ export function mountEditToolbar(opts) {
   async function saveTemplate(drawing) {
     const toolType = drawing.type;
     const name = await showLayoutNameDialog({
+      owner: opts.owner,
       title: "Save template",
       label: "Template name",
       placeholder: "My template",
@@ -345,6 +349,7 @@ export function mountEditToolbar(opts) {
     if (!name) return;
     if (hasNamedTemplate(toolType, name)) {
       const confirmed = await showLayoutConfirmDialog({
+        owner: opts.owner,
         title: "Override template?",
         message: `A template named "${name}" already exists. Are you sure you want to override it?`,
         confirmLabel: "Override",

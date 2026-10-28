@@ -15,6 +15,7 @@ import {
 } from "./custom.js";
 import { closeAllContextMenus, registerContextMenu } from "../context/registry.js";
 import { openCustomIntervalDialog } from "./customDialog.js";
+import { bindChartPortal } from "../chart/hostInteraction.js";
 import {
   CHART_RESOLUTION_IDS,
   mergeWithCustomResolutions,
@@ -107,6 +108,11 @@ export function mountTimeframePicker(opts) {
   panel.hidden = true;
   panel.setAttribute("role", "treegrid");
   document.body.appendChild(panel);
+  bindChartPortal(panel, root, () => {
+    closeCustomDialog?.();
+    closeCustomDialog = null;
+    closePanel();
+  });
 
   if (!barEl || !favEl || !overflowEl || !menuBtn) throw new Error("Timeframe picker markup missing");
 

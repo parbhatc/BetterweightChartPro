@@ -1,3 +1,5 @@
+import { isChartHostInteractive } from "../ui/chart/hostInteraction.js";
+
 /**
  * @param {KeyboardEvent} ev
  * @param {(string | number)[]} keys
@@ -19,12 +21,14 @@ function shortcutMatches(ev, keys) {
 /**
  * @param {HTMLElement | Document | null | undefined} mountEl
  * @param {Array<{ keys: (string | number)[]; cb: () => void }>} shortcuts
+ * @param {() => boolean} [shouldHandle]
  */
-export function bindWidgetShortcuts(mountEl, shortcuts) {
+export function bindWidgetShortcuts(mountEl, shortcuts, shouldHandle = () => true) {
   const target = mountEl instanceof HTMLElement || mountEl instanceof Document ? mountEl : document;
   if (!shortcuts.length) return () => {};
 
   const onKeyDown = (ev) => {
+    if (!shouldHandle()) return;
     const target = ev.target;
     if (
       target instanceof HTMLElement &&
@@ -55,7 +59,7 @@ export function createWidgetShortcutRegistry(getActivePane) {
 
   function ensureBound() {
     unbind?.();
-    unbind = bindWidgetShortcuts(document, shortcuts);
+    unbind = bindWidgetShortcuts(document, shortcuts, () => isChartHostInteractive(getActivePane()?.el));
   }
 
   return {

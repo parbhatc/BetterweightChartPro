@@ -114,14 +114,18 @@ class FvgIndicator extends BarScriptIndicator {
     const htfPad = fvgHtf.requiredHtfBars(inputs) + 20;
     /** @type {import("../../security/indicatorDataNeeds.js").IndicatorDataNeeds} */
     const needs = { htf: [], compare: [] };
+    // Match the engine's visibility gate before scheduling unused histories.
+    if ((inputs.showFvg === false && inputs.showIfvg === false) || instance.style?.graphicBoxes === false) {
+      return needs;
+    }
     for (const { tfId } of fvgHtf.enabledResolutions(inputs, pane.resolution ?? "1")) {
       needs.htf.push({ symbol: pane.symbol ?? "", resolution: tfId, countBack: htfPad });
     }
-    if (fvgHtf.requiresCorrelatedCompare(inputs)) {
+    if (fvgHtf.requiresCorrelatedCompare(inputs, pane.resolution ?? "1")) {
       const sym = compareSymbol.resolve(inputs, pane.symbol ?? "");
       /** @type {import("../../security/indicatorDataNeeds.js").CompareNeed} */
       const compare = { symbol: sym, chartCountBack: chartCount, htf: [] };
-      for (const { tfId } of fvgHtf.enabledResolutions(inputs, pane.resolution ?? "1")) {
+      for (const { tfId } of fvgHtf.correlatedResolutions(inputs, pane.resolution ?? "1")) {
         compare.htf.push({ resolution: tfId, countBack: htfPad });
       }
       needs.compare.push(compare);

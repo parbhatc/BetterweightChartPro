@@ -1,5 +1,8 @@
+import { bindChartPortal } from "../../chart/hostInteraction.js";
+
 /**
  * @param {object} opts
+ * @param {HTMLElement} [opts.owner]
  * @param {string} opts.title
  * @param {string} [opts.description]
  * @param {string} [opts.label]
@@ -40,6 +43,7 @@ export function showLayoutNameDialog(opts) {
       </div>`;
 
     document.body.appendChild(overlay);
+    bindChartPortal(overlay, opts.owner, () => close(null));
     const input = overlay.querySelector("[data-layout-name-input]");
     if (!(input instanceof HTMLInputElement)) {
       overlay.remove();
@@ -86,6 +90,7 @@ export function showLayoutNameDialog(opts) {
 
 /**
  * @param {object} opts
+ * @param {HTMLElement} [opts.owner]
  * @param {string} opts.title
  * @param {string} opts.message
  * @param {string} [opts.confirmLabel]
@@ -118,6 +123,7 @@ export function showLayoutConfirmDialog(opts) {
       </div>`;
 
     document.body.appendChild(overlay);
+    bindChartPortal(overlay, opts.owner, () => close(false));
 
     function close(confirmed) {
       overlay.remove();

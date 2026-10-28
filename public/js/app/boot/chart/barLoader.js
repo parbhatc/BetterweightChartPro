@@ -243,6 +243,8 @@ export function attachBarLoader(ctx) {
     prependHistory: barLoader.prependHistory,
     ensureHistoryNearEdge: barLoader.ensureHistoryNearEdge,
     ensureIndicatorChartHistory: barLoader.ensureIndicatorChartHistory,
+    captureResumeState: barLoader.captureResumeState,
+    recoverLiveHistory: barLoader.recoverLiveHistory,
     setOverlayLoaderEnabled: barLoader.setOverlayLoaderEnabled,
     stashPaneResolutionCache: barLoader.stashPaneResolutionCache,
     loadBars: () =>

@@ -10,6 +10,7 @@ import {
   debugFvgInitSkip,
 } from "./fvgDebug.js";
 import { buildCompareLayerSeries, buildLayerSeries, scanLayerSeries } from "./layers.js";
+import { layerMatchesCorrelatedTfSel } from "./detect.js";
 import {
   DEFAULT_FVG_BEAR_COLOR,
   DEFAULT_FVG_BORDER_OPACITY,
@@ -99,7 +100,11 @@ export function initFvgEngine(script) {
     return;
   }
 
-  const requireCorrelatedFvg = inputs.requireCorrelatedFvg === true;
+  const correlatedTf = inputs.correlatedFvgTf ?? "all";
+  const correlatedLayers = layers.filter((layer) =>
+    correlatedTf === "all" || layerMatchesCorrelatedTfSel(correlatedTf, layer, chartSec),
+  );
+  const requireCorrelatedFvg = inputs.requireCorrelatedFvg === true && correlatedLayers.length > 0;
   let compareSeriesByLayer = null;
 
   if (requireCorrelatedFvg) {
@@ -115,7 +120,7 @@ export function initFvgEngine(script) {
       return;
     }
     compareSeriesByLayer = new Map();
-    for (const layer of layers) {
+    for (const layer of correlatedLayers) {
       const built = buildCompareLayerSeries(
         cmp.aligned,
         script.chartBars,

@@ -91,14 +91,14 @@ export function attachMutations(ctx) {
     if (lockedCount > 0) {
       if (!unlockedCount) {
         if (shouldShowLockedRemoveConfirm()) {
-          showRemoveLockedConfirmDialog({ onYes: doRemoveAll, onNo: () => {} });
+          showRemoveLockedConfirmDialog({ onYes: doRemoveAll, onNo: () => {}, owner: ctx.container });
           return;
         }
         doRemoveAll();
         return;
       }
       if (shouldShowLockedRemoveConfirm()) {
-        showRemoveLockedConfirmDialog({ onYes: doRemoveAll, onNo: doRemoveUnlocked });
+        showRemoveLockedConfirmDialog({ onYes: doRemoveAll, onNo: doRemoveUnlocked, owner: ctx.container });
         return;
       }
       doRemoveUnlocked();

@@ -280,13 +280,14 @@ test("superseded indicator backfill cannot update the next timeframe", async () 
   );
 
   assert.equal(shouldContinue(), true);
+  assert.equal(overlayLoads, 1, "current-window studies start while deeper history loads");
   invalidateIndicatorReloads([pane]);
   pane.resolution = "30S";
   assert.equal(shouldContinue(), false);
   releaseHistory();
   await task;
 
-  assert.equal(overlayLoads, 0);
+  assert.equal(overlayLoads, 1, "the superseded history must not trigger another study pass");
   assert.equal(refreshes, 0);
   assert.equal("_indicatorHistoryBulkLoad" in pane, false);
 });

@@ -7,6 +7,7 @@ import {
 import { runContextMenuAction, debugContextMenu } from "../../debug/chart/contextMenu.js";
 import { hitTimeScale } from "../../chart/scale/settings.js";
 import { TIMEZONE_OPTIONS } from "../../chart/timezone/list.js";
+import { bindChartPortal, isChartHostInteractive } from "../chart/hostInteraction.js";
 
 const ICONS = {
   reset: `<svg viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><g fill="none" fill-rule="evenodd" stroke="currentColor"><path d="M6.5 15A8.5 8.5 0 1 0 15 6.5H8.5"></path><path d="M12 10 8.5 6.5 12 3"></path></g></svg>`,
@@ -56,6 +57,7 @@ export function mountTimeScaleContextMenu(opts) {
   root.hidden = true;
   root.setAttribute("role", "menu");
   document.body.appendChild(root);
+  bindChartPortal(root, container, close);
 
   /** @type {HTMLElement | null} */
   let submenuEl = null;
@@ -251,6 +253,7 @@ export function mountTimeScaleContextMenu(opts) {
   );
 
   document.addEventListener("keydown", (ev) => {
+    if (!isChartHostInteractive(container)) return;
     if (root.hidden) return;
     if (ev.key === "Escape") close();
     if (ev.ctrlKey && ev.altKey && ev.key.toLowerCase() === "q") {

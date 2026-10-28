@@ -184,7 +184,7 @@ export function attachLayoutPersistence(ctx) {
   }
 
   async function uniqueLayoutName(initial, title, confirmLabel) {
-    const name = await showLayoutNameDialog({ title, value: initial, confirmLabel });
+    const name = await showLayoutNameDialog({ title, value: initial, confirmLabel, owner: ctx.el });
     if (!name) return null;
     let unique = name;
     let n = 2;

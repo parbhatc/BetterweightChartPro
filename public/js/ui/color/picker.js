@@ -1,3 +1,5 @@
+import { bindChartPortal } from "../chart/hostInteraction.js";
+
 const PRESETS = [
   "#ffffff",
   "#e0e0e0",
@@ -497,6 +499,7 @@ export function createColorPicker() {
   }
 
   function position(anchor) {
+    bindChartPortal(root, anchor, close);
     const rect = anchor.getBoundingClientRect();
     const pad = 8;
     let left = rect.left;

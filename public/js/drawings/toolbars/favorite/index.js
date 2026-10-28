@@ -9,11 +9,13 @@ import {
   readFloatingToolbarPos,
 } from "../floating/position.js";
 import { defaultFavoriteToolbarPosition } from "../floating/reposition.js";
+import { bindChartPortal } from "../../../ui/chart/hostInteraction.js";
 
 const DRAG_HANDLE = `<svg viewBox="0 0 8 12" width="8" height="12" fill="currentColor" aria-hidden="true"><rect width="2" height="2" rx="1"/><rect width="2" height="2" rx="1" y="5"/><rect width="2" height="2" rx="1" y="10"/><rect width="2" height="2" rx="1" x="6"/><rect width="2" height="2" rx="1" x="6" y="5"/><rect width="2" height="2" rx="1" x="6" y="10"/></svg>`;
 
 /**
  * @param {object} opts
+ * @param {HTMLElement} [opts.owner]
  * @param {(tool: string) => void} opts.onSelectTool
  * @param {() => string} opts.getActiveTool
  * @param {() => string[]} opts.getFavorites
@@ -30,6 +32,7 @@ export function createFavoriteToolbar(opts) {
     <div class="tv-floating-toolbar__content" data-fav-content></div>
   </div>`;
   document.body.appendChild(root);
+  bindChartPortal(root, opts.owner);
 
   const content = root.querySelector("[data-fav-content]");
   const dragHandle = root.querySelector("[data-fav-drag]");

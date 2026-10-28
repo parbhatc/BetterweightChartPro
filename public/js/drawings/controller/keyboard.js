@@ -1,4 +1,5 @@
 import { isMultiPointTool } from "../registry/tools.js";
+import { isChartHostInteractive } from "../../ui/chart/hostInteraction.js";
 
 /** @param {import("./state.js").ControllerState} ctx */
 export function attachKeyboard(ctx) {
@@ -10,6 +11,7 @@ export function attachKeyboard(ctx) {
   }
 
   function onKeyDown(ev) {
+    if (!isChartHostInteractive(ctx.container)) return;
     if (ev.key === "Escape") {
       if (isMultiPointTool(ctx.activeTool) && ctx.placementStaged.length >= 2) {
         ctx.finishMultiPointPlacement();

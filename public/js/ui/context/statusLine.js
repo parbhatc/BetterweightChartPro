@@ -4,6 +4,7 @@ import {
   registerContextMenu,
   shouldDismissContextMenuOnScroll,
 } from "./registry.js";
+import { bindChartPortal, isChartHostInteractive } from "../chart/hostInteraction.js";
 
 const CHECK_ICON = `<svg viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M22 9.06 11 20 6 14.7l1.09-1.02 3.94 4.16L20.94 8 22 9.06Z"/></svg>`;
 const SETTINGS_ICON = `<svg viewBox="0 0 28 28" width="18" height="18" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 14a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-1 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/><path fill-rule="evenodd" d="M8.5 5h11l5 9-5 9h-11l-5-9 5-9Zm-3.86 9L9.1 6h9.82l4.45 8-4.45 8H9.1l-4.45-8Z"/></svg>`;
@@ -46,6 +47,7 @@ export function mountStatusLineContextMenu(opts) {
   root.hidden = true;
   root.setAttribute("role", "menu");
   document.body.appendChild(root);
+  bindChartPortal(root, statusEl, close);
 
   function close() {
     root.hidden = true;
@@ -129,6 +131,7 @@ export function mountStatusLineContextMenu(opts) {
   });
 
   document.addEventListener("keydown", (ev) => {
+    if (!isChartHostInteractive(statusEl)) return;
     if (ev.key === "Escape") close();
   });
   window.addEventListener("resize", close);

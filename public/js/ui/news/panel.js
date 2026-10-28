@@ -1,4 +1,5 @@
 import { etParts, hmToMinutes } from "../../core/etTime.js";
+import { bindChartPortal } from "../chart/hostInteraction.js";
 import {
   enabledNewsTypeIds,
   eventMatchesId,
@@ -44,6 +45,7 @@ export function createNewsPanel(opts) {
 
   shell.append(backdrop, panel);
   document.body.appendChild(shell);
+  bindChartPortal(shell, anchor, closePanel);
 
   let open = false;
 

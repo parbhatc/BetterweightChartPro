@@ -29,6 +29,8 @@ export {
   normalizeBar,
   normalizeBars,
   resolveDatafeed,
+  createHistoryRequestCache,
+  HISTORY_CACHE_TTL_MS,
 } from "./datafeed/index.js";
 export { createDatafeed as createBrowserDatafeed } from "./datafeed/client.js";
 export { registerIndicator, registerIndicatorDefinition, listIndicators, getIndicatorClass } from "./indicators/catalog.js";

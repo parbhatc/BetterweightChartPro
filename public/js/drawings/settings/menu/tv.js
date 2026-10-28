@@ -1,3 +1,5 @@
+import { bindChartPortal } from "../../../ui/chart/hostInteraction.js";
+
 /**
  * @typedef {{ id: string, label: string, icon?: string }} TvMenuItem
  */
@@ -44,6 +46,7 @@ export function createTvMenu() {
    * @param {{ activeId?: string, onSelect: (id: string) => boolean | void }} opts
    */
   function open(anchor, items, opts) {
+    bindChartPortal(root, anchor, close);
     onCheckboxChange = null;
     onSelect = opts.onSelect;
     inner.className = "tv-menu-popover__inner";
@@ -78,6 +81,7 @@ export function createTvMenu() {
    * @param {{ checked?: Record<string, boolean>, onChange: (id: string, checked: boolean) => void }} opts
    */
   function openCheckboxMenu(anchor, items, opts) {
+    bindChartPortal(root, anchor, close);
     onSelect = null;
     onCheckboxChange = opts.onChange;
     inner.className = "tv-menu-popover__inner tv-menu-popover__inner--checks";

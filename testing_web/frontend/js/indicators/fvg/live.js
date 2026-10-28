@@ -1,7 +1,7 @@
 import { getSecuritySeries, mapHtfBarsToSeries } from "/js/indicators/security/htfAccess.js";
 import { ensureCompareAligned } from "/js/indicators/security/compareBars.js";
 import { overlayGeometryEqual } from "/js/indicators/overlayCache.js";
-import { formingBoxesSignature } from "./detect.js";
+import { formingBoxesSignature, layerMatchesCorrelatedTfSel } from "./detect.js";
 import { emitAllBoxes } from "./emit.js";
 import {
   buildCompareLayerSeries,
@@ -32,6 +32,8 @@ export function refreshCompareSeriesForLive(script) {
 
   const compareSeriesByLayer = new Map();
   for (const layer of layersByLabel.values()) {
+    const selected = cfg.correlatedFvgTf ?? "all";
+    if (selected !== "all" && !layerMatchesCorrelatedTfSel(selected, layer, chartSec)) continue;
     const built = buildCompareLayerSeries(
       cmp.aligned,
       script.chartBars,

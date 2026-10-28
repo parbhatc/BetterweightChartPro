@@ -1,4 +1,5 @@
 import { closeAllContextMenus } from "../context/registry.js";
+import { bindChartPortal } from "./hostInteraction.js";
 import { chartDebug } from "../../debug/chart/index.js";
 import { createColorPicker } from "../color/picker.js";
 import { TIMEZONE_OPTIONS, PRECISION_OPTIONS } from "../../chart/timezone/list.js";
@@ -945,6 +946,7 @@ export function mountChartSettings(opts) {
           </div>
         </div>`;
       document.body.appendChild(dialogEl);
+      bindChartPortal(dialogEl, triggerEl, close);
 
       dialogEl.addEventListener("click", (ev) => {
         const action = ev.target.closest("[data-action]")?.dataset.action;

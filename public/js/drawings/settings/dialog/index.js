@@ -1,4 +1,5 @@
 import { createColorPicker, applyColorOpacity } from "../../../ui/color/picker.js";
+import { bindChartPortal } from "../../../ui/chart/hostInteraction.js";
 import { createTvMenu, TEXT_ALIGN_V_ITEMS, TEXT_ALIGN_H_ITEMS } from "../menu/tv.js";
 import { resolveTrendAngleDeg } from "../../tools/line/trendAngle.js";
 import {
@@ -150,6 +151,7 @@ export function createDrawingSettingsDialog(opts) {
   root.hidden = true;
   root.innerHTML = drawingSettingsDialogHtml();
   document.body.appendChild(root);
+  bindChartPortal(root, opts.owner, close);
 
   const dialog = root.querySelector(".tv-drawing-settings__dialog");
   const titleEl = root.querySelector("[data-dialog-title]");

@@ -51,6 +51,8 @@ export {
   normalizeBar,
   normalizeBars,
   resolveDatafeed,
+  createHistoryRequestCache,
+  HISTORY_CACHE_TTL_MS,
 } from "../../datafeed/index.js";
 export { createChartWidgetApi } from "../../app/boot/widgetApi.js";
 export { createReplayControlApi } from "../../replay/controlApi.js";

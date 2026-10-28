@@ -1,3 +1,5 @@
+import { bindChartPortal } from "../../../ui/chart/hostInteraction.js";
+
 /**
  * Flyout positioning and open/close state for the drawing toolbar.
  * @param {HTMLElement} toolbarEl
@@ -65,6 +67,7 @@ export function createFlyoutHost(toolbarEl) {
   function mountFlyout(flyout, cluster) {
     flyout.dataset.flyoutCluster = cluster.dataset.toolGroup ?? cluster.dataset.utilityGroup ?? "";
     document.body.appendChild(flyout);
+    bindChartPortal(flyout, toolbarEl, closeAllFlyouts);
     flyouts.push(flyout);
     flyout.addEventListener("mousedown", (ev) => ev.stopPropagation());
     flyout.addEventListener("click", (ev) => ev.stopPropagation());

@@ -84,6 +84,9 @@ export function createChartWidgetApi(ctx) {
     refreshIndicatorsImmediate,
     refreshIndicatorLegends,
     ensureIndicatorChartHistory,
+    captureResumeState,
+    recoverLiveHistory,
+    recoverIndicatorDataForPanes,
   } = ctx;
 
   const tfSwitchCtx = {
@@ -186,6 +189,29 @@ export function createChartWidgetApi(ctx) {
 
     getAllChartPanes() {
       return getAllChartPanes();
+    },
+
+    /** Capture before hiding/disconnecting; pass the unchanged snapshot to recover(). */
+    captureResumeState() {
+      return captureResumeState?.() ?? null;
+    },
+
+    /** Fill live gaps from the saved candle without discarding loaded history or viewport. */
+    async recover(options = {}) {
+      if (typeof recoverLiveHistory !== "function") throw new Error("Live history recovery is unavailable");
+      const { recoverySince, ...result } = await recoverLiveHistory(options);
+      const targets = getAllChartPanes().filter((pane) => result.panes.some((item) => item.index === pane.index && item.symbol === pane.symbol && item.resolution === pane.resolution));
+      const indicatorResult = await recoverIndicatorDataForPanes?.(targets, { ...options, since: recoverySince ?? options.since, refresh: false });
+      if (indicatorResult?.failedSeries?.length) {
+        throw new Error(`Live indicator history recovery failed: ${indicatorResult.failedSeries.join(", ")}`);
+      }
+      if (options.shouldContinue?.() === false) throw new Error("Live recovery was superseded");
+      for (const pane of targets) {
+        indicatorController?.invalidateOverlayCacheForPane?.(pane.index);
+        refreshIndicatorsImmediate?.(pane.index);
+      }
+      refreshIndicatorLegends?.();
+      return result;
     },
 
     /** Activate a chart pane by layout index (used by cross-pane host tools). */
@@ -312,6 +338,7 @@ export function createChartWidgetApi(ctx) {
      */
     async reset(opts = {}) {
       if (opts.data) {
+        datafeed.historyCache?.clear();
         clearResolutionCache();
         const panes = getAllChartPanes();
         const sync = layoutManager?.getSync();
@@ -382,6 +409,10 @@ export function createChartWidgetApi(ctx) {
 
     /** Reload history from datafeed (initial countBack). Pass `{ force: true }` to refetch even when bars exist. */
     reload: (opts = {}) => {
+      if (opts.force) {
+        datafeed.historyCache?.clear();
+        clearResolutionCache();
+      }
       const panes = getAllChartPanes();
       const sync = layoutManager?.getSync();
       const loadAll = sync?.symbol || sync?.interval || panes.length > 1;
@@ -632,6 +663,7 @@ export function createChartWidgetApi(ctx) {
 
     /** Tear down host-global side effects (touch scroll lock, clocks, debug HUD). */
     destroy() {
+      datafeed.historyCache?.dispose();
       widget.positionOverlay?.destroy?.();
       unsubscribeExecutionMarkerSettings?.();
       executionShapes.destroy?.();

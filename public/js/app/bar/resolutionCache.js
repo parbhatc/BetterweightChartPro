@@ -2,9 +2,14 @@ import { chartDebug } from "../../debug/chart/index.js";
 import { invalidatePaneChartView } from "../../chart/pane/viewCache.js";
 
 /** Keep bars warm after switching resolution or for another pane. */
-export const RESOLUTION_CACHE_TTL_MS = 30_000;
-/** Longer TTL while bar replay is active (interval switching). */
-export const RESOLUTION_CACHE_REPLAY_TTL_MS = 60_000;
+export const RESOLUTION_CACHE_TTL_MS = 30 * 60_000;
+/** Replay snapshots use the same bounded retention as live intervals. */
+export const RESOLUTION_CACHE_REPLAY_TTL_MS = RESOLUTION_CACHE_TTL_MS;
+/** Bound retained scrollback even when users visit many symbols/intervals. */
+export const RESOLUTION_CACHE_MAX_SERIES_PER_SCOPE = 12;
+export const RESOLUTION_CACHE_MAX_BARS_PER_SCOPE = 60_000;
+export const RESOLUTION_CACHE_MAX_SERIES = 48;
+export const RESOLUTION_CACHE_MAX_BARS = 240_000;
 
 /** @type {boolean} */
 let replayExtendedTtl = false;
@@ -74,6 +79,8 @@ export function seriesCacheKey(symbol, resolution, scope) {
  */
 function snapshotFromPane(pane) {
   if (!pane.bars?.length) return null;
+  const loaded = pane._barSeriesIdentity;
+  if (loaded && (loaded.symbol !== pane.symbol || loaded.resolution !== pane.resolution)) return null;
   return {
     bars: pane.bars.slice(),
     _historyExhausted: Boolean(pane._historyExhausted),
@@ -87,6 +94,11 @@ function snapshotFromPane(pane) {
  */
 function applySnapshotToPane(pane, snapshot) {
   pane.bars = snapshot.bars.slice();
+  pane._barSeriesIdentity = { symbol: pane.symbol, resolution: pane.resolution };
+  pane._historyGeneration = (pane._historyGeneration ?? 0) + 1;
+  pane._historyRestorePending = false;
+  pane._deferredHistoryOlder = null;
+  pane._deferredLiveBar = null;
   pane._historyExhausted = snapshot._historyExhausted;
   pane._firstDataRequest = snapshot._firstDataRequest;
   invalidatePaneChartView(pane);
@@ -94,7 +106,7 @@ function applySnapshotToPane(pane, snapshot) {
 
 /**
  * @param {string} k
- * @param {"ttl" | "expired"} reason
+ * @param {"ttl" | "expired" | "capacity"} reason
  */
 function evict(k, reason) {
   const entry = entries.get(k);
@@ -113,27 +125,70 @@ function evict(k, reason) {
  * @param {string} symbol
  * @param {string} resolution
  * @param {ResolutionSnapshot} snapshot
- * @param {{ ttl?: boolean }} [opts]
  * @param {object} [scope]
  */
-function putEntry(symbol, resolution, snapshot, opts = {}, scope) {
+function putEntry(symbol, resolution, snapshot, scope) {
   const k = seriesCacheKey(symbol, resolution, scope);
   const prev = entries.get(k);
   if (prev?.timer) clearTimeout(prev.timer);
 
+  // A peer pane may have loaded only its viewport. Keep previously fetched
+  // left-hand scrollback when that shorter pane publishes the same series.
+  const older = prev?.snapshot.bars[0]?.time < snapshot.bars[0].time
+    ? prev.snapshot.bars.filter((bar) => bar.time < snapshot.bars[0].time)
+    : [];
+  const retained = older.length ? {
+    ...snapshot,
+    bars: [...older, ...snapshot.bars],
+    _historyExhausted: snapshot._historyExhausted || prev.snapshot._historyExhausted,
+  } : snapshot;
   const entry = {
     symbol,
     resolution,
-    snapshot,
+    scopeId: cacheScopeId(scope),
+    snapshot: retained,
     updatedAt: Date.now(),
     timer: null,
   };
 
-  if (opts.ttl) {
-    entry.timer = setTimeout(() => evict(k, "ttl"), cacheTtlMs());
-  }
-
+  // Published entries also expire: a destroyed widget must not retain bars
+  // forever simply because no subsequent timeframe switch stashed them.
+  entry.timer = setTimeout(() => evict(k, "ttl"), cacheTtlMs());
+  entry.timer.unref?.();
+  entries.delete(k);
   entries.set(k, entry);
+  enforceCapacity(entry.scopeId);
+}
+
+function enforceCapacity(scopeId) {
+  const trim = (matches, maxSeries, maxBars) => {
+    const candidates = [...entries].filter(([, entry]) => matches(entry));
+    let count = candidates.length;
+    let bars = candidates.reduce((total, [, entry]) => total + entry.snapshot.bars.length, 0);
+    for (const [key, entry] of candidates) {
+      if (count <= maxSeries && bars <= maxBars) break;
+      evict(key, "capacity");
+      count -= 1;
+      bars -= entry.snapshot.bars.length;
+    }
+  };
+  trim((entry) => entry.scopeId === scopeId, RESOLUTION_CACHE_MAX_SERIES_PER_SCOPE, RESOLUTION_CACHE_MAX_BARS_PER_SCOPE);
+  trim(() => true, RESOLUTION_CACHE_MAX_SERIES, RESOLUTION_CACHE_MAX_BARS);
+}
+
+function findEntry(symbol, resolution, scope) {
+  const key = seriesCacheKey(symbol, resolution, scope);
+  const entry = entries.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.updatedAt > cacheTtlMs()) {
+    evict(key, "expired");
+    return null;
+  }
+  // Map order is the LRU order. Reading does not extend data age: a restored
+  // live series must still repair its complete tail before publishing anew.
+  entries.delete(key);
+  entries.set(key, entry);
+  return entry;
 }
 
 /**
@@ -144,11 +199,8 @@ function putEntry(symbol, resolution, snapshot, opts = {}, scope) {
  * @returns {object[] | null}
  */
 export function getResolutionCacheBars(symbol, resolution, scope) {
-  const entry = entries.get(seriesCacheKey(symbol, resolution, scope));
+  const entry = findEntry(symbol, resolution, scope);
   if (!entry) return null;
-  const ageMs = Date.now() - entry.updatedAt;
-  const ttlMs = cacheTtlMs();
-  if (entry.timer && ageMs > ttlMs) return null;
   return entry.snapshot.bars.slice();
 }
 
@@ -162,7 +214,7 @@ export function publishResolutionCache(pane, scope) {
   const snapshot = snapshotFromPane(pane);
   if (!snapshot || !pane.symbol || !pane.resolution) return;
 
-  putEntry(pane.symbol, pane.resolution, snapshot, { ttl: false }, scope);
+  putEntry(pane.symbol, pane.resolution, snapshot, scope);
   chartDebug("data", "resolution cache publish", {
     pane: pane.index,
     symbol: pane.symbol,
@@ -192,7 +244,7 @@ export function stashPaneResolutionCache(pane, resolution, scope) {
   const snapshot = snapshotFromPane(pane);
   if (!snapshot) return;
 
-  putEntry(pane.symbol, resolution, snapshot, { ttl: true }, scope);
+  putEntry(pane.symbol, resolution, snapshot, scope);
   chartDebug("data", "resolution cache stash", {
     pane: pane.index,
     symbol: pane.symbol,
@@ -211,17 +263,10 @@ export function stashPaneResolutionCache(pane, resolution, scope) {
 export function tryRestorePaneResolutionCache(pane, scope) {
   if (!pane.symbol || !pane.resolution) return false;
 
-  const k = seriesCacheKey(pane.symbol, pane.resolution, scope);
-  const entry = entries.get(k);
+  const entry = findEntry(pane.symbol, pane.resolution, scope);
   if (!entry) return false;
 
   const ageMs = Date.now() - entry.updatedAt;
-  const ttlMs = cacheTtlMs();
-  if (entry.timer && ageMs > ttlMs) {
-    evict(k, "expired");
-    return false;
-  }
-
   applySnapshotToPane(pane, entry.snapshot);
   chartDebug("data", "resolution cache hit", {
     pane: pane.index,

@@ -1,6 +1,7 @@
 import { invalidatePaneChartView } from "../../chart/pane/viewCache.js";
 import { captureVisibleViewport, restoreViewportAfterPrepend } from "../../chart/pane/viewport.js";
 import { normalizeBar } from "../../datafeed/custom.js";
+import { symbolDelayFromInfo } from "../../datafeed/symbolDelay.js";
 import {
   chartDebug,
   chartDebugCount,
@@ -36,6 +37,7 @@ import {
   tryRestorePaneResolutionCache,
 } from "./resolutionCache.js";
 import { symbolTicker } from "../symbol/ticker.js";
+import { createLiveHistoryRecovery } from "./liveRecovery.js";
 
 /** Load more when the visible range is within this many bars of the left edge. */
 export const HISTORY_EDGE_BARS = 80;
@@ -111,6 +113,18 @@ export function isNearHistoryLeftEdge(range) {
 const HISTORY_BURST_MAX = 2;
 /** Short cooldown after a failed history request (ms). */
 const HISTORY_ERROR_COOLDOWN_MS = 5_000;
+/** Indicator warmup has a known depth; fetch it in useful pages, independent of zoom. */
+const INDICATOR_HISTORY_CHUNK = 500;
+
+/** A picker updates pane.resolution before the replacement bars are ready. */
+function paneBarsMatchCurrentSeries(pane) {
+  const loaded = pane._barSeriesIdentity;
+  return !loaded || (loaded.symbol === pane.symbol && loaded.resolution === pane.resolution);
+}
+
+function markPaneBarSeries(pane) {
+  pane._barSeriesIdentity = { symbol: pane.symbol, resolution: pane.resolution };
+}
 
 /**
  * @param {{ time: number }[]} bars
@@ -183,6 +197,8 @@ export function createBarLoader(opts) {
   const loadInFlightByPane = new Map();
   /** @type {Map<string, Promise<{ bars: object[], noData?: boolean }>>} */
   const seriesFetchInFlight = new Map();
+  const prependTaskByPane = new WeakMap();
+  const indicatorHistoryTaskByPane = new WeakMap();
   let barsLoadingCount = 0;
   /** @type {Promise<unknown> | null} */
   let loadBarsForPanesPromise = null;
@@ -306,6 +322,7 @@ export function createBarLoader(opts) {
   }
 
   function unsubscribePane(paneIndex) {
+    cancelFormingCoalesce(paneIndex);
     const uid = streamUidByPane.get(paneIndex);
     if (uid && typeof datafeed.unsubscribeBars === "function") {
       datafeed.unsubscribeBars(uid);
@@ -320,6 +337,7 @@ export function createBarLoader(opts) {
    */
   function upsertLiveBar(pane, rawBar) {
     if (!pane.bars.length) return;
+    if (!paneBarsMatchCurrentSeries(pane)) return;
     if (typeof opts.isReplayLocked === "function" && opts.isReplayLocked()) return;
     if (isLiveBarsPaused()) {
       chartDebugCount("tick", "paused");
@@ -406,11 +424,17 @@ export function createBarLoader(opts) {
     if (typeof datafeed.subscribeBars !== "function" || !pane.symbolInfo) return;
     unsubscribePane(pane.index);
     const uid = `pane-${pane.index}`;
+    const symbol = pane.symbol;
+    const resolution = pane.resolution;
+    const identity = pane._barSeriesIdentity;
     streamUidByPane.set(pane.index, uid);
     datafeed.subscribeBars(
       pane.symbolInfo,
       pane.resolution,
-      (bar) => upsertLiveBar(pane, bar),
+      (bar) => {
+        if (pane.symbol !== symbol || pane.resolution !== resolution || pane._barSeriesIdentity !== identity) return;
+        upsertLiveBar(pane, bar);
+      },
       uid,
     );
   }
@@ -422,6 +446,11 @@ export function createBarLoader(opts) {
    */
   function mergeOlderBarsIntoPane(pane, olderBars, opts = {}) {
     if (!pane.bars.length || !olderBars.length) return 0;
+    if (!paneBarsMatchCurrentSeries(pane)) return 0;
+    const symbol = pane.symbol;
+    const resolution = pane.resolution;
+    const generation = pane._historyGeneration ?? 0;
+    const currentSeries = () => pane.symbol === symbol && pane.resolution === resolution && (pane._historyGeneration ?? 0) === generation;
     const firstTime = pane.bars[0].time;
     const relevant = olderBars.filter((b) => b.time < firstTime);
     if (!relevant.length) return 0;
@@ -462,6 +491,7 @@ export function createBarLoader(opts) {
     publishResolutionCache(pane, resolutionCacheScope);
 
     const finishPrepend = () => {
+      if (!currentSeries()) return;
       pane._historyRestorePending = false;
       const view = pane._chartView;
       const viewLen = view?.utcBars?.length ?? 0;
@@ -482,8 +512,10 @@ export function createBarLoader(opts) {
     };
 
     requestAnimationFrame(() => {
+      if (!currentSeries()) return;
       restoreViewportAfterPrepend(pane.chart, captured, capturedLogical, added);
       requestAnimationFrame(() => {
+        if (!currentSeries()) return;
         restoreViewportAfterPrepend(pane.chart, captured, capturedLogical, added);
         finishPrepend();
       });
@@ -508,7 +540,10 @@ export function createBarLoader(opts) {
 
   async function ensurePaneSymbolInfo(pane) {
     if (pane.symbol && !symbolInfoMatchesSymbol(pane.symbolInfo, pane.symbol)) {
-      pane.symbolInfo = await datafeed.resolveSymbol(pane.symbol);
+      const symbol = pane.symbol;
+      const info = await datafeed.resolveSymbol(symbol);
+      if (pane.symbol !== symbol) return false;
+      pane.symbolInfo = info;
       return true;
     }
     return false;
@@ -567,11 +602,36 @@ export function createBarLoader(opts) {
    * @param {object} pane
    * @param {number} [chunk]
    */
-  async function prependHistory(pane, chunk = historyChunk, opts = {}) {
+  function prependHistory(pane, chunk = historyChunk, opts = {}) {
+    const shouldContinue = typeof opts.shouldContinue === "function" ? opts.shouldContinue : () => true;
+    if (!shouldContinue() || !paneBarsMatchCurrentSeries(pane)) return Promise.resolve(false);
+    if (pane.bars?.length && !pane._barSeriesIdentity) markPaneBarSeries(pane);
+    const symbol = pane.symbol;
+    const resolution = pane.resolution;
+    const generation = pane._historyGeneration ?? 0;
+    const existing = prependTaskByPane.get(pane);
+    if (existing?.symbol === symbol && existing.resolution === resolution && existing.generation === generation) {
+      existing.callers.add(shouldContinue);
+      return existing.promise;
+    }
+    const task = { symbol, resolution, generation, callers: new Set([shouldContinue]), promise: null };
+    prependTaskByPane.set(pane, task);
+    const active = () =>
+      prependTaskByPane.get(pane) === task &&
+      pane.symbol === symbol && pane.resolution === resolution &&
+      (pane._historyGeneration ?? 0) === generation &&
+      [...task.callers].some((keepGoing) => keepGoing());
+    task.promise = runPrependHistory(pane, chunk, { ...opts, shouldContinue: active }).finally(() => {
+      if (prependTaskByPane.get(pane) === task) prependTaskByPane.delete(pane);
+    });
+    return task.promise;
+  }
+
+  async function runPrependHistory(pane, chunk, opts) {
     const shouldContinue =
       typeof opts.shouldContinue === "function" ? opts.shouldContinue : () => true;
     if (!shouldContinue()) return false;
-    if (pane._historyFetchInFlight || pane._loadingHistory || !pane.bars.length) return false;
+    if (pane._loadingHistory || !pane.bars.length) return false;
     if (pane._historyErrorUntil && Date.now() < pane._historyErrorUntil) return false;
     await ensurePaneSymbolInfo(pane);
     if (!shouldContinue() || !pane.symbolInfo) return false;
@@ -584,7 +644,9 @@ export function createBarLoader(opts) {
     try {
       const first = pane.bars[0];
       const barSec = getBarSecForPane?.(pane) ?? 60;
-      const requestCountBack = estimateHistoryCountBack(pane.chart, chunk, HISTORY_EDGE_BARS);
+      const requestCountBack = opts.countBack != null
+        ? Math.max(1, Math.floor(Number(opts.countBack) || 1))
+        : estimateHistoryCountBack(pane.chart, chunk, HISTORY_EDGE_BARS);
       const periodParams = buildPrependPeriodParams(first.time, barSec, requestCountBack);
       chartDebug("data", "prependHistory request", {
         pane: pane.index,
@@ -689,8 +751,13 @@ export function createBarLoader(opts) {
   }
 
   async function finishPaneAfterBarsLoaded(pane, loadOpts = {}) {
+    const symbol = pane.symbol;
+    const resolution = pane.resolution;
+    const generation = pane._historyGeneration ?? 0;
+    markPaneBarSeries(pane);
     clearResolvedPaneEmptyState(pane, syncPaneEmptyState);
     await ensurePaneSymbolInfo(pane);
+    if (pane.symbol !== symbol || pane.resolution !== resolution || (pane._historyGeneration ?? 0) !== generation) return undefined;
     if (!loadOpts.deferChartRefresh) {
       refreshPaneCandleData(pane, loadOpts);
     } else {
@@ -757,25 +824,51 @@ export function createBarLoader(opts) {
     });
   }
 
-  async function ensureIndicatorChartHistory(pane, opts = {}) {
-    const shouldContinue =
-      typeof opts.shouldContinue === "function" ? opts.shouldContinue : () => true;
-    if (!shouldContinue()) return;
-    const want = Math.max(0, Number(getRequiredChartBarsForPane?.(pane)) || 0);
-    if (!want || pane.bars.length >= want) return;
-    if (pane._historyExhausted) return;
+  function ensureIndicatorChartHistory(pane, opts = {}) {
+    const shouldContinue = typeof opts.shouldContinue === "function" ? opts.shouldContinue : () => true;
+    if (!shouldContinue() || !paneBarsMatchCurrentSeries(pane)) return Promise.resolve();
+    if (pane.bars?.length && !pane._barSeriesIdentity) markPaneBarSeries(pane);
+    const want = Math.max(0, Math.ceil(Number(opts.countBack) || 0), Math.ceil(Number(getRequiredChartBarsForPane?.(pane)) || 0));
+    const symbol = pane.symbol;
+    const resolution = pane.resolution;
+    const generation = pane._historyGeneration ?? 0;
+    const existing = indicatorHistoryTaskByPane.get(pane);
+    if (existing?.symbol === symbol && existing.resolution === resolution && existing.generation === generation) {
+      existing.callers.push({ shouldContinue, want });
+      return existing.promise;
+    }
+    if (!want || pane.bars.length >= want || pane._historyExhausted) return Promise.resolve();
+    const task = { symbol, resolution, generation, callers: [{ shouldContinue, want }], promise: null };
+    indicatorHistoryTaskByPane.set(pane, task);
+    const current = () =>
+      indicatorHistoryTaskByPane.get(pane) === task &&
+      pane.symbol === symbol && pane.resolution === resolution &&
+      (pane._historyGeneration ?? 0) === generation;
+    const targetDepth = () => Math.max(0, ...task.callers.filter((caller) => caller.shouldContinue()).map((caller) => caller.want));
+    const active = () => current() && targetDepth() > 0;
+    task.promise = runIndicatorChartHistory(pane, opts, active, targetDepth).finally(() => {
+      if (indicatorHistoryTaskByPane.get(pane) === task) indicatorHistoryTaskByPane.delete(pane);
+    });
+    return task.promise;
+  }
+
+  async function runIndicatorChartHistory(pane, opts, shouldContinue, targetDepth) {
     // ponytail: TF switch suppresses edge prefetch during load; indicators still need ~30h depth
     const restoreSuppress = pane._suppressHistoryPrefetch === true;
     if (restoreSuppress) delete pane._suppressHistoryPrefetch;
     try {
-      let guard = 0;
-      while (pane.bars.length < want && !pane._historyExhausted && guard < 16) {
+      while (pane.bars.length < targetDepth() && !pane._historyExhausted) {
         if (!shouldContinue() || isPanning()) return;
-        const got = await prependHistory(pane, historyChunk, opts);
+        const before = pane.bars.length;
+        const got = await prependHistory(pane, historyChunk, {
+          ...opts,
+          shouldContinue,
+          countBack: Math.min(INDICATOR_HISTORY_CHUNK, targetDepth() - before),
+        });
         if (!shouldContinue() || !got) break;
         await waitHistoryRestoreSettled(pane);
         if (!shouldContinue()) return;
-        guard += 1;
+        if (pane.bars.length <= before) break;
       }
     } finally {
       if (restoreSuppress && shouldContinue()) pane._suppressHistoryPrefetch = true;
@@ -784,6 +877,10 @@ export function createBarLoader(opts) {
 
   function clearPaneBarState(pane) {
     clearHistoryRetry(pane);
+    pane._historyGeneration = (pane._historyGeneration ?? 0) + 1;
+    pane._historyRestorePending = false;
+    pane._deferredHistoryOlder = null;
+    pane._deferredLiveBar = null;
     pane._historyFetchInFlight = false;
     pane._historyExhausted = false;
     pane._firstDataRequest = true;
@@ -833,6 +930,36 @@ export function createBarLoader(opts) {
     return loaded;
   }
 
+  /** Finalize the former forming candle and fill buckets missed while away. */
+  async function repairRestoredLiveTail(pane, shouldContinue, loadOpts = {}) {
+    if (!pane.bars?.length || !shouldContinue()) return;
+    const since = liveRecovery.captureResumeState();
+    const repair = async (attempt = 0) => {
+      if (!shouldContinue()) return;
+      try {
+        await liveRecovery.recoverPaneHistory(pane, {
+          since, shouldContinue, requestReason: "chart.resume",
+          // The leaving interval is still painted until the picker maps its
+          // saved bar layout to the new data. A preserved old UTC viewport
+          // would otherwise race that paint on the next animation frame.
+          deferChartRefresh: attempt === 0 && Boolean(loadOpts.deferChartRefresh),
+        });
+        if (attempt > 0 && shouldContinue()) onPaneHistoryDataUpdated?.(pane);
+      } catch (error) {
+        if (!shouldContinue() || error?.name === "AbortError") return;
+        chartDebug("data", "cached tail refresh failed", { pane: pane.index, error: String(error), attempt });
+        // Keep the original pre-gap checkpoint across live ticks and retry.
+        // Rendering/subscribing can proceed with the retained snapshot while
+        // an unavailable provider recovers; never fall back to a full reload.
+        if (attempt < 3) {
+          const timer = setTimeout(() => { void repair(attempt + 1); }, Math.min(15_000, 1000 * (2 ** attempt)));
+          timer.unref?.();
+        }
+      }
+    };
+    await repair();
+  }
+
   async function loadPaneBars(pane, opts = {}) {
     if (!opts.force && pane.bars?.length) {
       return pane.bars.at(-1);
@@ -844,10 +971,15 @@ export function createBarLoader(opts) {
     }
 
     const task = chartDebugTimeAsync("data", `loadPaneBars pane ${pane.index}`, async () => {
+      const requestSymbol = pane.symbol;
+      const requestResolution = pane.resolution;
+      let requestGeneration = pane._historyGeneration ?? 0;
+      const currentSeries = () => pane.symbol === requestSymbol && pane.resolution === requestResolution && (pane._historyGeneration ?? 0) === requestGeneration;
       // Resolve the pane's own symbol before consulting a symbol-keyed cache.
       // A stale SymbolInfo would otherwise fetch (and then cache) another
       // pane's bars under this pane's visible symbol after a TF switch.
       const symbolInfoChanged = await ensurePaneSymbolInfo(pane);
+      if (!currentSeries()) return undefined;
       const replayCtx =
         typeof getReplayLoadContext === "function" ? getReplayLoadContext(pane) : null;
       const replayCapTo =
@@ -867,10 +999,12 @@ export function createBarLoader(opts) {
       async function tryReplayCacheLoad(loadOpts) {
         if (symbolInfoChanged) return null;
         if (!tryRestorePaneResolutionCache(pane, resolutionCacheScope)) return null;
+        requestGeneration = pane._historyGeneration ?? 0;
         if (replayCapTo != null && Number.isFinite(replayCapTo) && pane.bars.length) {
           const last = pane.bars.at(-1)?.time;
           if (last == null || last < replayCapTo) {
             clearPaneBarState(pane);
+            requestGeneration = pane._historyGeneration ?? 0;
             return null;
           }
         }
@@ -881,6 +1015,10 @@ export function createBarLoader(opts) {
           bars: pane.bars.length,
           replay: Boolean(replayCtx),
         });
+        if (!replayCtx && replayCapTo == null && !(isReplayLocked?.() ?? false)) {
+          await repairRestoredLiveTail(pane, currentSeries, loadOpts);
+          if (!currentSeries()) return undefined;
+        }
         applyReplayCapAfterLoad(loadOpts);
         return finishPaneAfterBarsLoaded(pane, loadOpts);
       }
@@ -895,10 +1033,13 @@ export function createBarLoader(opts) {
           avoidPreserveViewport: Boolean(opts.avoidPreserveViewport),
         };
         const restored = await tryReplayCacheLoad(loadOpts);
+        if (!currentSeries()) return undefined;
         if (restored) return restored;
         clearPaneBarState(pane);
+        requestGeneration = pane._historyGeneration ?? 0;
       } else if (!pane.bars?.length) {
         const restored = await tryReplayCacheLoad({ scrollToLatest: false });
+        if (!currentSeries()) return undefined;
         if (restored) return restored;
       }
 
@@ -943,6 +1084,7 @@ export function createBarLoader(opts) {
         avoidPreserveViewport: Boolean(opts.avoidPreserveViewport),
       };
       const result = await fetchBarsShared(pane, pane.symbolInfo, periodParams);
+      if (!currentSeries()) return undefined;
       pane._firstDataRequest = false;
       let bars = result.bars.slice();
       if (replayCapTo != null && Number.isFinite(replayCapTo)) {
@@ -951,6 +1093,7 @@ export function createBarLoader(opts) {
         bars = bars.filter((b) => b.time <= replayCapTo);
       }
       pane.bars = bars;
+      markPaneBarSeries(pane);
       invalidatePaneChartView(pane);
       pane._historyExhausted = Boolean(result.noData);
       pane._historyErrorUntil = null;
@@ -1035,6 +1178,16 @@ export function createBarLoader(opts) {
     return loadBarsForPanes(loadAll ? panes : [getActivePane()].filter(Boolean));
   }
 
+  const liveRecovery = createLiveHistoryRecovery({
+    datafeed, getAllChartPanes, getBarSecForPane, refreshPaneCandleData,
+    isReplayLocked, getReplayLoadContext, getReplayLoadCapTo,
+    onRecovered(pane) {
+      publishResolutionCache(pane, resolutionCacheScope);
+      if (pane.index === 0) setPrimaryBars(pane);
+      if (pane.index === getActivePaneIndex()) refreshStatusLine();
+    },
+  });
+
   return {
     loadPaneBars,
     loadBarsForPanes,
@@ -1051,5 +1204,7 @@ export function createBarLoader(opts) {
     stashPaneResolutionCache: (pane, resolution) =>
       stashPaneResolutionCache(pane, resolution, resolutionCacheScope),
     ensureIndicatorChartHistory,
+    captureResumeState: liveRecovery.captureResumeState,
+    recoverLiveHistory: liveRecovery.recoverLiveHistory,
   };
 }

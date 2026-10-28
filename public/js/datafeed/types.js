@@ -53,6 +53,8 @@
  *   to?: number,
  *   countBack?: number,
  *   firstDataRequest?: boolean,
+ *   requestReason?: string,
+ *   refresh?: boolean,
  * }} PeriodParams
  */
 
@@ -76,6 +78,18 @@
  * @property {(symbolInfos: SymbolInfo[], onQuotes: (quotes: object[]) => void, subscriberUID: string) => void} [subscribeQuotes]
  * @property {(subscriberUID: string) => void} [unsubscribeQuotes]
  * @property {boolean} [supportsQuotes]
+ * @property {{ clear: () => void, dispose: () => void, subscribe: (listener: (stats: object) => void) => (() => void), stats: () => {
+ *   requests: number, upstreamRequests: number, cacheHits: number,
+ *   coveringHits: number, inflightJoins: number, invalidations: number,
+ *   entries: number, cachedBars: number, pending: number,
+ * } }} [historyCache] Per-widget history request broker diagnostics and invalidation.
  */
 
 export {};
+
+/**
+ * @typedef {{ index: number, symbol: string, resolution: string, lastTime: number, fromTime: number, generation: number }} ResumePaneState
+ * @typedef {{ version: number, capturedAt: number, panes: ResumePaneState[] }} ResumeState
+ * @typedef {{ since?: ResumeState, shouldContinue?: () => boolean }} RecoveryOptions
+ * @typedef {{ panes: { index: number, symbol: string, resolution: string, from: number, to: number, fromTime: number, toTime: number, requests: number, repairedBars: number, added: number, beforeBars: number, afterBars: number, firstTimeBefore: number | null, firstTimeAfter: number | null }[], skipped?: { index: number, symbol: string, resolution: string, reason: string }[] }} RecoveryResult
+ */

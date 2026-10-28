@@ -43,6 +43,7 @@ import {
 } from "../../../chart/features.js";
 import { mergeWithCustomResolutions, CHART_RESOLUTIONS } from "../../../chart/resolutions.js";
 import { setOrderLineTheme } from "../../../chart/orderLine/theme.js";
+import { releaseChartHostInteractions } from "../../../ui/chart/hostInteraction.js";
 import { registerIndicatorDefinition } from "../../../indicators/catalog.js";
 
 export { readPageOptions };
@@ -260,6 +261,9 @@ export async function bootChart(overrides = {}) {
       refreshIndicatorLegends: ctx.refreshIndicatorLegends,
       replayEngine: ctx.replayEngine,
       ensureIndicatorChartHistory: ctx.ensureIndicatorChartHistory,
+      captureResumeState: ctx.captureResumeState,
+      recoverLiveHistory: ctx.recoverLiveHistory,
+      recoverIndicatorDataForPanes: ctx.recoverIndicatorDataForPanes,
       ui: ctx.ui,
       liveBarListeners: ctx.liveBarListeners,
     });
@@ -283,6 +287,7 @@ export async function bootChart(overrides = {}) {
     };
     const destroyWidget = widget.destroy.bind(widget);
     widget.destroy = () => {
+      releaseChartHostInteractions(ctx.el);
       ctx.chartTypeUi?.destroy?.();
       ctx.ratioResizeObserver?.disconnect?.();
       ctx.ratioResizeObserver = null;

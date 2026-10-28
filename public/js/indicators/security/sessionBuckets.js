@@ -1,5 +1,11 @@
 const TIME_ZONE_FORMATTERS = new Map();
 
+/** Preserve a native series' observed bucket phase (for example CME 4h bars). */
+export function alignedSeriesBucketOpen(time, tfSec, referenceOpen) {
+  if (!Number.isFinite(referenceOpen)) return Math.floor(time / tfSec) * tfSec;
+  return referenceOpen + Math.floor((time - referenceOpen) / tfSec) * tfSec;
+}
+
 function timeZoneOffsetSeconds(time, timeZone) {
   let formatter = TIME_ZONE_FORMATTERS.get(timeZone);
   if (!formatter) {

@@ -702,6 +702,9 @@ export function attachIndicatorsBoot(ctx) {
     return indicatorData.extendHtfTailForReplay(pane);
   };
 
+  ctx.recoverIndicatorDataForPanes = (panes, options) =>
+    indicatorData.recoverIndicatorDataForPanes(panes, options);
+
   const origApplyChartSettings = ctx.applyChartSettings;
   ctx.applyChartSettings = () => {
     const prevRevision = ctx._chartDataRevision ?? 0;

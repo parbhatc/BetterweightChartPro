@@ -1,4 +1,5 @@
 import { FULLSCREEN, FULLSCREEN_EXIT } from "../icons.js";
+import { isChartHostInteractive } from "../../chart/hostInteraction.js";
 
 /**
  * @param {object} opts
@@ -34,6 +35,7 @@ export function mountFullscreenMode(opts) {
   toggleBtn.addEventListener("click", toggle);
 
   document.addEventListener("keydown", (ev) => {
+    if (!isChartHostInteractive(appEl)) return;
     if (ev.key === "Escape" && active) {
       ev.preventDefault();
       setActive(false);

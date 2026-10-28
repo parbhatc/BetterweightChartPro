@@ -13,7 +13,7 @@ export class LevelsHtf {
       if (!row.enabled) continue;
       const tfId = normalizeResolutionId(row.layer ?? "240");
       const tfSec = resolutionSec(tfId);
-      if (!tfSec || tfSec <= chartSec) continue;
+      if (!tfSec || tfSec <= chartSec || out.some((layer) => layer.tfId === tfId)) continue;
       out.push({ tfId, tfSec });
     }
     return out;

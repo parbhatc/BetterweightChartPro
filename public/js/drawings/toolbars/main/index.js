@@ -105,6 +105,7 @@ export function mountMainToolbar(opts) {
   }
 
   const favoriteToolbar = createFavoriteToolbar({
+    owner: toolbarEl,
     getFavorites: () => favoriteTools,
     getActiveTool: () => controller.getActiveTool(),
     onSelectTool: (type) => {

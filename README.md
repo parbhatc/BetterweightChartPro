@@ -232,6 +232,42 @@ widget.positionOverlay.onStopLossChanged((old, next) => {});
 
 See **[docs/position-overlay.md](docs/position-overlay.md)** for the full API (orders, SL/TP, events).
 
+### History request caching and diagnostics
+
+Each widget shares a history request broker across its chart panes and
+indicators, including custom host datafeeds. Identical pending requests join one
+source call. Successful responses stay cached for 10 seconds, bounded by 64
+requests and 100,000 bars. A larger response can serve a smaller overlapping
+request only when its actual candles satisfy the requested count and time bounds.
+Older page cursors, deeper lookbacks, symbols, sessions, and custom period fields
+remain separate. Widget instances never share this cache.
+
+```javascript
+widget.datafeed.historyCache.stats();
+// requests: logical callers; upstreamRequests: calls into the supplied datafeed
+// cacheHits, coveringHits, inflightJoins, entries, cachedBars, pending
+const stopStats = widget.datafeed.historyCache.subscribe((stats) => console.log(stats));
+stopStats(); // immediate snapshot + event-driven updates, no polling
+await widget.reset({ data: true, viewport: false }); // invalidate and recover after reconnect
+await widget.reload({ force: true });               // invalidate and fetch fresh history
+```
+
+Live ticks invalidate cached responses containing the updated candle. Reset,
+forced reload, static-data updates, and widget destruction invalidate pending
+cache work so old responses cannot repopulate it. The source datafeed may have
+its own network cache; `upstreamRequests` counts source calls rather than HTTP
+requests. Pending work older than 20 seconds is detached on the next request,
+so a timed-out indicator can retry a hung source call. Configure limits with
+`bootChart({ historyCache: { ttlMs: 5000,
+maxEntries: 32, maxBars: 50000 } })`, or pass `historyCache: false` to disable
+the broker.
+
+Pass `refresh: true` to `getBars`/`widget.fetchBars` to bypass settled history
+responses and detach older overlapping requests. Concurrent refreshes can
+still share one fresh source call. The flag reaches custom datafeeds unchanged;
+hosts should bypass their own caches too. Live timeframe-cache restores use
+this for a small tail repair, retaining their already-loaded older history.
+
 ### Simple datafeed (easiest custom data)
 
 ```javascript

@@ -4,6 +4,7 @@ import {
   registerContextMenu,
   shouldDismissContextMenuOnScroll,
 } from "./registry.js";
+import { bindChartPortal, isChartHostInteractive } from "../chart/hostInteraction.js";
 import { hitPriceScale } from "../../chart/scale/settings.js";
 import { runContextMenuAction } from "../../debug/chart/contextMenu.js";
 
@@ -55,6 +56,7 @@ export function mountPriceScaleContextMenu(opts) {
   root.hidden = true;
   root.setAttribute("role", "menu");
   document.body.appendChild(root);
+  bindChartPortal(root, container, close);
 
   function close() {
     root.hidden = true;
@@ -249,6 +251,7 @@ export function mountPriceScaleContextMenu(opts) {
   });
 
   document.addEventListener("keydown", (ev) => {
+    if (!isChartHostInteractive(container)) return;
     if (root.hidden) return;
     if (ev.key === "Escape") close();
   });

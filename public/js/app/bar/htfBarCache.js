@@ -6,8 +6,9 @@ import { resolutionSec } from "../../chart/resolutions.js";
 import { buildInitialPeriodParams, buildPrependPeriodParams, buildTvPeriodParams, alignBarTime } from "./periodParams.js";
 import { lookupSymbolBars } from "./symbolBarCache.js";
 import { setHtfBarsReader } from "../../indicators/security/htfAccess.js";
+import { alignedSeriesBucketOpen } from "../../indicators/security/sessionBuckets.js";
 
-/** @typedef {{ utcBars: object[], chartBars: object[], historyExhausted: boolean, updatedAt: number, source?: string, epoch: number, version: number }} HtfBarEntry */
+/** @typedef {{ utcBars: object[], chartBars: object[], historyExhausted: boolean, updatedAt: number, source?: string, epoch: number, version: number, tailCheckedThroughSec?: number }} HtfBarEntry */
 
 const SECURITY_FETCH_TIMEOUT_MS = 20_000;
 
@@ -38,6 +39,23 @@ async function getBarsWithTimeout(datafeed, symbolInfo, resolution, params) {
 const store = new Map();
 /** @type {Map<string, Promise<HtfBarEntry | null>>} */
 const inFlight = new Map();
+/** Same-turn consumers share the largest initial depth, including across panes. */
+const initialLoads = new Map();
+/** Recovery invalidates old requests without evicting retained history. */
+const requestGenerations = new Map();
+
+function requestGeneration(symbol, resolution) {
+  return requestGenerations.get(htfCacheKey(symbol, resolution)) ?? 0;
+}
+
+export function invalidateHtfBarRequests(symbol, resolution) {
+  const key = htfCacheKey(symbol, resolution);
+  requestGenerations.set(key, requestGeneration(symbol, resolution) + 1);
+}
+
+function flightKey(symbol, resolution, phase) {
+  return `${dataEpoch}|${requestGeneration(symbol, resolution)}|${htfCacheKey(symbol, resolution)}|${phase}`;
+}
 
 // ---------------------------------------------------------------------------
 // Data epoch: every entry is stamped with the epoch it was written in. Bumping
@@ -161,7 +179,9 @@ export function htfCacheStaleForAnchor(symbol, resolution, anchorSec, opts = {})
   if (!entry?.utcBars?.length) return false;
   const lastOpen = entry.utcBars.at(-1)?.time;
   if (lastOpen == null) return false;
-  const anchorOpen = alignBarTime(anchorSec, tfSec);
+  const anchorOpen = alignedSeriesBucketOpen(anchorSec, tfSec, lastOpen);
+  if (Number.isFinite(entry.tailCheckedThroughSec) &&
+    alignedSeriesBucketOpen(entry.tailCheckedThroughSec, tfSec, lastOpen) >= anchorOpen) return false;
   if (opts.confirmedOnly) {
     // Newest closed bucket open: bucket [o, o+tf) is closed iff o+tf <= anchor.
     return lastOpen < anchorOpen - tfSec;
@@ -178,82 +198,154 @@ export function htfCacheStaleForAnchor(symbol, resolution, anchorSec, opts = {})
  * @param {string} opts.symbol
  * @param {string} opts.resolution
  * @param {number} opts.anchorSec
+ * @param {number} [opts.fromSec] Repair this retained interval even if a new tick already advanced the cached tail.
  */
 export async function extendHtfCacheForAnchor(opts) {
   const { datafeed, symbolInfo, symbol, resolution, anchorSec } = opts;
+  const shouldContinue = typeof opts.shouldContinue === "function" ? opts.shouldContinue : () => true;
+  if (!shouldContinue()) return getHtfBars(symbol, resolution);
   const tfSec = resolutionSec(resolution);
   if (!datafeed || !symbolInfo || !symbol || !resolution || anchorSec == null || !tfSec) {
     return getHtfBars(symbol, resolution);
   }
   const chartSec = resolutionSec(opts.pane?.resolution ?? "") ?? null;
   const confirmedOnly = chartSec != null && tfSec > chartSec;
-  if (!htfCacheStaleForAnchor(symbol, resolution, anchorSec, { confirmedOnly })) {
+  const referenceOpen = getHtfBars(symbol, resolution)?.utcBars?.at(-1)?.time;
+  const repairFrom = Number.isFinite(opts.fromSec) ? alignedSeriesBucketOpen(opts.fromSec, tfSec, referenceOpen) : null;
+  if (repairFrom == null && !htfCacheStaleForAnchor(symbol, resolution, anchorSec, { confirmedOnly })) {
+    return getHtfBars(symbol, resolution);
+  }
+  if (repairFrom != null && repairFrom + (confirmedOnly ? tfSec : 0) > anchorSec) {
     return getHtfBars(symbol, resolution);
   }
 
   const key = htfCacheKey(symbol, resolution);
-  const flightKey = `${key}|extend`;
-  const pending = inFlight.get(flightKey);
-  if (pending) return pending;
+  const generation = requestGeneration(symbol, resolution);
+  const requestKey = flightKey(symbol, resolution, repairFrom == null ? "extend" : `repair:${repairFrom}:${anchorSec}:${opts.refresh === true ? "fresh" : "cached"}`);
+  const pending = inFlight.get(requestKey);
+  if (pending) {
+    const startEpoch = dataEpoch;
+    await pending;
+    if (!shouldContinue() || startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
+    // A newer replay/live cursor may arrive while an older top-up is pending.
+    return repairFrom == null && htfCacheStaleForAnchor(symbol, resolution, anchorSec, { confirmedOnly })
+      ? extendHtfCacheForAnchor(opts)
+      : getHtfBars(symbol, resolution);
+  }
 
   const startEpoch = dataEpoch;
   const task = (async () => {
     const entry = getHtfBars(symbol, resolution);
     const lastOpen = entry?.utcBars?.at(-1)?.time ?? null;
-    const anchorOpen = alignBarTime(anchorSec, tfSec);
+    const anchorOpen = alignedSeriesBucketOpen(anchorSec, tfSec, lastOpen);
+    const firstNeeded = repairFrom == null
+      ? lastOpen
+      : Math.max(repairFrom, entry?.utcBars?.[0]?.time ?? repairFrom);
     const gapBars =
-      lastOpen == null ? 4 : Math.max(2, Math.ceil((anchorOpen - lastOpen) / tfSec) + 2);
-    const countBack = Math.min(16, gapBars);
+      firstNeeded == null ? 4 : Math.max(1, Math.ceil((anchorOpen - firstNeeded) / tfSec) + (repairFrom == null ? 2 : 1));
+    // A suspended tab can miss far more than 16 buckets. Fetch the entire
+    // missing interval; a fixed 16-bar tail silently left a hole after resume.
+    const countBack = Math.min(4000, gapBars);
 
     const params = buildTvPeriodParams({
       barSec: tfSec,
       countBack,
-      to: anchorSec,
+      to: anchorOpen,
       firstDataRequest: false,
     });
+    params.requestReason = opts.requestReason ?? "htf.tail";
+    if (opts.refresh === true) params.refresh = true;
     chartDebug("data", "htf cache extend anchor", {
       symbol,
       resolution,
       anchorSec,
       countBack,
       lastOpen,
+      fromSec: firstNeeded,
     });
 
     const result = await getBarsWithTimeout(datafeed, symbolInfo, resolution, params);
     // Stale epoch (symbol/TF/replay changed while fetching): drop the result.
-    if (startEpoch !== dataEpoch) return getHtfBars(symbol, resolution);
+    if (!shouldContinue() || startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
     let fetched = result.bars ?? [];
+    if (repairFrom != null && !fetched.length) {
+      throw new Error(`No candles returned while recovering ${symbol} ${resolution}`);
+    }
+    // Requests larger than the feed cap are paged backwards until the fetched
+    // interval meets the old tail. Only then publish the recovered series.
+    while (
+      firstNeeded != null && fetched.length &&
+      fetched[0].time > firstNeeded
+    ) {
+      const first = fetched[0].time;
+      const olderCount = Math.min(4000, Math.ceil((first - firstNeeded) / tfSec));
+      const olderParams = buildPrependPeriodParams(first, tfSec, olderCount);
+      olderParams.requestReason = opts.requestReason ?? "htf.tail";
+      if (opts.refresh === true) olderParams.refresh = true;
+      const olderResult = await getBarsWithTimeout(
+        datafeed,
+        symbolInfo,
+        resolution,
+        olderParams,
+      );
+      if (!shouldContinue() || startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
+      const older = (olderResult.bars ?? []).filter((bar) => bar.time < first);
+      if (!older.length) {
+        if (repairFrom != null) throw new Error(`Incomplete candle interval while recovering ${symbol} ${resolution}`);
+        break;
+      }
+      fetched = [...older, ...fetched];
+    }
     // Never store a partially formed HTF bucket as a confirmed bar — the
     // forming bucket is rebuilt on read from chart bars (htfAccess).
     if (confirmedOnly) fetched = dropUnclosedTail(fetched, tfSec, anchorSec);
+    // A clock bucket can be absent during weekends/holidays. Only an actual
+    // retained candle proves that a right-edge record must be returned.
+    let requiredTail = null;
+    for (let index = (entry?.utcBars?.length ?? 0) - 1; index >= 0; index--) {
+      const time = entry.utcBars[index].time;
+      if (time >= firstNeeded && time + (confirmedOnly ? tfSec : 0) <= anchorSec) {
+        requiredTail = time;
+        break;
+      }
+    }
+    if (repairFrom != null && (
+      !fetched.length || fetched[0].time > firstNeeded ||
+      (requiredTail != null && fetched.at(-1).time < requiredTail)
+    )) {
+      throw new Error(`Incomplete candle interval while recovering ${symbol} ${resolution}`);
+    }
     if (!fetched.length) return entry ?? null;
+    if (!shouldContinue()) return getHtfBars(symbol, resolution);
 
-    const base = entry?.utcBars ?? [];
+    // A parallel scrollback/peer load may have expanded the store while this
+    // tail request was pending. Merge into that current entry, not its old snapshot.
+    const currentEntry = getHtfBars(symbol, resolution) ?? entry;
+    const base = currentEntry?.utcBars ?? [];
     const byTime = new Map(base.map((b) => [b.time, b]));
+    let changed = false;
     for (const bar of fetched) {
-      if (lastOpen != null && bar.time < lastOpen) continue;
+      if (firstNeeded != null && bar.time < firstNeeded) continue;
+      if (!barsShallowEqual(byTime.get(bar.time), bar)) changed = true;
       byTime.set(bar.time, bar);
     }
     const merged = [...byTime.values()].sort((a, b) => a.time - b.time);
     if (!merged.length) return entry ?? null;
     // Same length can still mean the last (previously partial) bucket got finalized OHLC.
-    const prevLast = base.at(-1);
-    const nextLast = merged.at(-1);
-    const lastUnchanged =
-      prevLast &&
-      nextLast &&
-      prevLast.time === nextLast.time &&
-      prevLast.high === nextLast.high &&
-      prevLast.low === nextLast.low &&
-      prevLast.close === nextLast.close;
-    if (entry && merged.length === base.length && lastUnchanged) return entry;
+    const checkedThroughSec = opts.refresh === true
+      ? Math.max(currentEntry?.tailCheckedThroughSec ?? -Infinity, anchorSec)
+      : currentEntry?.tailCheckedThroughSec;
+    const coverageChanged = opts.refresh === true && (!Number.isFinite(currentEntry?.tailCheckedThroughSec) ||
+      alignedSeriesBucketOpen(checkedThroughSec, tfSec, lastOpen) > alignedSeriesBucketOpen(currentEntry.tailCheckedThroughSec, tfSec, lastOpen));
+    if (currentEntry && !changed && !coverageChanged) return currentEntry;
 
     const next = putHtfEntry(key, {
       utcBars: merged,
       chartBars: merged,
-      historyExhausted: entry?.historyExhausted ?? false,
+      historyExhausted: currentEntry?.historyExhausted ?? false,
       updatedAt: Date.now(),
-      source: entry?.source ?? "datafeed",
+      source: currentEntry?.source ?? "datafeed",
+      tailCheckedThroughSec: checkedThroughSec,
     });
     chartDebug("data", "htf cache extended", {
       symbol,
@@ -263,9 +355,9 @@ export async function extendHtfCacheForAnchor(opts) {
       last: merged.at(-1)?.time,
     });
     return next;
-  })().finally(() => inFlight.delete(flightKey));
+  })().finally(() => inFlight.delete(requestKey));
 
-  inFlight.set(flightKey, task);
+  inFlight.set(requestKey, task);
   return task;
 }
 
@@ -277,7 +369,7 @@ export async function extendHtfCacheForAnchor(opts) {
  * @param {object[]} chartBars
  * @param {string} [source]
  */
-export function seedHtfBars(symbol, resolution, utcBars, chartBars, source = "seed") {
+export function seedHtfBars(symbol, resolution, utcBars, chartBars, source = "seed", options = {}) {
   if (!symbol || !resolution || !utcBars?.length) return null;
   const key = htfCacheKey(symbol, resolution);
   const existing = getHtfBars(symbol, resolution);
@@ -295,7 +387,8 @@ export function seedHtfBars(symbol, resolution, utcBars, chartBars, source = "se
     prev &&
     prev.utcBars.length === nextUtc.length &&
     prev.utcBars[0]?.time === nextUtc[0]?.time &&
-    barsShallowEqual(prev.utcBars.at(-1), nextUtc.at(-1))
+    barsShallowEqual(prev.utcBars.at(-1), nextUtc.at(-1)) &&
+    (options.verifyRange !== true || nextUtc.every((bar, index) => barsShallowEqual(prev.utcBars[index], bar)))
   ) {
     // No visible change — keep the entry (and its version) stable.
     return prev;
@@ -321,7 +414,8 @@ function barsShallowEqual(a, b) {
     a.open === b.open &&
     a.high === b.high &&
     a.low === b.low &&
-    a.close === b.close
+    a.close === b.close &&
+    a.volume === b.volume
   );
 }
 
@@ -391,30 +485,45 @@ export async function ensureHtfBars(opts) {
   if (anchorSec != null && existing?.utcBars?.length && tailFresh) {
     return existing;
   }
-  if (existing && existing.utcBars.length >= want && !existing.historyExhausted && tailFresh) {
+  if (existing && (existing.utcBars.length >= want || existing.historyExhausted) && tailFresh) {
     return existing;
   }
 
-  let pending = inFlight.get(key);
-  if (pending) return pending;
-
-  pending = fetchHtfBars({
-    datafeed,
-    symbolInfo,
-    symbol,
-    resolution,
-    want,
-    pane,
-    settingsStore,
-    symbolInfoExtra,
-    existing,
-    playbackAnchorSec: anchorSec,
-    getAllChartPanes: opts.getAllChartPanes,
-    resolutions: opts.resolutions,
-  }).finally(() => inFlight.delete(key));
-
-  inFlight.set(key, pending);
-  return pending;
+  const requestKey = flightKey(symbol, resolution, "initial");
+  const startEpoch = dataEpoch;
+  const generation = requestGeneration(symbol, resolution);
+  let load = initialLoads.get(requestKey);
+  if (!load) {
+    load = { want, requested: 0, promise: null };
+    const currentLoad = load;
+    // Let all indicators/panes in this turn contribute their requirements
+    // before choosing countBack, rather than fetching the first small need.
+    load.promise = Promise.resolve().then(() => {
+      currentLoad.requested = currentLoad.want;
+      return fetchHtfBars({
+        ...opts,
+        want: currentLoad.requested,
+        existing,
+        playbackAnchorSec: anchorSec,
+        requestEpoch: startEpoch,
+        requestGeneration: generation,
+      });
+    }).finally(() => initialLoads.delete(requestKey));
+    initialLoads.set(requestKey, load);
+  } else {
+    load.want = Math.max(load.want, want);
+  }
+  const entry = await load.promise;
+  // A larger need can also arrive after the request already left. Give that
+  // waiter its requested history instead of claiming the small result covers it.
+  if (
+    startEpoch === dataEpoch && generation === requestGeneration(symbol, resolution) && anchorSec == null &&
+    entry && !entry.historyExhausted && entry.utcBars.length < want &&
+    load.requested < want
+  ) {
+    return ensureHtfBars(opts);
+  }
+  return entry;
 }
 
 /**
@@ -437,7 +546,9 @@ async function fetchHtfBars(opts) {
   const barSec = resolutionSec(resolution);
   const chartSec = resolutionSec(pane?.resolution ?? "") ?? null;
   const confirmedOnly = barSec != null && chartSec != null && barSec > chartSec;
-  const startEpoch = dataEpoch;
+  const startEpoch = opts.requestEpoch ?? dataEpoch;
+  const generation = opts.requestGeneration ?? requestGeneration(symbol, resolution);
+  if (startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
 
   let cacheSource = "datafeed";
   const warmed = lookupBarsForEnsure(
@@ -496,12 +607,12 @@ async function fetchHtfBars(opts) {
     // We drop that bucket below, so request one extra bar; otherwise a request
     // for 2000 repeatedly stores 1999 and immediately refetches forever.
     const fetchCount = Math.min(4000, confirmedOnly ? want + 1 : want);
-    const params = buildInitialPeriodParams(barSec, fetchCount);
-    params.to = to;
+    const params = buildInitialPeriodParams(barSec, fetchCount, to);
+    params.requestReason = "htf.initial";
     chartDebug("data", "htf cache fetch", { symbol, resolution, countBack: want, to: params.to });
     const result = await getBarsWithTimeout(datafeed, symbolInfo, resolution, params);
     // Stale epoch (symbol/TF/replay changed while fetching): drop the result.
-    if (startEpoch !== dataEpoch) return getHtfBars(symbol, resolution);
+    if (startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
     let fetched = result.bars ?? [];
     // Never store a partially formed HTF bucket as confirmed — it's rebuilt on read.
     if (confirmedOnly) fetched = dropUnclosedTail(fetched, barSec, to);
@@ -514,7 +625,7 @@ async function fetchHtfBars(opts) {
     }
   }
 
-  if (startEpoch !== dataEpoch) return getHtfBars(symbol, resolution);
+  if (startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
   if (!utcBars.length) return existing ?? null;
 
   // Same-epoch fresh data replaces the covered range of the existing entry —
@@ -551,39 +662,51 @@ export async function prependHtfBars(opts) {
   const entry = getHtfBars(symbol, resolution);
   if (!entry || entry.historyExhausted || !entry.utcBars.length) return entry ?? null;
 
+  const requestKey = flightKey(symbol, resolution, "prepend");
+  const pending = inFlight.get(requestKey);
+  if (pending) return pending;
+
   const startEpoch = dataEpoch;
+  const generation = requestGeneration(symbol, resolution);
   const barSec = resolutionSec(resolution);
   const first = entry.utcBars[0].time;
   const params = buildPrependPeriodParams(first, barSec, Math.min(500, countBack));
-  const result = await getBarsWithTimeout(datafeed, symbolInfo, resolution, params);
-  // Stale epoch: drop — do not mutate an entry from a different data generation.
-  if (startEpoch !== dataEpoch) return getHtfBars(symbol, resolution);
-  if (!result.bars?.length || result.noData) {
-    entry.historyExhausted = true;
-    return entry;
-  }
+  params.requestReason = "htf.prepend";
+  const task = (async () => {
+    const result = await getBarsWithTimeout(datafeed, symbolInfo, resolution, params);
+    // Stale epoch: drop — do not mutate an entry from a different data generation.
+    if (startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
+    const current = getHtfBars(symbol, resolution);
+    if (!current) return null;
+    if (!result.bars?.length) {
+      if (current.utcBars[0]?.time === first) current.historyExhausted = true;
+      return current;
+    }
 
-  const older = result.bars.filter((b) => b.time < first);
-  if (!older.length) {
-    entry.historyExhausted = true;
-    return entry;
-  }
+    const older = result.bars.filter((b) => b.time < first);
+    if (!older.length) {
+      if (current.utcBars[0]?.time === first) current.historyExhausted = true;
+      return current;
+    }
 
-  const olderChart = older.slice();
-  const next = putHtfEntry(key, {
-    utcBars: [...older, ...entry.utcBars],
-    chartBars: [...olderChart, ...(entry.chartBars ?? entry.utcBars)],
-    historyExhausted: entry.historyExhausted,
-    updatedAt: Date.now(),
-    source: entry.source,
-  });
-  chartDebug("data", "htf cache prepend", {
-    symbol,
-    resolution,
-    bars: next.utcBars.length,
-    added: older.length,
-  });
-  return next;
+    const olderChart = older.slice();
+    const next = putHtfEntry(key, {
+      utcBars: mergeRecordsReplacingRange(toRecords(current.utcBars), toRecords(older)).map((r) => r.utc),
+      chartBars: mergeRecordsReplacingRange(toRecords(current.utcBars, current.chartBars), toRecords(older, olderChart)).map((r) => r.chart),
+      historyExhausted: current.historyExhausted,
+      updatedAt: Date.now(),
+      source: current.source,
+    });
+    chartDebug("data", "htf cache prepend", {
+      symbol,
+      resolution,
+      bars: next.utcBars.length,
+      added: older.length,
+    });
+    return next;
+  })().finally(() => inFlight.delete(requestKey));
+  inFlight.set(requestKey, task);
+  return task;
 }
 
 /** Clear all cached HTF / security bar series. */

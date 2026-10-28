@@ -1,4 +1,5 @@
 import { symbolDelayFromInfo } from "../../datafeed/symbolDelay.js";
+import { bindChartPortal } from "../../ui/chart/hostInteraction.js";
 
 const EXCHANGES = {
   CME: { full: "Chicago Mercantile Exchange Globex", tz: "America/Chicago", city: "Chicago" },
@@ -330,6 +331,7 @@ export function mountMarketStatusPopup(hostEl, getContext) {
   popup.className = "mkt-popup";
   popup.hidden = true;
   document.body.appendChild(popup);
+  bindChartPortal(popup, hostEl, close);
 
   let anchor = null;
 

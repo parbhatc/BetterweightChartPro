@@ -1,3 +1,5 @@
+import { bindChartPortal } from "../../../ui/chart/hostInteraction.js";
+
 let hintEl = null;
 
 function toolbarHintsEnabled() {
@@ -5,7 +7,7 @@ function toolbarHintsEnabled() {
 }
 
 function ensureHint() {
-  if (hintEl) return hintEl;
+  if (hintEl?.isConnected) return hintEl;
   hintEl = document.createElement("div");
   hintEl.className = "tv-floating-toolbar__hint";
   hintEl.hidden = true;
@@ -17,6 +19,7 @@ function ensureHint() {
 /** @param {HTMLElement} anchor */
 function positionHint(anchor) {
   const hint = ensureHint();
+  bindChartPortal(hint, anchor, hideToolbarHint);
   const rect = anchor.getBoundingClientRect();
   const pad = 6;
   hint.style.left = `${rect.left + rect.width / 2}px`;

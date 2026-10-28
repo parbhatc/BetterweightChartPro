@@ -9,6 +9,7 @@ import {
   SETTINGS,
 } from "../icons.js";
 import { mountFullscreenMode } from "../fullscreen/mode.js";
+import { bindChartPortal, isChartHostInteractive } from "../../chart/hostInteraction.js";
 import { createChartSnapshot } from "../snapshot/chart.js";
 import { getLayoutDef, getLayoutGroupsForViewport } from "../layout/definitions.js";
 import { getLayoutIcon } from "../layout/icons.js";
@@ -75,7 +76,7 @@ export function mountHeaderToolbar(opts) {
   `;
   mountEl.prepend(root);
 
-  const appEl = document.querySelector(".tv-app");
+  const appEl = mountEl.closest(".tv-app");
   const fullscreenBtn = root.querySelector("#header-toolbar-fullscreen");
   const fullscreenIcon = root.querySelector("[data-fullscreen-icon]");
   /** @type {ReturnType<typeof mountFullscreenMode> | null} */
@@ -115,6 +116,7 @@ export function mountHeaderToolbar(opts) {
   /** @param {HTMLElement} anchor @param {HTMLElement} menu */
   function positionMenu(anchor, menu) {
     document.body.appendChild(menu);
+    bindChartPortal(menu, mountEl, closeMenu);
     const rect = anchor.getBoundingClientRect();
     const pad = 8;
     let left = rect.left;
@@ -298,6 +300,7 @@ export function mountHeaderToolbar(opts) {
   function openLayoutsDialog() {
     closeMenu();
     showOpenLayoutsDialog({
+      owner: mountEl,
       getLayouts: loadSavedLayouts,
       getCurrentName: () => layoutManager.getLayoutName(),
       onLoad: (item) => {
@@ -357,6 +360,7 @@ export function mountHeaderToolbar(opts) {
         closeMenu();
         void (async () => {
           const name = await showLayoutNameDialog({
+            owner: mountEl,
             title: "Rename layout",
             value: layoutManager.getLayoutName(),
             confirmLabel: "Rename",
@@ -411,6 +415,7 @@ export function mountHeaderToolbar(opts) {
   }
 
   document.addEventListener("keydown", async (ev) => {
+    if (!isChartHostInteractive(mountEl)) return;
     if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return;
     if (ev.ctrlKey && ev.altKey && ev.key.toLowerCase() === "s") {
       ev.preventDefault();

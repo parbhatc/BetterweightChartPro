@@ -2,10 +2,12 @@ import { ICON_CLEAR, ICON_CLOSE, ICON_DELETE, ICON_SEARCH } from "../../../indic
 import { getLayoutDef } from "./definitions.js";
 import { getLayoutIcon } from "./icons.js";
 import { showLayoutConfirmDialog } from "./dialogs.js";
+import { bindChartPortal } from "../../chart/hostInteraction.js";
 
 /** @typedef {import("./manager.js").SavedLayout} SavedLayout */
 
 /** @param {object} opts
+ *  @param {HTMLElement} [opts.owner]
  *  @param {() => SavedLayout[]} opts.getLayouts
  *  @param {() => string} opts.getCurrentName
  *  @param {(item: SavedLayout) => void} opts.onLoad
@@ -15,6 +17,7 @@ export function showOpenLayoutsDialog(opts) {
   const { getLayouts, getCurrentName, onLoad, onDelete } = opts;
 
   const modal = ensureModal();
+  bindChartPortal(modal, opts.owner, close);
   const searchInput = modal.querySelector("[data-layout-search]");
   const clearBtn = modal.querySelector("[data-clear]");
   const listEl = modal.querySelector("[data-layout-list]");
@@ -133,6 +136,7 @@ export function showOpenLayoutsDialog(opts) {
           const currentName = getCurrentName();
           document.removeEventListener("keydown", onKey);
           const confirmed = await showLayoutConfirmDialog({
+            owner: opts.owner,
             title: "Delete layout",
             message:
               name === currentName

@@ -14,6 +14,7 @@ import {
   saveSearchTab,
 } from "./recent.js";
 import { symbolTicker } from "../../app/symbol/ticker.js";
+import { bindChartPortal } from "../chart/hostInteraction.js";
 
 const ICON_SEARCH = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="22" height="22" fill="none" aria-hidden="true"><path fill="currentColor" d="M12.182 4a8.18 8.18 0 0 1 6.29 13.412l5.526 5.525-1.06 1.06-5.527-5.525A8.182 8.182 0 1 1 12.181 4m0 1.5a6.681 6.681 0 1 0 0 13.363 6.681 6.681 0 0 0 0-13.363"/></svg>`;
 const ICON_CLOSE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path stroke="currentColor" stroke-width="1.2" fill="none" d="m1.5 1.5 15 15m0-15-15 15"/></svg>`;
@@ -42,10 +43,7 @@ function normalizeType(type) {
 
 /** @param {HTMLElement} root */
 function ensureSymbolModal(root) {
-  let modal = document.getElementById("symbol-modal");
-  if (modal) return modal;
-
-  modal = document.createElement("div");
+  const modal = document.createElement("div");
   modal.id = "symbol-modal";
   modal.className = "tv-symbol-modal";
   modal.hidden = true;
@@ -90,6 +88,7 @@ export function mountSymbolSearch(opts) {
   const exchangeEl = root.querySelector("#symbol-exchange");
 
   const modal = ensureSymbolModal(root);
+  bindChartPortal(modal, root, () => close());
   const searchInput = modal.querySelector("#symbol-search");
   const listEl = modal.querySelector("#symbol-list");
   const tabsEl = modal.querySelector("[data-tabs]");
