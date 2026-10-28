@@ -29,6 +29,7 @@ import {
 import { getNewsSettingsStore } from "../../../news/settings.js";
 import { enabledNewsTypeIds } from "../../../news/events.js";
 import { indicatorDebug } from "../../../debug/chart/indicators.js";
+import { isChartHostInteractive } from "../../../ui/chart/hostInteraction.js";
 
 const HTF_FETCH_IDLE_MS = 200;
 const PREPEND_GUARD = 8;
@@ -114,6 +115,27 @@ export function createIndicatorDataLoader({
   /** @type {(pane: object) => object[] | undefined} */
   paneBarsForNeeds = null,
 }) {
+  // Retained Trade charts keep their primary stream alive while another route
+  // is visible. Those ticks must not start optional indicator history work.
+  const hostIsActive = () => !ctx.el ||
+    (ctx.el.ownerDocument?.visibilityState !== "hidden" && isChartHostInteractive(ctx.el));
+  const indicatorDatafeed = {
+    getBars(...args) {
+      // Check at the actual fetch boundary too: a timer, metadata resolution or
+      // previous history page may have started before the host was hidden.
+      if (!hostIsActive()) {
+        const error = new Error("Indicator history paused while its chart is hidden");
+        error.name = "AbortError";
+        throw error;
+      }
+      return ctx.datafeed.getBars(...args);
+    },
+    async resolveSymbol(...args) {
+      if (!hostIsActive()) return null;
+      const info = await ctx.datafeed.resolveSymbol(...args);
+      return hostIsActive() ? info : null;
+    },
+  };
   /** @type {ReturnType<typeof setTimeout> | null} */
   let loadTimer = null;
   /** @type {Map<string, Promise<void>>} */
@@ -139,6 +161,9 @@ export function createIndicatorDataLoader({
   }
 
   function markCompareUnavailable(pane, symbol, resolution, countBack, err) {
+    // A pause rejection may reach this handler after rapid route reactivation.
+    // Cancellation is not missing market data and must not start a cooldown.
+    if (!hostIsActive() || err?.name === "AbortError") return;
     const key = compareKey(symbol, resolution);
     const startEpoch = getDataEpoch();
     const retryAt = Date.now() + COMPARE_RETRY_MS;
@@ -156,7 +181,7 @@ export function createIndicatorDataLoader({
     compareRetryTimers.set(key, setTimeout(() => {
       compareRetryTimers.delete(key);
       compareUnavailableUntil.delete(key);
-      if (getDataEpoch() !== startEpoch) return;
+      if (!hostIsActive() || getDataEpoch() !== startEpoch) return;
       requestOverlayRefresh(pane.index);
       scheduleCompareBarsFetch(pane, symbol, resolution, countBack);
     }, COMPARE_RETRY_MS));
@@ -196,7 +221,7 @@ export function createIndicatorDataLoader({
     const info = symbolInfo ?? pane.symbolInfo ?? ctx.symbolInfo;
     const playbackAnchorSec = paneAnchorSec(pane);
     return {
-      datafeed: ctx.datafeed,
+      datafeed: indicatorDatafeed,
       symbolInfo: info,
       symbol,
       resolution,
@@ -212,7 +237,7 @@ export function createIndicatorDataLoader({
 
   /** @param {object} pane @returns {Promise<boolean>} true when any HTF tail was extended */
   async function extendHtfTailForReplay(pane) {
-    if (!pane?.symbol || !ctx.datafeed) return false;
+    if (!hostIsActive() || !pane?.symbol || !ctx.datafeed) return false;
     if (!paneBarsMatchCurrentSeries(pane)) return false;
     const anchorSec = paneAnchorSec(pane);
     if (anchorSec == null) return false;
@@ -243,7 +268,7 @@ export function createIndicatorDataLoader({
       const symbolInfo =
         symbol === pane.symbol
           ? pane.symbolInfo ?? ctx.symbolInfo
-          : await ctx.datafeed.resolveSymbol(symbol);
+          : await indicatorDatafeed.resolveSymbol(symbol);
       if (!symbolInfo) continue;
       await extendHtfCacheForAnchor({
         ...htfEnsureOpts(pane, symbol, resolution, 16, symbolInfo),
@@ -260,7 +285,7 @@ export function createIndicatorDataLoader({
     for (const symbol of needs.compareChart.keys()) {
       if (!symbol || symbol === pane.symbol) continue;
       if (!htfCacheStaleForAnchor(symbol, pane.resolution, anchorSec)) continue;
-      const symbolInfo = await ctx.datafeed.resolveSymbol(symbol);
+      const symbolInfo = await indicatorDatafeed.resolveSymbol(symbol);
       if (!symbolInfo) continue;
       await extendHtfCacheForAnchor({
         ...htfEnsureOpts(pane, symbol, pane.resolution, 16, symbolInfo),
@@ -279,7 +304,7 @@ export function createIndicatorDataLoader({
   /** Repair only retained dependency tails after primary panes recover from suspension. */
   async function recoverIndicatorDataForPanes(panes, options = {}) {
     const shouldContinue = typeof options.shouldContinue === "function" ? options.shouldContinue : () => true;
-    if (!shouldContinue() || !ctx.datafeed || ctx.opts?.replayHostControlled || ctx.replayEngine?.isReplayLocked?.()) {
+    if (!hostIsActive() || !shouldContinue() || !ctx.datafeed || ctx.opts?.replayHostControlled || ctx.replayEngine?.isReplayLocked?.()) {
       return { series: 0, updatedSeries: 0, failedSeries: [] };
     }
     const startEpoch = getDataEpoch();
@@ -322,7 +347,7 @@ export function createIndicatorDataLoader({
     const changed = new Map();
     const failedSeries = [];
     for (const job of jobs.values()) invalidateHtfBarRequests(job.symbol, job.resolution);
-    const currentOwner = (owner) => shouldContinue() &&
+    const currentOwner = (owner) => hostIsActive() && shouldContinue() &&
       (ctx.getAllChartPanes?.() ?? panes).includes(owner.pane) &&
       owner.pane.symbol === owner.symbol && owner.pane.resolution === owner.resolution &&
       (owner.pane._historyGeneration ?? 0) === owner.generation && paneBarsMatchCurrentSeries(owner.pane);
@@ -340,16 +365,17 @@ export function createIndicatorDataLoader({
             seedHtfBars(job.symbol, job.resolution, shared.utcBars, shared.chartBars, shared.source, { verifyRange: true });
           }
         } else if (getHtfBars(job.symbol, job.resolution)?.utcBars?.length) {
-          const info = job.symbol === job.pane.symbol ? job.pane.symbolInfo ?? ctx.symbolInfo : await ctx.datafeed.resolveSymbol(job.symbol);
+          const info = job.symbol === job.pane.symbol ? job.pane.symbolInfo ?? ctx.symbolInfo : await indicatorDatafeed.resolveSymbol(job.symbol);
           if (!info || getDataEpoch() !== startEpoch || !job.owners.some(currentOwner)) return;
           await extendHtfCacheForAnchor({
-            datafeed: ctx.datafeed, symbolInfo: info, symbol: job.symbol, resolution: job.resolution,
+            datafeed: indicatorDatafeed, symbolInfo: info, symbol: job.symbol, resolution: job.resolution,
             pane: job.pane, anchorSec: job.anchorSec, fromSec: job.fromSec, requestReason: "htf.resume",
             refresh: true, shouldContinue: () => getDataEpoch() === startEpoch && job.owners.some(currentOwner),
           });
         }
         if (getDataEpoch() === startEpoch && getHtfSeriesVersion(job.symbol, job.resolution) !== versionBefore) changed.set(job.key, job);
       } catch (error) {
+        if (!hostIsActive() || error?.name === "AbortError") return;
         failedSeries.push(job.key);
         indicatorDebug("data.resume failed", { key: job.key, error: String(error) });
       }
@@ -385,7 +411,7 @@ export function createIndicatorDataLoader({
   }
 
   async function borrowVisiblePaneHistory(pane, symbol, resolution, countBack) {
-    if (!ctx.ensureIndicatorChartHistory) return;
+    if (!hostIsActive() || !ctx.ensureIndicatorChartHistory) return;
     const sourcePane = ctx.getAllChartPanes?.().find((candidate) =>
       candidate.resolution === resolution && symbolsMatch(candidate.symbol ?? "", symbol) &&
       paneBarsMatchCurrentSeries(candidate),
@@ -398,10 +424,10 @@ export function createIndicatorDataLoader({
     // mutually comparing panes deadlock each other.
     await ctx.ensureIndicatorChartHistory(sourcePane, {
       countBack,
-      shouldContinue: () => getDataEpoch() === startEpoch &&
+      shouldContinue: () => hostIsActive() && getDataEpoch() === startEpoch &&
         sourcePane.symbol === sourceSymbol && sourcePane.resolution === resolution,
     });
-    if (getDataEpoch() !== startEpoch) return;
+    if (!hostIsActive() || getDataEpoch() !== startEpoch) return;
     const shared = lookupSymbolBars({ ...symbolBarLookupOpts(pane, symbol), resolution });
     if (shared?.utcBars?.length) {
       seedHtfBars(symbol, resolution, shared.utcBars, shared.chartBars, shared.source);
@@ -410,15 +436,16 @@ export function createIndicatorDataLoader({
 
   /** @param {object} pane @param {string} symbol @param {string} resolution @param {number} countBack @param {object} [symbolInfo] */
   async function fillHtfHistory(pane, symbol, resolution, countBack) {
+    if (!hostIsActive()) return;
     const startEpoch = getDataEpoch();
     await borrowVisiblePaneHistory(pane, symbol, resolution, countBack);
-    if (getDataEpoch() !== startEpoch) return;
+    if (!hostIsActive() || getDataEpoch() !== startEpoch) return;
     let symbolInfo;
     if (symbol === pane.symbol) {
       symbolInfo = pane.symbolInfo ?? ctx.symbolInfo;
       if (!symbolInfo) return;
     } else {
-      symbolInfo = await ctx.datafeed.resolveSymbol(symbol);
+      symbolInfo = await indicatorDatafeed.resolveSymbol(symbol);
       if (!symbolInfo) return;
     }
     const ensureOpts = htfEnsureOpts(pane, symbol, resolution, countBack, symbolInfo);
@@ -451,9 +478,9 @@ export function createIndicatorDataLoader({
     }
     let entry = await ensureHtfBars(ensureOpts);
     let guard = 0;
-    while (entry && entry.utcBars.length < countBack && !entry.historyExhausted && guard < PREPEND_GUARD) {
+    while (hostIsActive() && entry && entry.utcBars.length < countBack && !entry.historyExhausted && guard < PREPEND_GUARD) {
       entry = await prependHtfBars({
-        datafeed: ctx.datafeed,
+        datafeed: indicatorDatafeed,
         symbolInfo,
         symbol,
         resolution,
@@ -468,17 +495,19 @@ export function createIndicatorDataLoader({
 
   /** @param {object} pane @param {string} symbol @param {number} countBack */
   async function fillCompareChart(pane, symbol, countBack) {
+    if (!hostIsActive()) return false;
     const anchorSec = paneAnchorSec(pane);
     const startEpoch = getDataEpoch();
     const tailCap = anchorSec ?? pane.bars?.at(-1)?.time ?? null;
     const versionBeforeInitialPage = getHtfSeriesVersion(symbol, pane.resolution);
     await borrowVisiblePaneHistory(pane, symbol, pane.resolution, countBack);
-    if (getDataEpoch() !== startEpoch) return false;
+    if (!hostIsActive() || getDataEpoch() !== startEpoch) return false;
     let hit = lookupSymbolBars({ ...symbolBarLookupOpts(pane, symbol), resolution: pane.resolution });
     const tailStale =
       tailCap != null && htfCacheStaleForAnchor(symbol, pane.resolution, tailCap);
     if (!hit || hit.utcBars.length < countBack || tailStale) {
-      const symbolInfo = await ctx.datafeed.resolveSymbol(symbol);
+      const symbolInfo = await indicatorDatafeed.resolveSymbol(symbol);
+      if (!symbolInfo) return false;
       if (tailStale && htfStoreBarCount(symbol, pane.resolution) > 0) {
         await extendHtfCacheForAnchor({
           ...htfEnsureOpts(pane, symbol, pane.resolution, 16, symbolInfo),
@@ -487,7 +516,7 @@ export function createIndicatorDataLoader({
         });
       } else {
         hit = await ensureSymbolBars({
-          datafeed: ctx.datafeed,
+          datafeed: indicatorDatafeed,
           symbolInfo,
           symbol,
           resolution: pane.resolution,
@@ -519,10 +548,11 @@ export function createIndicatorDataLoader({
       refreshPanesUsingCompareSymbol(symbol);
     }
     let guard = 0;
-    const symbolInfo = await ctx.datafeed.resolveSymbol(symbol);
-    while (entry && entry.utcBars.length < countBack && !entry.historyExhausted && guard < PREPEND_GUARD) {
+    const symbolInfo = await indicatorDatafeed.resolveSymbol(symbol);
+    if (!symbolInfo) return false;
+    while (hostIsActive() && entry && entry.utcBars.length < countBack && !entry.historyExhausted && guard < PREPEND_GUARD) {
       entry = await prependHtfBars({
-        datafeed: ctx.datafeed,
+        datafeed: indicatorDatafeed,
         symbolInfo,
         symbol,
         resolution: pane.resolution,
@@ -607,6 +637,7 @@ export function createIndicatorDataLoader({
 
   /** @param {object} pane @param {{ skipRefresh?: boolean }} [opts] */
   function ensurePaneData(pane, opts = {}) {
+    if (!hostIsActive()) return Promise.resolve();
     if (!pane?.symbol) return Promise.resolve();
     if (!paneBarsMatchCurrentSeries(pane)) return Promise.resolve();
     const key = `${getDataEpoch()}|${pane.index}|${pane.symbol}|${pane.resolution}|${pane._historyGeneration ?? 0}`;
@@ -618,6 +649,7 @@ export function createIndicatorDataLoader({
   }
 
   async function loadPaneData(pane, opts = {}) {
+    if (!hostIsActive()) return;
     if (!pane?.symbol) return;
     if (!paneBarsMatchCurrentSeries(pane)) return;
     if (isChartPanning()) {
@@ -626,7 +658,7 @@ export function createIndicatorDataLoader({
     }
     const startEpoch = getDataEpoch();
     const generation = pane._historyGeneration ?? 0;
-    const currentPane = () => getDataEpoch() === startEpoch &&
+    const currentPane = () => hostIsActive() && getDataEpoch() === startEpoch &&
       (pane._historyGeneration ?? 0) === generation && paneBarsMatchCurrentSeries(pane);
 
     // Do not queue current-window indicator data behind the slower primary
@@ -764,8 +796,11 @@ export function createIndicatorDataLoader({
   /** @param {number} [delayMs] */
   function scheduleLoad(delayMs = HTF_FETCH_IDLE_MS) {
     if (loadTimer != null) clearTimeout(loadTimer);
+    loadTimer = null;
+    if (!hostIsActive()) return;
     loadTimer = setTimeout(() => {
       loadTimer = null;
+      if (!hostIsActive()) return;
       if (isChartPanning()) {
         deferHeavyWork();
         return;
@@ -806,6 +841,7 @@ export function createIndicatorDataLoader({
 
   /** @param {object} pane @param {string} symbol @param {string} resolution @param {number} countBack */
   function scheduleCompareBarsFetch(pane, symbol, resolution, countBack) {
+    if (!hostIsActive()) return;
     if (!pane || !ctx.datafeed || !symbol || !resolution) return;
     if (!paneBarsMatchCurrentSeries(pane)) return;
     if (isChartPanning()) {
@@ -843,6 +879,7 @@ export function createIndicatorDataLoader({
     const beforeVersion = getHtfSeriesVersion(symbol, resolution);
     const snapshot = { ...pane, resolution };
     void Promise.resolve().then(async () => {
+      if (!hostIsActive()) return;
       const loaded = await fillCompareChart(snapshot, symbol, want);
       if (getDataEpoch() !== startEpoch) return;
       if (!loaded) {
@@ -861,6 +898,7 @@ export function createIndicatorDataLoader({
 
   /** @param {object} pane @param {string} [symbol] @param {string} resId @param {number} countBack */
   function scheduleHtfBarsFetch(pane, symbol, resId, countBack) {
+    if (!hostIsActive()) return;
     const sym = symbol ?? pane?.symbol;
     if (!sym || !pane || !ctx.datafeed) return;
     if (!paneBarsMatchCurrentSeries(pane)) return;
@@ -886,7 +924,7 @@ export function createIndicatorDataLoader({
     void Promise.resolve().then(async () => {
       let requested;
       do {
-        if (getDataEpoch() !== startEpoch) return;
+        if (!hostIsActive() || getDataEpoch() !== startEpoch) return;
         requested = request.want;
         await fillHtfHistory(snapshot, sym, resId, requested);
       } while (getDataEpoch() === startEpoch && request.want > requested);
@@ -900,6 +938,7 @@ export function createIndicatorDataLoader({
 
   /** @param {object} pane — host replay: load HTF then paint overlay once (no short-series flash). */
   function ensurePaneDataThenOverlay(pane) {
+    if (!hostIsActive()) return Promise.resolve();
     if (!pane?.symbol) return Promise.resolve();
     if (!paneBarsMatchCurrentSeries(pane)) return Promise.resolve();
     if (isChartPanning()) {
@@ -915,7 +954,7 @@ export function createIndicatorDataLoader({
     if (pending) return pending;
     const task = (async () => {
       await ensurePaneData(pane, { skipRefresh: true });
-      if (getDataEpoch() !== epoch || pane.symbol !== symbol || pane.resolution !== resolution ||
+      if (!hostIsActive() || getDataEpoch() !== epoch || pane.symbol !== symbol || pane.resolution !== resolution ||
         (pane._historyGeneration ?? 0) !== generation || !paneBarsMatchCurrentSeries(pane)) return;
       requestOverlayRefresh(pane.index);
     })().finally(() => paneOverlayInFlight.delete(key));

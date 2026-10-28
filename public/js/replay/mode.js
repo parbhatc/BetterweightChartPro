@@ -165,11 +165,14 @@ export function mountReplayMode(opts) {
     },
     /**
      * @param {{ selectedBarIndex: number, currentBarIndex: number, selectedBarTime: number, currentBarTime: number }} pos
-     * @param {{ keepPlaying?: boolean }} [opts] keepPlaying: host-driven step — don't force-pause
+     * @param {{ keepPlaying?: boolean, timeframeChange?: boolean }} [opts]
+     * keepPlaying: host-driven step — don't force-pause. timeframeChange: map
+     * an unchanged host cursor to another interval's bucket, not a rewind.
      */
     setReplayPosition: (pos, opts = {}) => {
       if (!state.active) return;
-      if (state.currentBarTime != null && pos.currentBarTime < state.currentBarTime) {
+      if (state.currentBarTime != null && pos.currentBarTime < state.currentBarTime &&
+        !(hostControlled && opts.timeframeChange === true)) {
         bumpDataEpoch("replay-rewind");
       }
       patch({

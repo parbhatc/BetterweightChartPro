@@ -84,6 +84,15 @@ export function bumpDataEpoch(reason = "", options = {}) {
 }
 
 /**
+ * A chart interval change keeps the same feed and replay timeline. Retain its
+ * completed native/security series while invalidating old asynchronous work.
+ * Replay reads still cap each series, and actual rewinds use bumpDataEpoch.
+ */
+export function bumpTimeframeDataEpoch() {
+  return bumpDataEpoch("timeframe-change", { preserveStore: true });
+}
+
+/**
  * Track the replay anchor; a backward move (rewind / jump back) bumps the
  * epoch so anchored fetches made at a later cursor cannot leak future data.
  * @param {string} resolution
@@ -563,6 +572,42 @@ async function fetchHtfBars(opts) {
     },
     want,
   );
+
+  const retained = getHtfBars(symbol, resolution);
+  const liveTailCap = pane?.bars?.length ? pane.bars.at(-1).time : null;
+  // Growing indicator requirements must extend the loaded head, not repeat a
+  // larger initial request ending at the same live candle. Keep replay's
+  // anchored initial-load policy and repair a stale live tail before reusing it.
+  if (
+    opts.playbackAnchorSec == null && retained?.utcBars?.length &&
+    (liveTailCap == null || !htfCacheStaleForAnchor(symbol, resolution, liveTailCap, { confirmedOnly }))
+  ) {
+    let entry = retained;
+    // A primary/peer pane can have grown while the store was fetching. Borrow
+    // that coverage before asking the native feed for only the missing depth.
+    if (warmed?.source !== "htf-store" && warmed?.utcBars?.length) {
+      const borrowed = confirmedOnly && liveTailCap != null
+        ? dropUnclosedTail(warmed.utcBars, barSec, liveTailCap)
+        : warmed.utcBars;
+      if (borrowed.length) {
+        const borrowedChart = warmed.chartBars?.length === warmed.utcBars.length
+          ? warmed.chartBars.slice(0, borrowed.length)
+          : null;
+        entry = seedHtfBars(symbol, resolution, borrowed, borrowedChart, warmed.source, { verifyRange: true });
+      }
+    }
+    while (entry && !entry.historyExhausted && entry.utcBars.length < want) {
+      if (startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
+      const first = entry.utcBars[0]?.time;
+      if (first == null || !symbolInfo) break;
+      entry = await prependHtfBars({ ...opts, countBack: want - entry.utcBars.length });
+      if (startEpoch !== dataEpoch || generation !== requestGeneration(symbol, resolution)) return getHtfBars(symbol, resolution);
+      // Empty/no-progress pages are handled as exhaustion by prependHtfBars.
+      // Do not spin if another owner cleared or replaced the series meanwhile.
+      if (!entry?.utcBars?.length || entry.utcBars[0].time >= first) break;
+    }
+    return entry;
+  }
 
   /** @type {object[]} */
   let utcBars = warmed?.utcBars?.length ? warmed.utcBars.slice() : [];

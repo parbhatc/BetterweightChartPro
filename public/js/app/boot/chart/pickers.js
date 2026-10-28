@@ -8,7 +8,7 @@ import {
 } from "../../../chart/pane/viewportBarLayout.js";
 import { getPaneChartView } from "../../../chart/pane/viewCache.js";
 import { replayBarIndexForUtcTime } from "../../../replay/persist.js";
-import { bumpDataEpoch, clearHtfCoarserThan, seedHtfBars } from "../../bar/htfBarCache.js";
+import { bumpDataEpoch, bumpTimeframeDataEpoch, clearHtfCoarserThan, seedHtfBars } from "../../bar/htfBarCache.js";
 import { resolutionSec } from "../../../chart/resolutions.js";
 import {
   paintPaneAfterTimeframeLoad,
@@ -354,7 +354,11 @@ export async function wireSymbolAndTimeframePickers(ctx) {
       initialSymbol: ctx.symbol,
       onSelect: (sym) => ctx.changeSymbolFromPicker(sym),
     });
-    await ctx.symbolSearchUi.init();
+    // The known symbol can load candles immediately. Search only enriches the
+    // picker label and must not put remote catalog latency on the boot path.
+    void ctx.symbolSearchUi.init().catch((error) => {
+      console.warn("[BWC] Initial symbol picker metadata unavailable:", error);
+    });
   }
 
   if (ctx.tfPickerEl) {
@@ -411,9 +415,7 @@ export async function wireSymbolAndTimeframePickers(ctx) {
           });
           const savedLayouts = capturePaneBarLayouts(ctx, panes);
           prepareSynchronizedReplayPanesBeforeTimeframeSwitch(ctx, panes, savedLayouts);
-          bumpDataEpoch("timeframe-change", {
-            preserveStore: !ctx.opts?.replayHostControlled,
-          });
+          bumpTimeframeDataEpoch();
           preparePanesForSeriesReload(ctx, panes);
           for (let i = 0; i < panes.length; i += 1) {
             const pane = panes[i];
@@ -473,9 +475,7 @@ export async function wireSymbolAndTimeframePickers(ctx) {
           sync: false,
         });
         const savedLayout = captureViewportBarLayout(pane, ctx.settingsStore, ctx.resolutions);
-        bumpDataEpoch("timeframe-change", {
-          preserveStore: !ctx.opts?.replayHostControlled,
-        });
+        bumpTimeframeDataEpoch();
         preparePanesForSeriesReload(ctx, [pane]);
         pane._tfSwitchFromResolution = pane.resolution;
         pane._tfSwitchSavedLayout = savedLayout;

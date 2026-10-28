@@ -97,7 +97,7 @@ export function syncHostReplayViewportAfterTfSwitch(ctx, pane, fromResolution = 
       currentBarIndex: endIndex,
       selectedBarTime: cursorUtc,
       currentBarTime: cursorUtc,
-    });
+    }, { timeframeChange: true });
   }
 
   ctx.indicatorController?.syncOverlayTimeCtxForPane?.(pane.index);

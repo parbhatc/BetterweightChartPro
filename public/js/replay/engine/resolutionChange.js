@@ -134,7 +134,7 @@ export function createReplayResolutionChange(ctx, replay, state, deps) {
         currentBarIndex: currentIdx,
         selectedBarTime: cursorUtc,
         currentBarTime: cursorUtc,
-      });
+      }, { timeframeChange: true });
       state.lastAppliedEndIndex = currentIdx;
       state.lastAppliedBarTime = cursorUtc;
       state.replayBarsByResolution.set(activePane.resolution, {

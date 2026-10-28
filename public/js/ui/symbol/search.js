@@ -80,6 +80,11 @@ function ensureSymbolModal(root) {
 
 export function mountSymbolSearch(opts) {
   const { root, datafeed, initialSymbol, onSelect } = opts;
+  const listeners = [];
+  function listen(target, type, listener) {
+    target.addEventListener(type, listener);
+    listeners.push(() => target.removeEventListener(type, listener));
+  }
 
   const trigger = root.querySelector("#symbol-trigger");
   const logoEl = root.querySelector("#symbol-logo");
@@ -104,6 +109,9 @@ export function mountSymbolSearch(opts) {
   let activeSymbol = initialSymbol;
   let activeTab = loadSearchTab("");
   let searchSeq = 0;
+  let displayRevision = 0;
+  let destroyed = false;
+  let initialMetadataPromise = null;
 
   function renderTabs() {
     tabsEl.innerHTML = TYPE_TABS.map(
@@ -186,19 +194,22 @@ export function mountSymbolSearch(opts) {
   }
 
   function close() {
+    const wasOpen = open;
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement && modal.contains(activeElement)) {
       activeElement.blur();
     }
     open = false;
+    searchSeq += 1;
     modal.hidden = true;
-    document.body.classList.remove("tv-symbol-modal-open");
+    if (wasOpen) document.body.classList.remove("tv-symbol-modal-open");
     trigger?.setAttribute("aria-expanded", "false");
     searchInput.value = "";
     syncClearButton();
   }
 
   function openDropdown() {
+    if (destroyed) return;
     open = true;
     activeTab = loadSearchTab("");
     renderTabs();
@@ -208,7 +219,9 @@ export function mountSymbolSearch(opts) {
     searchInput.value = "";
     syncClearButton();
     void renderList("");
-    requestAnimationFrame(() => searchInput.focus());
+    requestAnimationFrame(() => {
+      if (!destroyed && open) searchInput.focus();
+    });
   }
 
   function restoreTriggerFocusForKeyboard() {
@@ -267,18 +280,23 @@ export function mountSymbolSearch(opts) {
   }
 
   function renderList(query) {
+    if (destroyed) return Promise.resolve();
+    const seq = ++searchSeq;
     if (activeTab === "recent") {
       const filtered = recentResults(query);
       filtered.forEach((r) => metaBySymbol.set(resultSymbol(r), r));
       renderResultList(filtered);
       return Promise.resolve();
     }
-    const seq = ++searchSeq;
     return datafeed.searchSymbols(query, "", activeTab, 50).then((results) => {
-      if (seq !== searchSeq) return;
+      if (destroyed || seq !== searchSeq) return;
       results.forEach((r) => metaBySymbol.set(resultSymbol(r), r));
       const filtered = applyTabFilter(results);
       renderResultList(filtered);
+    }).catch(() => {
+      if (!destroyed && seq === searchSeq) {
+        listEl.innerHTML = `<li class="tv-symbol-modal__empty">Could not load symbols</li>`;
+      }
     });
   }
 
@@ -288,14 +306,14 @@ export function mountSymbolSearch(opts) {
   }
 
   let suppressTriggerClickUntil = 0;
-  trigger.addEventListener("pointerup", (ev) => {
+  listen(trigger, "pointerup", (ev) => {
     if (ev.pointerType !== "touch") return;
     suppressTriggerClickUntil = performance.now() + 700;
     ev.preventDefault();
     ev.stopPropagation();
     toggleSymbolPicker();
   });
-  trigger.addEventListener("click", (ev) => {
+  listen(trigger, "click", (ev) => {
     if (performance.now() < suppressTriggerClickUntil) {
       ev.preventDefault();
       return;
@@ -303,12 +321,12 @@ export function mountSymbolSearch(opts) {
     toggleSymbolPicker();
   });
 
-  searchInput.addEventListener("input", () => {
+  listen(searchInput, "input", () => {
     syncClearButton();
     void renderList(searchInput.value);
   });
 
-  searchInput.addEventListener("keydown", (ev) => {
+  listen(searchInput, "keydown", (ev) => {
     if (ev.key === "Escape") {
       ev.preventDefault();
       close();
@@ -316,7 +334,7 @@ export function mountSymbolSearch(opts) {
     }
   });
 
-  tabsEl.addEventListener("click", (ev) => {
+  listen(tabsEl, "click", (ev) => {
     const tab = ev.target instanceof Element ? ev.target.closest("[data-tab]") : null;
     if (!(tab instanceof HTMLElement)) return;
     const next = tab.dataset.tab ?? "";
@@ -328,7 +346,7 @@ export function mountSymbolSearch(opts) {
   });
 
   if (clearBtn instanceof HTMLButtonElement) {
-    clearBtn.addEventListener("click", () => {
+    listen(clearBtn, "click", () => {
       searchInput.value = "";
       syncClearButton();
       searchInput.focus();
@@ -337,7 +355,7 @@ export function mountSymbolSearch(opts) {
   }
 
   let suppressModalCloseClickUntil = 0;
-  modal.addEventListener("pointerup", (ev) => {
+  listen(modal, "pointerup", (ev) => {
     if (ev.pointerType !== "touch") return;
     if (!(ev.target instanceof Element) || !ev.target.closest("[data-close], [data-backdrop]")) return;
     suppressModalCloseClickUntil = performance.now() + 700;
@@ -346,7 +364,7 @@ export function mountSymbolSearch(opts) {
     close();
   });
 
-  modal.addEventListener("click", (ev) => {
+  listen(modal, "click", (ev) => {
     if (ev.target instanceof Element && ev.target.closest("[data-close], [data-backdrop]")) {
       if (performance.now() < suppressModalCloseClickUntil) {
         ev.preventDefault();
@@ -357,7 +375,7 @@ export function mountSymbolSearch(opts) {
     }
   });
 
-  listEl.addEventListener("click", (ev) => {
+  listen(listEl, "click", (ev) => {
     const item = ev.target instanceof Element ? ev.target.closest("[data-symbol]") : null;
     if (!(item instanceof HTMLElement)) return;
     const sym = item.dataset.symbol;
@@ -368,11 +386,12 @@ export function mountSymbolSearch(opts) {
     restoreTriggerFocusForKeyboard();
     if (matchesActiveSymbol(sym, meta, activeSymbol)) return;
     activeSymbol = sym;
+    displayRevision += 1;
     setDisplay(sym, meta);
     onSelect(sym, meta);
   });
 
-  document.addEventListener("keydown", (ev) => {
+  listen(document, "keydown", (ev) => {
     if (ev.key === "Escape" && open) {
       close();
       trigger?.focus();
@@ -380,38 +399,62 @@ export function mountSymbolSearch(opts) {
   });
 
   renderTabs();
+  // Paint the known ticker before optional search metadata reaches the server.
+  setDisplay(activeSymbol, { ticker: symbolTicker(activeSymbol) });
 
   return {
-    async init() {
-      const seed = activeSymbol.includes(":")
-        ? activeSymbol.split(":")[1]?.replace(/[0-9].*$/, "") ?? ""
-        : activeSymbol;
-      const results = await datafeed.searchSymbols(seed || "NQ");
-      results.forEach((s) => metaBySymbol.set(resultSymbol(s), s));
-      const meta =
-        metaBySymbol.get(activeSymbol) ??
-        results.find((s) => matchesActiveSymbol(s.symbol, s, activeSymbol));
-      if (meta) setDisplay(activeSymbol, meta);
-      else {
-        const info = await datafeed.resolveSymbol(activeSymbol);
-        const rootSym = activeSymbol.includes(":") ? activeSymbol.split(":").pop() : activeSymbol;
-        const exchange = info.listed_exchange || info.exchange?.replace(/\s*\(Delayed\)$/i, "") || "CME";
-        setDisplay(activeSymbol, {
-          name: info.description,
-          exchange,
-          ticker: info.ticker?.includes("-Delayed:")
-            ? info.ticker.replace(/-Delayed:/i, ":")
-            : info.ticker || `${exchange}:${symbolTicker(rootSym)}`,
-          logoUrl: info.logoUrl,
-        });
-      }
+    init() {
+      if (destroyed) return Promise.resolve();
+      if (initialMetadataPromise) return initialMetadataPromise;
+      const symbol = activeSymbol;
+      const revision = displayRevision;
+      const current = () => !destroyed && activeSymbol === symbol && displayRevision === revision;
+      initialMetadataPromise = (async () => {
+        const seed = symbol.includes(":")
+          ? symbol.split(":")[1]?.replace(/[0-9].*$/, "") ?? ""
+          : symbol;
+        const results = await datafeed.searchSymbols(seed || "NQ");
+        if (!current()) return;
+        results.forEach((s) => metaBySymbol.set(resultSymbol(s), s));
+        const meta =
+          metaBySymbol.get(symbol) ??
+          results.find((s) => matchesActiveSymbol(s.symbol, s, symbol));
+        if (meta) setDisplay(symbol, meta);
+        else {
+          const info = await datafeed.resolveSymbol(symbol);
+          if (!current()) return;
+          const rootSym = symbol.includes(":") ? symbol.split(":").pop() : symbol;
+          const exchange = info.listed_exchange || info.exchange?.replace(/\s*\(Delayed\)$/i, "") || "CME";
+          setDisplay(symbol, {
+            name: info.description,
+            exchange,
+            ticker: info.ticker?.includes("-Delayed:")
+              ? info.ticker.replace(/-Delayed:/i, ":")
+              : info.ticker || `${exchange}:${symbolTicker(rootSym)}`,
+            logoUrl: info.logoUrl,
+          });
+        }
+      })().catch((error) => {
+        if (current()) throw error;
+      });
+      return initialMetadataPromise;
     },
     setSymbol(sym, meta) {
+      if (destroyed) return;
       activeSymbol = sym;
+      displayRevision += 1;
       const resolved = meta ?? metaBySymbol.get(sym) ?? { symbol: sym };
       setDisplay(sym, resolved);
     },
     getSymbol: () => activeSymbol,
     open: openDropdown,
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      displayRevision += 1;
+      close();
+      for (const remove of listeners.splice(0)) remove();
+      modal.remove();
+    },
   };
 }

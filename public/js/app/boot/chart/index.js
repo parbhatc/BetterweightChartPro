@@ -287,6 +287,7 @@ export async function bootChart(overrides = {}) {
     };
     const destroyWidget = widget.destroy.bind(widget);
     widget.destroy = () => {
+      ctx.symbolSearchUi?.destroy?.();
       releaseChartHostInteractions(ctx.el);
       ctx.chartTypeUi?.destroy?.();
       ctx.ratioResizeObserver?.disconnect?.();
