@@ -17,6 +17,16 @@ import { persistAutosaveDrawingSnapshot } from "./layoutDrawingSnapshot.js";
  * @param {import("./state.js").BootContext} ctx
  */
 export function attachLayoutPersistence(ctx) {
+  let viewportAutosavePending = false;
+  let disposed = false;
+
+  function disposeLayoutPersistence() {
+    disposed = true;
+    viewportAutosavePending = false;
+    if (ctx.layoutAutosaveTimer) clearTimeout(ctx.layoutAutosaveTimer);
+    ctx.layoutAutosaveTimer = null;
+  }
+
   function buildLayoutEntry() {
     return {
       name: ctx.layoutManager?.getLayoutName() ?? "Unnamed",
@@ -69,7 +79,8 @@ export function attachLayoutPersistence(ctx) {
    * @param {{ toLibrary?: boolean }} [opts]
    */
   function autosaveLayout(opts = {}) {
-    if (!ctx.layoutManager) return;
+    if (disposed || !ctx.layoutManager) return;
+    viewportAutosavePending = false;
     const toLibrary = opts.toLibrary !== false;
     if (ctx.layoutAutosaveTimer) {
       clearTimeout(ctx.layoutAutosaveTimer);
@@ -97,6 +108,7 @@ export function attachLayoutPersistence(ctx) {
 
   function resetToUnsavedWorkspace() {
     if (!ctx.layoutManager) return;
+    viewportAutosavePending = false;
     if (ctx.layoutAutosaveTimer) {
       clearTimeout(ctx.layoutAutosaveTimer);
       ctx.layoutAutosaveTimer = null;
@@ -130,8 +142,37 @@ export function attachLayoutPersistence(ctx) {
     ctx.headerToolbarUi?.updateSaveState();
   }
 
-  function scheduleAutosaveLayout() {
+  function flushScheduledAutosave() {
+    ctx.layoutAutosaveTimer = null;
+    if (disposed) return;
+    // A paused pointer can outlast the debounce. Keep full snapshot cloning
+    // and synchronous storage writes out of every held-pointer frame.
+    if (ctx.ui?.chartPanning) {
+      ctx.layoutAutosaveTimer = setTimeout(flushScheduledAutosave, 100);
+      return;
+    }
     if (!ctx.layoutManager || ctx._layoutRestorePending) return;
+    if (viewportAutosavePending) {
+      viewportAutosavePending = false;
+      ctx.layoutManager.markDirty();
+      if (!ctx.layoutManager.getAutoSave()) ctx.headerToolbarUi?.updateSaveState();
+    }
+    if (ctx.layoutManager.getAutoSave()) saveLayoutToLibrary();
+  }
+
+  function queueAutosave() {
+    if (ctx.layoutAutosaveTimer) clearTimeout(ctx.layoutAutosaveTimer);
+    ctx.layoutAutosaveTimer = setTimeout(flushScheduledAutosave, 350);
+  }
+
+  /** @param {{ viewportOnly?: boolean }} [opts] */
+  function scheduleAutosaveLayout(opts = {}) {
+    if (disposed || !ctx.layoutManager || ctx._layoutRestorePending) return;
+    if (opts?.viewportOnly) {
+      viewportAutosavePending = true;
+      queueAutosave();
+      return;
+    }
     const autoSave = ctx.layoutManager.getAutoSave();
     ctx.layoutManager.markDirty();
     if (!autoSave) {
@@ -142,11 +183,7 @@ export function attachLayoutPersistence(ctx) {
     // debounced below, but a refresh during that debounce must not restore an
     // older (often empty) drawing set while the toolbar says auto-save is on.
     persistAutosaveDrawingSnapshot(ctx);
-    if (ctx.layoutAutosaveTimer) clearTimeout(ctx.layoutAutosaveTimer);
-    ctx.layoutAutosaveTimer = setTimeout(() => {
-      ctx.layoutAutosaveTimer = null;
-      saveLayoutToLibrary();
-    }, 350);
+    queueAutosave();
   }
 
   function restoreLayoutToolDefaults() {
@@ -235,6 +272,7 @@ export function attachLayoutPersistence(ctx) {
     saveLayoutToLibrary,
     resetToUnsavedWorkspace,
     scheduleAutosaveLayout,
+    disposeLayoutPersistence,
     restoreLayoutToolDefaults,
     restoreLayoutDrawingTemplates,
     restoreLayoutDrawings,

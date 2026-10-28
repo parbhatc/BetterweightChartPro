@@ -47,6 +47,7 @@ export function attachPaneExtrasBoot(ctx) {
     getReplayActive: () => ctx.replay?.isActive?.() ?? false,
     quotesEnabled: () => Boolean(ctx.quotesEnabled),
     getQuoteForSymbol: (symbol) => ctx.getQuoteForSymbol?.(symbol) ?? null,
+    onViewportChange: () => ctx.scheduleAutosaveLayout?.({ viewportOnly: true }),
   });
 
   ctx.ensurePaneBackgroundForPane = paneExtras.ensurePaneBackgroundForPane;

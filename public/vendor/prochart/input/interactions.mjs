@@ -13,6 +13,7 @@
 const WHEEL_ZOOM_BASE = 1.1;
 export const TOUCH_TRACKING_LONG_PRESS_MS = 240;
 export const TOUCH_TRACKING_CANCEL_DISTANCE = 5;
+const VERTICAL_PAN_UNLOCK_DISTANCE = 5;
 /** TradingView desktop drags stop on pointer release; touch swipes retain momentum. */
 export const TRADINGVIEW_KINETIC_SCROLL = Object.freeze({ mouse: false, touch: true });
 
@@ -100,6 +101,16 @@ export function bindEvents(m) {
     el.style.cursor = chartCursorForZone(zone);
   };
 
+  const notifyManualPriceScale = (paneIndex, zone) => {
+    if (!dragging || dragging.manualPriceScaleNotified) return;
+    dragging.manualPriceScaleNotified = true;
+    if (typeof CustomEvent !== "undefined") {
+      el.dispatchEvent?.(new CustomEvent("prochart-price-scale-manual", {
+        bubbles: true, detail: { paneIndex, zone },
+      }));
+    }
+  };
+
   const applyPendingPlotPan = () => {
     plotPanFrame = 0;
     const pending = pendingPlotPan;
@@ -109,14 +120,38 @@ export function bindEvents(m) {
     const hs = m.options.handleScroll;
     const horzOk = pending.isTouch ? hs.horzTouchDrag !== false : hs.pressedMouseMove !== false;
     const vertOk = pending.isTouch ? hs.vertTouchDrag !== false : hs.pressedMouseMove !== false;
+    let appliedPriceDy = 0;
     if (horzOk && pending.dx !== 0) m.timeScale.scrollBy(-pending.dx);
     if (vertOk && pending.dy !== 0) {
       const pane = m.panes[pending.paneIndex];
       if (pane) {
+        let movedPriceScale = false;
         for (const scale of pane.priceScales.values()) {
-          if (!scale.options.autoScale) scale.panByPixels(-pending.dy);
+          const wasAutoScale = scale.options.autoScale;
+          if (scale.options.autoScale) {
+            // A deliberate vertical plot drag takes ownership of its fitted
+            // range. Horizontal movement and sub-threshold pointer noise keep
+            // autoscale active; overlay studies retain their own auto ranges.
+            if (!pending.unlockAutoScale || scale.isOverlay?.()) continue;
+            scale.panByPixels(-pending.totalDy);
+          } else {
+            scale.panByPixels(-pending.dy);
+          }
+          if (scale.priceRange && !scale.isOverlay?.() && scale.options.visible !== false) {
+            movedPriceScale = true;
+            appliedPriceDy = wasAutoScale ? pending.totalDy : pending.dy;
+          }
         }
+        if (movedPriceScale) notifyManualPriceScale(pending.paneIndex, "plot");
       }
+    }
+    // Publish the applied gesture once per native pan frame. Peer scale API
+    // updates do not emit this input event, so linked panes cannot echo it.
+    if (appliedPriceDy !== 0 && typeof CustomEvent !== "undefined") {
+      el.dispatchEvent?.(new CustomEvent("prochart-plot-pan", {
+        bubbles: true,
+        detail: { paneIndex: pending.paneIndex, dx: horzOk ? pending.dx : 0, dy: appliedPriceDy },
+      }));
     }
 
     if (pending.isTouch) {
@@ -141,8 +176,14 @@ export function bindEvents(m) {
       pendingPlotPan.dy += dy;
       pendingPlotPan.pos = pos;
       pendingPlotPan.event = event;
+      pendingPlotPan.totalDy = event.clientY - dragging.startY;
+      pendingPlotPan.unlockAutoScale = dragging.unlockAutoScale;
     } else {
-      pendingPlotPan = { dx, dy, paneIndex, isTouch, pos, event };
+      pendingPlotPan = {
+        dx, dy, paneIndex, isTouch, pos, event,
+        totalDy: event.clientY - dragging.startY,
+        unlockAutoScale: dragging.unlockAutoScale,
+      };
     }
     if (!plotPanFrame) plotPanFrame = requestAnimationFrame(applyPendingPlotPan);
   };
@@ -178,6 +219,8 @@ export function bindEvents(m) {
       moved: false,
       paneIndex: m.paneIndexAtY(pos.y),
       startBarSpacing: m.timeScale.barSpacing,
+      unlockAutoScale: false,
+      manualPriceScaleNotified: false,
     };
     if (e.pointerType === "touch" && zone === "plot" && !touchCrosshairPinned) {
       clearTouchTrackingTimer();
@@ -240,6 +283,9 @@ export function bindEvents(m) {
 
       if (dragging.zone === "plot" && !dragging.crosshairOnly) {
         const isTouch = e.pointerType === "touch";
+        if (Math.abs(e.clientY - dragging.startY) >= VERTICAL_PAN_UNLOCK_DISTANCE) {
+          dragging.unlockAutoScale = true;
+        }
         // High-polling mice can emit far more pointer events than display
         // frames. Preserve the full 2D gesture distance, but fan out range
         // notifications and chart work at most once per animation frame.
@@ -257,7 +303,10 @@ export function bindEvents(m) {
         if (m.options.handleScale.axisPressedMouseMove?.price !== false && dy !== 0) {
           const pane = m.panes[dragging.paneIndex];
           const scale = pane?.priceScales.get(dragging.zone);
-          if (scale) scale.scaleAroundCenter(Math.exp(dy / 200));
+          if (scale) {
+            scale.scaleAroundCenter(Math.exp(dy / 200));
+            if (scale.priceRange) notifyManualPriceScale(dragging.paneIndex, dragging.zone);
+          }
         }
       }
     }

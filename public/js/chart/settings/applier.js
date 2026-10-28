@@ -169,9 +169,12 @@ export function applySettingsToChart(opts) {
   } else if (sc.lockPriceToBarRatio) {
     scaleOpts.autoScale = false;
     scaleOpts.scaleMargins = defaultMargins;
+  } else {
+    // ProChart preserves its current fitted range when autoScale is disabled.
+    // Omitting this option leaves panes on auto even though the shared setting
+    // and axis button say manual, blocking vertical chart-body dragging.
+    scaleOpts.autoScale = false;
   }
-  // Manual scale (autoScale: false): do not re-apply here — LWC tutorial sets this once
-  // after data exists. Re-applying on every settings/layout restore breaks the axis.
 
   const scaleKey = priceScaleSettingsKey(sc, cv, activeScale);
   if (pane._lastPriceScaleSettingsKey !== scaleKey) {

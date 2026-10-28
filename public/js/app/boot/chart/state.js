@@ -117,7 +117,8 @@ function getChartShellById(el, id) {
  * @property {(...args: unknown[]) => Promise<void>} ensureHistoryNearEdge
  * @property {(v: boolean) => void} setOverlayLoaderEnabled
  * @property {() => void} autosaveLayout
- * @property {() => void} scheduleAutosaveLayout
+ * @property {(opts?: { viewportOnly?: boolean }) => void} scheduleAutosaveLayout
+ * @property {() => void} disposeLayoutPersistence
  * @property {() => object} buildLayoutEntry
  * @property {(s: object) => void} applyLayoutChartSettings
  * @property {() => void} restoreLayoutChartSettings
@@ -283,6 +284,7 @@ export function createBootContext(overrides) {
     setOverlayLoaderEnabled: () => {},
     autosaveLayout: () => {},
     scheduleAutosaveLayout: () => {},
+    disposeLayoutPersistence: () => {},
     buildLayoutEntry: () => ({}),
     applyLayoutChartSettings: () => {},
     restoreLayoutChartSettings: () => {},

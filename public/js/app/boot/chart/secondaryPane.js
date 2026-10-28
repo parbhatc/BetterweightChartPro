@@ -26,7 +26,7 @@ export function createSecondaryPaneFactory(ctx) {
     paneChart.series.applyOptions({ chartStyle: ctx.chartType ?? "candles" });
     paneChart.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       if (ctx._layoutRestorePending) return;
-      ctx.scheduleAutosaveLayout?.();
+      ctx.scheduleAutosaveLayout?.({ viewportOnly: true });
     });
     const paneSymbol = getPaneSymbol(paneIndex, ctx.symbol);
     const paneState = {

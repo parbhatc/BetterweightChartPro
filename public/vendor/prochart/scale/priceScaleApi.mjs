@@ -43,6 +43,11 @@ export class PriceScaleApi {
     this._m.scaleAroundCenter(factor);
   }
 
+  /** Translate this scale in pixels while retaining its own price range. */
+  panByPixels(delta) {
+    this._m.panByPixels(delta);
+  }
+
   width() {
     return this._m.width();
   }

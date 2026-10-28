@@ -162,7 +162,7 @@ export function initPrimaryChart(ctx) {
 
   chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
     if (ctx._layoutRestorePending) return;
-    ctx.scheduleAutosaveLayout?.();
+    ctx.scheduleAutosaveLayout?.({ viewportOnly: true });
   });
 
   ctx.chartPanes.set(0, {

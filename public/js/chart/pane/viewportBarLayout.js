@@ -105,7 +105,12 @@ function restorePriceLayout(pane, priceLayout, settingsStore, activePriceScaleId
   if (!priceLayout || !pane?.chart || !pane?.series) return null;
 
   const margins = priceLayout.scaleMargins;
-  const lockAfter = !priceLayout.autoScale;
+  // Scale mode belongs to the shared chart settings. A per-pane viewport
+  // captured during the temporary auto-fit must not re-enable autoscale on
+  // restore: doing so blocks vertical plot drags until that pane's axis moves.
+  const scales = settingsStore.get().scales ?? {};
+  const lockAfter = !scales.autoScale && !scales.lockPriceToBarRatio;
+  const mode = lockAfter ? "refit-lock" : "refit-auto";
 
   refitPriceScaleToVisibleBars(pane, settingsStore, activePriceScaleId, {
     margins,
@@ -120,7 +125,7 @@ function restorePriceLayout(pane, priceLayout, settingsStore, activePriceScaleId
       const afterMax = pTop != null && pBottom != null ? Math.max(pTop, pBottom) : null;
 
       chartDebug("data", "timeframe price layout", {
-        mode: priceLayout.autoScale ? "refit-auto" : "refit-lock",
+        mode,
         scaleMargins: margins,
         barRange,
         rangeBefore: priceLayout.visiblePriceRange,
@@ -135,7 +140,7 @@ function restorePriceLayout(pane, priceLayout, settingsStore, activePriceScaleId
   });
 
   return {
-    mode: priceLayout.autoScale ? "refit-auto" : "refit-lock",
+    mode,
     scaleMargins: margins,
     rangeBefore: priceLayout.visiblePriceRange,
     minPriceBefore: priceLayout.minPrice,

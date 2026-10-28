@@ -57,6 +57,12 @@ export function createMultiPaneDrawingHub(opts) {
 
   let activeIndex = 0;
 
+  // The toolbar selects one tool for the layout, even when drawing contents
+  // are independent. A controller can also change tools after a commit or
+  // Escape, so those transitions must disarm every other pane immediately.
+  let sharedActiveTool = "cursor";
+  let syncingTools = false;
+
   let syncingDrawings = false;
   /** @type {number | null} */
   let pendingDragSyncIndex = null;
@@ -104,6 +110,25 @@ export function createMultiPaneDrawingHub(opts) {
 
     }
 
+  }
+
+  function setSharedActiveTool(tool, sourceIndex = null) {
+    if (syncingTools) return;
+    sharedActiveTool = tool || "cursor";
+    syncingTools = true;
+    try {
+      for (const [index, ctrl] of controllers) {
+        if (index === sourceIndex) continue;
+        // An explicit toolbar selection retains its normal placement reset.
+        // Controller-originated changes only touch peers that need to change.
+        if (sourceIndex == null || ctrl.getActiveTool() !== sharedActiveTool) {
+          ctrl.setActiveTool(sharedActiveTool);
+        }
+      }
+    } finally {
+      syncingTools = false;
+    }
+    emit("toolChange");
   }
 
 
@@ -283,7 +308,10 @@ export function createMultiPaneDrawingHub(opts) {
 
 
 
-    ctrl.on("toolChange", () => emit("toolChange"));
+    ctrl.on("toolChange", () => {
+      if (syncingTools) return;
+      setSharedActiveTool(ctrl.getActiveTool(), paneIndex);
+    });
 
 
 
@@ -375,6 +403,10 @@ export function createMultiPaneDrawingHub(opts) {
 
 
 
+    const current = getActive();
+    if (current) ctrl.setStayInDrawingMode(current.getStayInDrawingMode());
+    if (ctrl.getActiveTool() !== sharedActiveTool) ctrl.setActiveTool(sharedActiveTool);
+
     wireController(ctrl, paneIndex);
 
 
@@ -437,15 +469,9 @@ export function createMultiPaneDrawingHub(opts) {
 
   const facade = {
 
-    setActiveTool: (tool) => {
+    setActiveTool: (tool) => setSharedActiveTool(tool),
 
-      broadcast("setActiveTool", tool);
-
-      emit("toolChange");
-
-    },
-
-    getActiveTool: () => getActive()?.getActiveTool() ?? "cursor",
+    getActiveTool: () => getActive()?.getActiveTool() ?? sharedActiveTool,
 
     isCursorTool: (tool) => getActive()?.isCursorTool(tool) ?? true,
 

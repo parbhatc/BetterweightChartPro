@@ -37,6 +37,7 @@ import {
 } from "../../chart/status/hover.js";
 import { createPaneStatusScheduler } from "../../chart/status/paneScheduler.js";
 import { isNearHistoryLeftEdge } from "../bar/loader.js";
+import { createManualPriceScaleSync } from "../layout/manualScaleSync.js";
 import {
   buildChartSeriesForPane,
   applyLiveBarToPaneSeries,
@@ -76,7 +77,16 @@ export function createPaneExtras(deps) {
     getReplayActive,
     quotesEnabled,
     getQuoteForSymbol,
+    onViewportChange,
   } = deps;
+
+  const manualScaleSync = createManualPriceScaleSync({
+    settingsStore,
+    getPanes: getAllChartPanes,
+    isPanning: () => Boolean(ui.chartPanning),
+    isLinked: () => Boolean(getLayoutManager()?.getSync().dateRange),
+    onViewportChange,
+  });
 
   /** @param {object} pane @param {number} utcTime */
   function statusBarAtTime(pane, utcTime) {
@@ -404,6 +414,9 @@ export function createPaneExtras(deps) {
     let liveLayoutSyncRaf = null;
     const HISTORY_PREFETCH_IDLE_MS = 150;
 
+    pane.el.addEventListener("prochart-price-scale-manual", manualScaleSync.handleManualScale);
+    pane.el.addEventListener("prochart-plot-pan", event => manualScaleSync.handlePlotPan(pane, event));
+
     const stopLiveLayoutSync = () => {
       if (liveLayoutSyncRaf == null) return;
       cancelAnimationFrame(liveLayoutSyncRaf);
@@ -461,6 +474,7 @@ export function createPaneExtras(deps) {
       onEnd: () => {
         stopLiveLayoutSync();
         ui.chartPanning = false;
+        manualScaleSync.flushPending();
         viewportDeps?.syncLayoutDateRangeFrom?.(pane.chart);
         for (const p of getAllChartPanes()) p._deferSeriesUpdates = false;
         panFps.stop("pan");

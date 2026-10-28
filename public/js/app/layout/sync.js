@@ -105,6 +105,10 @@ export function createLayoutSync(deps) {
       if (isValidLogicalRange(logicalRange)) lastSyncedLogicalRange.set(sourceChart, logicalRange);
       return;
     }
+    // The held-pointer fallback polls every frame, including stationary frames.
+    // Reapplying an identical range invalidates every peer's canvas and emits
+    // its subscribers again even though none of its bars moved.
+    if (logicalDelta && logicalDelta.from === 0 && logicalDelta.to === 0) return;
     // Lightweight Charts can report a stale time range until pointer-up. Use
     // the event's live logical movement while dragging, then exact time sync
     // resumes automatically after the gesture ends.
