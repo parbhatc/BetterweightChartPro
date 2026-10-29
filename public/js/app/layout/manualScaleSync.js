@@ -64,8 +64,8 @@ export function createManualPriceScaleSync({ settingsStore, getPanes, isPanning,
     if (!Number.isFinite(detail.factor) || detail.factor <= 0) return false;
     if (isLinked()) {
       for (const pane of getPanes()) {
-        if (!pane?.chart || pane === sourcePane || pane.chart === sourcePane.chart || !pane.bars?.length) continue;
-        pane.chart.priceScale(detail.zone)?.scaleAroundCenter(detail.factor);
+        if (!pane?.series || pane === sourcePane || pane.chart === sourcePane.chart || !pane.bars?.length) continue;
+        pane.series.priceScale().scaleAroundCenter(detail.factor);
       }
     }
     onViewportChange?.();
