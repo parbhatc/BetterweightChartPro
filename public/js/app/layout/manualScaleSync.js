@@ -1,9 +1,11 @@
 /**
  * A deliberate price-axis or vertical plot gesture changes the scale mode for
  * the whole layout. Each instrument keeps its own price range and zoom.
- * Linked plot gestures also move each peer by the same pixel
- * distance on its own scale. Persist the preference after release so the
- * settings subscriber cannot rebuild the workspace during a drag.
+ * Linked plot gestures move each peer by the same pixel distance on its own
+ * scale. Linked axis gestures apply the same zoom factor around each peer's
+ * center, so instruments keep independent prices while moving together.
+ * Persist the preference after release so the settings subscriber cannot
+ * rebuild the workspace during a drag.
  *
  * @param {{ settingsStore: object, getPanes: () => object[], isPanning: () => boolean,
  *   isLinked?: () => boolean, onViewportChange?: () => void }} deps
@@ -56,5 +58,19 @@ export function createManualPriceScaleSync({ settingsStore, getPanes, isPanning,
     return true;
   }
 
-  return { handleManualScale, handlePlotPan, flushPending };
+  function handleAxisScale(sourcePane, event) {
+    const detail = event?.detail;
+    if (detail?.paneIndex !== 0 || (detail.zone !== "left" && detail.zone !== "right")) return false;
+    if (!Number.isFinite(detail.factor) || detail.factor <= 0) return false;
+    if (isLinked()) {
+      for (const pane of getPanes()) {
+        if (!pane?.chart || pane === sourcePane || pane.chart === sourcePane.chart || !pane.bars?.length) continue;
+        pane.chart.priceScale(detail.zone)?.scaleAroundCenter(detail.factor);
+      }
+    }
+    onViewportChange?.();
+    return true;
+  }
+
+  return { handleManualScale, handlePlotPan, handleAxisScale, flushPending };
 }

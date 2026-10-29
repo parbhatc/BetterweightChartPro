@@ -84,7 +84,7 @@ export function createPaneExtras(deps) {
     settingsStore,
     getPanes: getAllChartPanes,
     isPanning: () => Boolean(ui.chartPanning),
-    isLinked: () => Boolean(getLayoutManager()?.getSync().dateRange),
+    isLinked: () => Boolean(getLayoutManager()?.getSync().priceAxis),
     onViewportChange,
   });
 
@@ -416,6 +416,7 @@ export function createPaneExtras(deps) {
 
     pane.el.addEventListener("prochart-price-scale-manual", manualScaleSync.handleManualScale);
     pane.el.addEventListener("prochart-plot-pan", event => manualScaleSync.handlePlotPan(pane, event));
+    pane.el.addEventListener("prochart-price-axis-scale", event => manualScaleSync.handleAxisScale(pane, event));
 
     const stopLiveLayoutSync = () => {
       if (liveLayoutSyncRaf == null) return;

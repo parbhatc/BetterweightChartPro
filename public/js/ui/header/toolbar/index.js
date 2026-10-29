@@ -262,6 +262,7 @@ export function mountHeaderToolbar(opts) {
         ${syncRow("crosshair", "Crosshair", "Crosshair is synced across all charts within the layout", sync.crosshair, paneCount < 2)}
         ${syncRow("time", "Time", "When a chart is clicked, all charts display the same point of time", sync.time, paneCount < 2)}
         ${syncRow("dateRange", "Date range", "Date range changes on all charts within the layout", sync.dateRange, paneCount < 2)}
+        ${syncRow("priceAxis", "Price axis", "Price-axis pan and zoom move together across charts", sync.priceAxis, paneCount < 2)}
         ${syncRow("drawings", "Drawings", "Drawings are synced across all charts within the layout", sync.drawings, paneCount < 2)}
         ${syncRow("indicators", "Indicators", "Indicators are synced across all charts within the layout", sync.indicators, paneCount < 2)}
       </div>

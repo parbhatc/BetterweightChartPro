@@ -235,6 +235,66 @@ test("a price-axis drag publishes the same manual-mode transition for linked pan
   assert.deepEqual(events, [{ paneIndex: 0, zone: "right" }]);
 });
 
+test("linked price-axis drags apply the same zoom factor to every chart", (t) => {
+  const flush = frameQueue(t);
+  const settings = createChartSettings();
+  settings.set("scales", "autoScale", true);
+  const fixtures = [paneFixture(0, 29000, settings), paneFixture(1, 7700, settings)];
+  let saves = 0;
+  const sync = createManualPriceScaleSync({
+    settingsStore: settings,
+    getPanes: () => fixtures.map(fixture => fixture.pane),
+    isPanning: () => true,
+    isLinked: () => true,
+    onViewportChange: () => saves++,
+  });
+  for (const fixture of fixtures) {
+    fixture.scales.get("right").updateAutoScale();
+    fixture.chartModel.root.addEventListener("prochart-price-scale-manual", sync.handleManualScale);
+    fixture.chartModel.root.addEventListener("prochart-price-axis-scale", event => sync.handleAxisScale(fixture.pane, event));
+    t.after(bindEvents(fixture.chartModel));
+  }
+  const before = fixtures.map(fixture => {
+    const range = fixture.scales.get("right").priceRange;
+    return range.max - range.min;
+  });
+
+  fixtures[0].dispatch("pointerdown", 780, 250);
+  fixtures[0].dispatch("pointermove", 780, 290);
+  fixtures[0].dispatch("pointerup", 780, 290);
+  flush();
+
+  const ratios = fixtures.map((fixture, index) => {
+    const range = fixture.scales.get("right").priceRange;
+    return (range.max - range.min) / before[index];
+  });
+  assert.ok(Math.abs(ratios[0] - ratios[1]) < 1e-10, `expected matching zoom factors, got ${ratios}`);
+  assert.ok(ratios[0] > 1, "dragging down expands both visible price ranges");
+  assert.equal(saves, 1);
+});
+
+test("unlinked price-axis drags leave peer zoom unchanged", (t) => {
+  const settings = createChartSettings();
+  const fixtures = [paneFixture(0, 29000, settings), paneFixture(1, 7700, settings)];
+  const sync = createManualPriceScaleSync({
+    settingsStore: settings,
+    getPanes: () => fixtures.map(fixture => fixture.pane),
+    isPanning: () => true,
+    isLinked: () => false,
+  });
+  for (const fixture of fixtures) {
+    fixture.scales.get("right").updateAutoScale();
+    fixture.chartModel.root.addEventListener("prochart-price-scale-manual", sync.handleManualScale);
+    fixture.chartModel.root.addEventListener("prochart-price-axis-scale", event => sync.handleAxisScale(fixture.pane, event));
+    t.after(bindEvents(fixture.chartModel));
+  }
+  const peerBefore = { ...fixtures[1].scales.get("right").priceRange };
+  fixtures[0].dispatch("pointerdown", 780, 250);
+  fixtures[0].dispatch("pointermove", 780, 290);
+  fixtures[0].dispatch("pointerup", 780, 290);
+  assert.deepEqual(fixtures[1].scales.get("right").priceRange, peerBefore);
+});
+
 test("disabled mouse panning cannot unlock autoscale or publish a manual transition", (t) => {
   const flush = frameQueue(t);
   const f = paneFixture(0, 29000, createChartSettings());

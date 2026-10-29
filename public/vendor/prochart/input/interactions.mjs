@@ -304,8 +304,17 @@ export function bindEvents(m) {
           const pane = m.panes[dragging.paneIndex];
           const scale = pane?.priceScales.get(dragging.zone);
           if (scale) {
-            scale.scaleAroundCenter(Math.exp(dy / 200));
-            if (scale.priceRange) notifyManualPriceScale(dragging.paneIndex, dragging.zone);
+            const factor = Math.exp(dy / 200);
+            scale.scaleAroundCenter(factor);
+            if (scale.priceRange) {
+              notifyManualPriceScale(dragging.paneIndex, dragging.zone);
+              if (typeof CustomEvent !== "undefined") {
+                el.dispatchEvent?.(new CustomEvent("prochart-price-axis-scale", {
+                  bubbles: true,
+                  detail: { paneIndex: dragging.paneIndex, zone: dragging.zone, factor },
+                }));
+              }
+            }
           }
         }
       }
