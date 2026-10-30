@@ -672,6 +672,7 @@ export function createPositionOverlay(widget) {
 
   function closePosition(opts = {}) {
     const emitClose = opts.emitClose !== false;
+    cancelPendingPnlRefresh();
     if (!position) return null;
     const snapshot = positionSnapshot();
     removeBracketSlot("stopLoss", { emit: false });
@@ -703,7 +704,11 @@ export function createPositionOverlay(widget) {
    * @param {number} mark
    */
   function refreshPositionPnl(mark) {
-    if (!position?.line || widget.isChartPanning?.()) return;
+    if (!position?.line) return;
+    if (widget.isChartPanning?.()) {
+      pendingPnlMark = mark;
+      return;
+    }
     if (position.line.isMoving) return;
 
     const { tickSize, tickValue } = tickMeta();
@@ -762,6 +767,7 @@ export function createPositionOverlay(widget) {
   let pnlRefreshRaf = null;
   /** @type {number | null} */
   let pendingPnlMark = null;
+  let pnlRefreshEpoch = 0;
   let lastPnlPaintAt = 0;
   const PNL_PAINT_MIN_MS = 120;
 
@@ -772,14 +778,37 @@ export function createPositionOverlay(widget) {
   }
 
   function scheduleRefreshPositionPnl(mark) {
+    if (!position?.line) return;
     pendingPnlMark = mark;
-    if (pnlRefreshRaf != null) return;
+    // Quotes and candle ticks still update their model/risk state while the
+    // chart moves. Retain their latest display mark without competing with
+    // chart frames, then paint it once through the pan-end hook.
+    if (widget.isChartPanning?.() || pnlRefreshRaf != null) return;
+    const scheduledEpoch = pnlRefreshEpoch;
     pnlRefreshRaf = requestAnimationFrame(() => {
+      if (scheduledEpoch !== pnlRefreshEpoch) return;
       pnlRefreshRaf = null;
+      if (widget.isChartPanning?.()) return;
       const m = pendingPnlMark;
       pendingPnlMark = null;
       if (m != null) refreshPositionPnl(m);
     });
+  }
+
+  function cancelPendingPnlRefresh() {
+    if (pnlRefreshRaf != null) cancelAnimationFrame(pnlRefreshRaf);
+    pnlRefreshRaf = null;
+    pendingPnlMark = null;
+    pnlRefreshEpoch += 1;
+  }
+
+  function flushDeferredPnl() {
+    if (widget.isChartPanning?.() || !position?.line || pendingPnlMark == null) return false;
+    const mark = pendingPnlMark;
+    cancelPendingPnlRefresh();
+    lastPnlPaintAt = 0;
+    refreshPositionPnl(mark);
+    return true;
   }
 
   // Repaint the position chip + bracket labels immediately when the host's
@@ -1029,6 +1058,8 @@ export function createPositionOverlay(widget) {
       if (position?.line && mark != null) refreshPositionPnl(mark);
       return pillOffset;
     },
+    /** Paint the latest retained position mark once after chart panning ends. */
+    flushDeferredPnl,
     /**
      * Override the position pill's instrument label and tick economics. This is
      * used when a related contract is displayed on the active chart, such as an
@@ -1067,11 +1098,12 @@ export function createPositionOverlay(widget) {
     setMarkPrice(price) {
       const next = Number(price);
       if (!Number.isFinite(next)) return false;
+      if (next === externalMark) return true;
       externalMark = next;
       if (position?.line) {
-        // Host marks already arrive through a requestAnimationFrame-coalesced
-        // path. Do not let the candle-paint throttle make the account UP&L and
-        // position pill disagree or leave the final broker tick unpainted.
+        // Market-book notifications may arrive several times per frame. Keep
+        // their latest mark together, and let the pan-end flush paint the final
+        // value without waiting for another broker tick.
         lastPnlPaintAt = 0;
         scheduleRefreshPositionPnl(next);
       }

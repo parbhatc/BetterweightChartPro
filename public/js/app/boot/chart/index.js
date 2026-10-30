@@ -299,6 +299,7 @@ export async function bootChart(overrides = {}) {
     const prevPanEnd = ctx.viewportDeps.onChartPanEnd;
     ctx.viewportDeps.onChartPanEnd = () => {
       orderLines?.flushDeferredLivePatches?.();
+      widget.positionOverlay?.flushDeferredPnl?.();
       prevPanEnd?.();
     };
     if (typeof window !== "undefined") {
